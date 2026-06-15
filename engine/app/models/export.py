@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Optional
 
 from .base import CamelModel
+from .boq import BoqOptions, ExtraLine, LineOverride
 from .enums import City, FinishTier
 from .plan import Plan
 
@@ -30,3 +31,7 @@ class ExportRequest(CamelModel):
     city: Optional[City] = None
     finish_tier: FinishTier = FinishTier.standard
     branding: Branding = Branding()
+    # BOQ edits so PDF/XLSX match the on-screen editable BOQ.
+    options: BoqOptions = BoqOptions()
+    overrides: list[LineOverride] = []
+    extra_lines: list[ExtraLine] = []

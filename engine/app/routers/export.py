@@ -43,12 +43,24 @@ def export_dxf(plan: Plan) -> Response:
     )
 
 
-@router.post("/xlsx")
-def export_xlsx(req: ExportRequest) -> Response:
+def _boq_from(req: ExportRequest):
     norm, _ = normalize(req.plan)
     boq = generate_boq(
-        norm, req.city or norm.plot.city, req.finish_tier, get_rates_provider(), get_boq_rules()
+        norm,
+        req.city or norm.plot.city,
+        req.finish_tier,
+        get_rates_provider(),
+        get_boq_rules(),
+        options=req.options,
+        overrides=req.overrides,
+        extra_lines=req.extra_lines,
     )
+    return norm, boq
+
+
+@router.post("/xlsx")
+def export_xlsx(req: ExportRequest) -> Response:
+    norm, boq = _boq_from(req)
     data = build_xlsx(boq, req.branding)
     return Response(
         content=data,
@@ -59,11 +71,9 @@ def export_xlsx(req: ExportRequest) -> Response:
 
 @router.post("/pdf")
 def export_pdf(req: ExportRequest) -> Response:
-    norm, _ = normalize(req.plan)
-    city = req.city or norm.plot.city
+    norm, boq = _boq_from(req)
     vastu = check_vastu(norm, get_vastu_rules())
     code = check_code(norm, get_code_rules())
-    boq = generate_boq(norm, city, req.finish_tier, get_rates_provider(), get_boq_rules())
     data = build_pdf(norm, vastu, code, boq, req.branding)
     return Response(
         content=data,

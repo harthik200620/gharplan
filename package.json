@@ -1,0 +1,13 @@
+{
+  "name": "gharplan",
+  "version": "1.0.0",
+  "private": true,
+  "description": "GharPlan — Vastu- & code-aware Design-to-Cost copilot (monorepo).",
+  "workspaces": ["web", "packages/*"],
+  "scripts": {
+    "dev": "npm run dev --workspace web",
+    "build": "npm run build --workspace web",
+    "typecheck": "npm run typecheck --workspace web && npm run typecheck --workspace @gharplan/shared",
+    "gen:schema": "npm run gen:schema --workspace @gharplan/shared"
+  }
+}

@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app import config
-from app.routers import boq, validate
+from app.routers import boq, code, export, validate, vastu
 from app.services.plan_service import PlanValidationError
 from app.services.rates import MissingRateError
 
@@ -61,3 +61,6 @@ def health() -> dict:
 
 app.include_router(validate.router)
 app.include_router(boq.router)
+app.include_router(vastu.router)
+app.include_router(code.router)
+app.include_router(export.router)

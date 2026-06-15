@@ -34,6 +34,34 @@ def centroid_of(points: list[Point]) -> Point:
     return (c.x, c.y)
 
 
+def bounds_of(points: list[Point]) -> tuple[float, float, float, float]:
+    """Axis-aligned bounding box (minx, miny, maxx, maxy)."""
+    return polygon(points).bounds
+
+
+def min_side_of(points: list[Point]) -> float:
+    """Smaller side of the bounding box — a proxy for minimum room dimension."""
+    minx, miny, maxx, maxy = bounds_of(points)
+    return min(maxx - minx, maxy - miny)
+
+
+def union_area(polys: list[list[Point]]) -> float:
+    """Area of the union of several polygons (footprint, de-duplicating overlaps)."""
+    from shapely.ops import unary_union
+
+    if not polys:
+        return 0.0
+    return unary_union([polygon(p) for p in polys]).area
+
+
+def outside_envelope_area(points: list[Point], envelope: tuple[float, float, float, float]) -> float:
+    """Area of the polygon falling OUTSIDE the (minx,miny,maxx,maxy) envelope box."""
+    from shapely.geometry import box
+
+    minx, miny, maxx, maxy = envelope
+    return polygon(points).difference(box(minx, miny, maxx, maxy)).area
+
+
 def validate_polygon(points: list[Point]) -> tuple[bool, str]:
     """Return (is_valid, reason). Reason is empty when valid."""
     distinct = {(round(x, 6), round(y, 6)) for x, y in points}

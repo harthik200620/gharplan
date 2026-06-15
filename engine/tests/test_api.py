@@ -50,3 +50,34 @@ def test_invalid_plan_returns_422():
     r = client.post("/plan/validate", json=bad)
     assert r.status_code == 422
     assert r.json()["type"] == "plan_validation_error"
+
+
+def test_vastu_endpoint():
+    r = client.post("/vastu/check", json=_sample())
+    assert r.status_code == 200
+    body = r.json()
+    assert 0 <= body["score"] <= 100
+    assert "brahmasthan" in body
+
+
+def test_code_endpoint():
+    r = client.post("/code/check", json=_sample())
+    assert r.status_code == 200
+    body = r.json()
+    assert body["state"] == "KA"
+    assert body["metrics"]["groundCoveragePct"] >= 0
+
+
+def test_export_endpoints():
+    dxf = client.post("/export/dxf", json=_sample())
+    assert dxf.status_code == 200
+    assert dxf.content[:1] and b"SECTION" in dxf.content[:2000]
+
+    body = {"plan": _sample(), "finishTier": "standard", "branding": {"studioName": "Acme"}}
+    xlsx = client.post("/export/xlsx", json=body)
+    assert xlsx.status_code == 200
+    assert xlsx.content[:2] == b"PK"  # xlsx is a zip
+
+    pdf = client.post("/export/pdf", json=body)
+    assert pdf.status_code == 200
+    assert pdf.content[:4] == b"%PDF"

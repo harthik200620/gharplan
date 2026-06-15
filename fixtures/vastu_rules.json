@@ -1,0 +1,32 @@
+{
+  "version": "1.0",
+  "note": "Data-driven Vastu ruleset. Weights 1-5 (5 = most important). Edit zones/weights here without touching engine code. TODO(human): have a practising Vastu consultant review and extend this table.",
+  "statusScore": { "pass": 1.0, "warn": 0.5, "fail": 0.0 },
+  "grades": [
+    { "min": 90, "label": "Excellent" },
+    { "min": 75, "label": "Good" },
+    { "min": 55, "label": "Fair" },
+    { "min": 0, "label": "Needs work" }
+  ],
+  "rules": [
+    { "roomType": "pooja", "ideal": ["NE"], "acceptable": ["E", "N"], "forbidden": ["S", "SW", "SE"], "weight": 4, "note": "Prayer space ideally in the NE (Ishanya)." },
+    { "roomType": "kitchen", "ideal": ["SE"], "acceptable": ["NW"], "forbidden": ["NE", "SW", "CENTER"], "weight": 5, "note": "Agni (fire) corner is the SE." },
+    { "roomType": "master_bedroom", "ideal": ["SW"], "acceptable": ["S", "W"], "forbidden": ["NE"], "weight": 5, "note": "Heaviest room belongs in the SW." },
+    { "roomType": "bedroom", "ideal": ["S", "W", "SW"], "acceptable": ["NW", "E"], "forbidden": ["NE"], "weight": 2, "note": "General bedroom." },
+    { "roomType": "childrens_bedroom", "ideal": ["W", "NW"], "acceptable": ["E"], "forbidden": ["SW"], "weight": 2, "note": "Children's room in the W / NW." },
+    { "roomType": "living", "ideal": ["N", "NE", "E"], "acceptable": ["NW"], "forbidden": ["SW"], "weight": 2, "note": "Living hall toward N / NE / E." },
+    { "roomType": "dining", "ideal": ["W", "E"], "acceptable": ["S", "N"], "forbidden": [], "weight": 1, "note": "Dining flexible; W or E preferred." },
+    { "roomType": "toilet", "ideal": ["NW", "W"], "acceptable": ["S"], "forbidden": ["NE", "SW", "CENTER"], "weight": 5, "note": "WC away from NE and SW." },
+    { "roomType": "bathroom", "ideal": ["NW", "W"], "acceptable": ["S", "E"], "forbidden": ["NE", "SW", "CENTER"], "weight": 5, "note": "Bath away from NE and SW." },
+    { "roomType": "staircase", "ideal": ["SW", "S", "W"], "acceptable": [], "forbidden": ["NE", "CENTER"], "weight": 3, "note": "Stair in the heavy SW / S / W." },
+    { "roomType": "entrance", "ideal": ["N", "NE", "E"], "acceptable": ["NW"], "forbidden": ["SW"], "weight": 4, "note": "Main entry in N / NE / E (NW acceptable on the north part)." },
+    { "roomType": "study", "ideal": ["NE", "E", "N", "W"], "acceptable": ["NW"], "forbidden": [], "weight": 1, "note": "Study toward NE / E / N for focus." },
+    { "roomType": "overhead_tank", "ideal": ["SW", "W"], "acceptable": ["S"], "forbidden": ["NE"], "weight": 2, "note": "Overhead/heavy water storage in SW / W." },
+    { "roomType": "borewell", "ideal": ["NE", "N", "E"], "acceptable": [], "forbidden": ["SW"], "weight": 2, "note": "Underground water source in NE / N / E." }
+  ],
+  "brahmasthan": {
+    "forbiddenOccupants": ["toilet", "bathroom", "kitchen", "staircase"],
+    "weight": 4,
+    "note": "Keep the centre (Brahmasthan) open. FAIL if a toilet/bathroom/kitchen/staircase (or heavy structure) occupies the centre; WARN if any other room does."
+  }
+}

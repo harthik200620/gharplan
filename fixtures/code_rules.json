@@ -1,0 +1,77 @@
+{
+  "version": "1.0",
+  "note": "INDICATIVE NBC 2016 / state DCR placeholders. TODO(human): verify EVERY number against the latest state DCR / municipal bylaws (KA: BBMP/KMC, MH: DCPR/UDCPR, TG: GO Ms / GHMC) before relying on a code result.",
+  "roomClassification": {
+    "habitableRoomTypes": ["living", "master_bedroom", "bedroom", "childrens_bedroom", "study"],
+    "ventilationRoomTypes": ["living", "dining", "master_bedroom", "bedroom", "childrens_bedroom", "study", "kitchen", "toilet", "bathroom"],
+    "wetRoomTypes": ["toilet", "bathroom", "utility"],
+    "virtualRoomTypes": ["brahmasthan", "borewell", "overhead_tank"],
+    "minAreaByRoomType": {
+      "kitchen": 5.0,
+      "toilet": 1.1,
+      "bathroom": 1.8
+    }
+  },
+  "states": {
+    "KA": {
+      "label": "Karnataka",
+      "minHabitableRoomSqm": 9.5,
+      "minRoomDimM": 2.4,
+      "minCeilingHeightM": 2.75,
+      "minKitchenSqm": 5.0,
+      "minBathroomSqm": 1.8,
+      "minWCSqm": 1.1,
+      "minStairWidthM": 1.0,
+      "ventilationOpenableRatio": 0.125,
+      "maxGroundCoveragePct": 65,
+      "FAR": 1.75,
+      "parkingPerDwelling": 1,
+      "setbacks": [
+        { "maxPlotAreaSqm": 150, "frontM": 1.5, "rearM": 1.0, "sideM": 0.6 },
+        { "maxPlotAreaSqm": 300, "frontM": 3.0, "rearM": 2.0, "sideM": 1.2 },
+        { "maxPlotAreaSqm": 500, "frontM": 4.5, "rearM": 3.0, "sideM": 2.0 },
+        { "maxPlotAreaSqm": null, "frontM": 6.0, "rearM": 4.5, "sideM": 3.0 }
+      ]
+    },
+    "MH": {
+      "label": "Maharashtra",
+      "minHabitableRoomSqm": 9.5,
+      "minRoomDimM": 2.4,
+      "minCeilingHeightM": 2.75,
+      "minKitchenSqm": 5.0,
+      "minBathroomSqm": 1.8,
+      "minWCSqm": 1.1,
+      "minStairWidthM": 1.0,
+      "ventilationOpenableRatio": 0.125,
+      "maxGroundCoveragePct": 60,
+      "FAR": 1.1,
+      "parkingPerDwelling": 1,
+      "setbacks": [
+        { "maxPlotAreaSqm": 150, "frontM": 1.5, "rearM": 1.0, "sideM": 0.6 },
+        { "maxPlotAreaSqm": 300, "frontM": 3.0, "rearM": 2.25, "sideM": 1.5 },
+        { "maxPlotAreaSqm": 500, "frontM": 4.5, "rearM": 3.0, "sideM": 2.0 },
+        { "maxPlotAreaSqm": null, "frontM": 6.0, "rearM": 4.5, "sideM": 3.0 }
+      ]
+    },
+    "TG": {
+      "label": "Telangana",
+      "minHabitableRoomSqm": 9.5,
+      "minRoomDimM": 2.4,
+      "minCeilingHeightM": 2.75,
+      "minKitchenSqm": 5.0,
+      "minBathroomSqm": 1.8,
+      "minWCSqm": 1.1,
+      "minStairWidthM": 1.0,
+      "ventilationOpenableRatio": 0.125,
+      "maxGroundCoveragePct": 65,
+      "FAR": 2.0,
+      "parkingPerDwelling": 1,
+      "setbacks": [
+        { "maxPlotAreaSqm": 150, "frontM": 1.5, "rearM": 1.0, "sideM": 0.5 },
+        { "maxPlotAreaSqm": 300, "frontM": 2.5, "rearM": 2.0, "sideM": 1.0 },
+        { "maxPlotAreaSqm": 500, "frontM": 4.0, "rearM": 3.0, "sideM": 2.0 },
+        { "maxPlotAreaSqm": null, "frontM": 6.0, "rearM": 4.5, "sideM": 3.0 }
+      ]
+    }
+  }
+}

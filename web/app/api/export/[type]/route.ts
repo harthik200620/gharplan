@@ -7,7 +7,10 @@ const MIME: Record<string, string> = {
   dxf: "image/vnd.dxf",
   xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 };
-const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8000";
+// Server-side: prefer an internal ENGINE_URL (e.g. http://engine:8000 in Docker),
+// falling back to the public URL used by the browser.
+const ENGINE_URL =
+  process.env.ENGINE_URL || process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8000";
 
 // Server-side export gating: an active subscription OR one credit (which unlocks
 // all exports for that project). Then proxy to the engine with the studio branding.

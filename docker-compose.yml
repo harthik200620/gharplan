@@ -1,0 +1,39 @@
+# Run the engine (and optionally the web) locally. Auth/DB/Storage use cloud Supabase.
+#   docker compose up engine      # just the compute core
+#   docker compose up             # web + engine (set web env first)
+#
+# NOTE: not exercised in CI on this machine — provided for parity. The recommended
+# production split is web -> Vercel, engine -> Railway/Render, DB/Auth -> Supabase.
+
+services:
+  engine:
+    build:
+      context: .
+      dockerfile: engine/Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      ENGINE_CORS_ORIGINS: "http://localhost:3000"
+      GHARPLAN_BRAHMASTHAN: "grid_3x3"
+      FEATURE_GENERATOR: "false"
+
+  web:
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+    ports:
+      - "3000:3000"
+    depends_on:
+      - engine
+    environment:
+      # Browser calls the engine on localhost; server-side (export proxy) uses the internal host.
+      NEXT_PUBLIC_ENGINE_URL: "http://localhost:8000"
+      ENGINE_URL: "http://engine:8000"
+      NEXT_PUBLIC_APP_URL: "http://localhost:3000"
+      NEXT_PUBLIC_SUPABASE_URL: "${NEXT_PUBLIC_SUPABASE_URL}"
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: "${NEXT_PUBLIC_SUPABASE_ANON_KEY}"
+      SUPABASE_SERVICE_ROLE_KEY: "${SUPABASE_SERVICE_ROLE_KEY}"
+      NEXT_PUBLIC_RAZORPAY_KEY_ID: "${NEXT_PUBLIC_RAZORPAY_KEY_ID}"
+      RAZORPAY_KEY_ID: "${RAZORPAY_KEY_ID}"
+      RAZORPAY_KEY_SECRET: "${RAZORPAY_KEY_SECRET}"
+      RAZORPAY_WEBHOOK_SECRET: "${RAZORPAY_WEBHOOK_SECRET}"

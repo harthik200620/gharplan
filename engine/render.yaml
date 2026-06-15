@@ -1,0 +1,18 @@
+# Render.com blueprint for the engine. (Railway: set Root Directory = engine and
+# use the start command below.) The repo is checked out whole, so the engine
+# resolves /fixtures automatically.
+services:
+  - type: web
+    name: gharplan-engine
+    runtime: python
+    rootDir: engine
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: ENGINE_CORS_ORIGINS
+        value: https://YOUR-WEB.vercel.app
+      - key: GHARPLAN_BRAHMASTHAN
+        value: grid_3x3
+      - key: FEATURE_GENERATOR
+        value: "false"

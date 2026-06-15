@@ -1,0 +1,282 @@
+{
+  "id": "30x40_E",
+  "name": "30x40 ft East-facing (Ground floor) — Vastu template",
+  "plotType": "30x40",
+  "facing": "E",
+  "refPlotWidthM": 9.144,
+  "refPlotDepthM": 12.192,
+  "setbacksUsed": {
+    "frontM": 1.5,
+    "rearM": 1.0,
+    "sideM": 0.6
+  },
+  "note": "Room rects are fractions [fx0,fy0,fx1,fy1] of the buildable envelope. TODO(human): architect to review/extend.",
+  "rooms": [
+    {
+      "id": "master",
+      "type": "master_bedroom",
+      "rect": [
+        0.0,
+        0.0,
+        0.3913,
+        0.3457
+      ],
+      "ceilingHeightM": 3.0
+    },
+    {
+      "id": "stair",
+      "type": "staircase",
+      "rect": [
+        0.3913,
+        0.0,
+        0.6321,
+        0.2456
+      ],
+      "ceilingHeightM": 3.0
+    },
+    {
+      "id": "kitchen",
+      "type": "kitchen",
+      "rect": [
+        0.6321,
+        0.0,
+        1.0,
+        0.2456
+      ],
+      "ceilingHeightM": 3.0
+    },
+    {
+      "id": "toilet1",
+      "type": "toilet",
+      "rect": [
+        0.0,
+        0.3457,
+        0.301,
+        0.4822
+      ],
+      "ceilingHeightM": 3.0
+    },
+    {
+      "id": "dining",
+      "type": "dining",
+      "rect": [
+        0.0,
+        0.4822,
+        0.3913,
+        0.6732
+      ],
+      "ceilingHeightM": 3.0
+    },
+    {
+      "id": "living",
+      "type": "living",
+      "rect": [
+        0.6321,
+        0.2456,
+        1.0,
+        0.6277
+      ],
+      "ceilingHeightM": 3.0
+    },
+    {
+      "id": "entrance",
+      "type": "entrance",
+      "rect": [
+        0.6321,
+        0.6277,
+        1.0,
+        0.7551
+      ],
+      "ceilingHeightM": 3.0
+    },
+    {
+      "id": "kids",
+      "type": "childrens_bedroom",
+      "rect": [
+        0.0,
+        0.6914,
+        0.429,
+        1.0
+      ],
+      "ceilingHeightM": 3.0
+    },
+    {
+      "id": "utility",
+      "type": "utility",
+      "rect": [
+        0.429,
+        0.6914,
+        0.6321,
+        0.8552
+      ],
+      "ceilingHeightM": 3.0
+    },
+    {
+      "id": "pooja",
+      "type": "pooja",
+      "rect": [
+        0.6321,
+        0.7642,
+        1.0,
+        0.9279
+      ],
+      "ceilingHeightM": 3.0
+    }
+  ],
+  "doors": [
+    {
+      "id": "d-master",
+      "roomId": "master",
+      "kind": "door",
+      "widthM": 1.0,
+      "heightM": 2.1,
+      "count": 1
+    },
+    {
+      "id": "d-stair",
+      "roomId": "stair",
+      "kind": "door",
+      "widthM": 0.9,
+      "heightM": 2.1,
+      "count": 1
+    },
+    {
+      "id": "d-kitchen",
+      "roomId": "kitchen",
+      "kind": "door",
+      "widthM": 0.9,
+      "heightM": 2.1,
+      "count": 1
+    },
+    {
+      "id": "d-toilet1",
+      "roomId": "toilet1",
+      "kind": "door",
+      "widthM": 0.75,
+      "heightM": 2.0,
+      "count": 1
+    },
+    {
+      "id": "d-dining",
+      "roomId": "dining",
+      "kind": "door",
+      "widthM": 1.0,
+      "heightM": 2.1,
+      "count": 1
+    },
+    {
+      "id": "d-living",
+      "roomId": "living",
+      "kind": "door",
+      "widthM": 1.5,
+      "heightM": 2.1,
+      "count": 1
+    },
+    {
+      "id": "d-entrance",
+      "roomId": "entrance",
+      "kind": "door",
+      "widthM": 1.2,
+      "heightM": 2.1,
+      "count": 1
+    },
+    {
+      "id": "d-kids",
+      "roomId": "kids",
+      "kind": "door",
+      "widthM": 0.9,
+      "heightM": 2.1,
+      "count": 1
+    },
+    {
+      "id": "d-utility",
+      "roomId": "utility",
+      "kind": "door",
+      "widthM": 0.8,
+      "heightM": 2.0,
+      "count": 1
+    },
+    {
+      "id": "d-pooja",
+      "roomId": "pooja",
+      "kind": "door",
+      "widthM": 0.8,
+      "heightM": 2.0,
+      "count": 1
+    }
+  ],
+  "windows": [
+    {
+      "id": "w-master",
+      "roomId": "master",
+      "kind": "window",
+      "widthM": 1.5,
+      "heightM": 1.2,
+      "count": 1
+    },
+    {
+      "id": "w-stair",
+      "roomId": "stair",
+      "kind": "window",
+      "widthM": 0.6,
+      "heightM": 1.2,
+      "count": 1
+    },
+    {
+      "id": "w-kitchen",
+      "roomId": "kitchen",
+      "kind": "window",
+      "widthM": 1.2,
+      "heightM": 1.2,
+      "count": 1
+    },
+    {
+      "id": "w-toilet1",
+      "roomId": "toilet1",
+      "kind": "window",
+      "widthM": 0.6,
+      "heightM": 0.75,
+      "count": 1
+    },
+    {
+      "id": "w-dining",
+      "roomId": "dining",
+      "kind": "window",
+      "widthM": 1.2,
+      "heightM": 1.2,
+      "count": 1
+    },
+    {
+      "id": "w-living",
+      "roomId": "living",
+      "kind": "window",
+      "widthM": 1.8,
+      "heightM": 1.2,
+      "count": 1
+    },
+    {
+      "id": "w-kids",
+      "roomId": "kids",
+      "kind": "window",
+      "widthM": 1.5,
+      "heightM": 1.2,
+      "count": 1
+    },
+    {
+      "id": "w-utility",
+      "roomId": "utility",
+      "kind": "window",
+      "widthM": 0.6,
+      "heightM": 0.9,
+      "count": 1
+    },
+    {
+      "id": "w-pooja",
+      "roomId": "pooja",
+      "kind": "window",
+      "widthM": 0.6,
+      "heightM": 0.9,
+      "count": 1
+    }
+  ]
+}

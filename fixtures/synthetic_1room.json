@@ -1,0 +1,27 @@
+{
+  "schemaVersion": "1.0",
+  "project": { "id": "syn-1", "name": "Synthetic 1-room (test fixture)", "createdAt": "2025-01-01" },
+  "plot": {
+    "widthM": 4.0,
+    "depthM": 3.0,
+    "areaSqm": 12.0,
+    "facing": "E",
+    "state": "KA",
+    "city": "Bengaluru",
+    "floors": 1
+  },
+  "rooms": [
+    {
+      "id": "r1",
+      "type": "bedroom",
+      "polygon": [[0, 0], [4, 0], [4, 3], [0, 3], [0, 0]],
+      "ceilingHeightM": 3.0
+    }
+  ],
+  "doors": [
+    { "id": "d1", "roomId": "r1", "kind": "door", "widthM": 1.0, "heightM": 2.1, "count": 1 }
+  ],
+  "windows": [
+    { "id": "w1", "roomId": "r1", "kind": "window", "widthM": 1.5, "heightM": 1.2, "count": 1 }
+  ]
+}

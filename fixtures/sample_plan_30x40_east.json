@@ -1,0 +1,103 @@
+{
+  "schemaVersion": "1.0",
+  "project": {
+    "id": "sample-30x40-e",
+    "name": "30x40 East-facing residence",
+    "clientName": "Sample Client",
+    "createdAt": "2025-01-01"
+  },
+  "plot": {
+    "widthM": 9.144,
+    "depthM": 12.192,
+    "areaSqm": 111.484,
+    "facing": "E",
+    "state": "KA",
+    "city": "Bengaluru",
+    "floors": 1
+  },
+  "rooms": [
+    {
+      "id": "master",
+      "type": "master_bedroom",
+      "polygon": [[0.9, 0.9], [4.2, 0.9], [4.2, 4.3], [0.9, 4.3], [0.9, 0.9]],
+      "ceilingHeightM": 3.0
+    },
+    {
+      "id": "stair",
+      "type": "staircase",
+      "polygon": [[4.2, 0.9], [5.5, 0.9], [5.5, 3.7], [4.2, 3.7], [4.2, 0.9]],
+      "ceilingHeightM": 3.0
+    },
+    {
+      "id": "kitchen",
+      "type": "kitchen",
+      "polygon": [[5.5, 0.9], [8.244, 0.9], [8.244, 3.7], [5.5, 3.7], [5.5, 0.9]],
+      "ceilingHeightM": 3.0
+    },
+    {
+      "id": "toilet1",
+      "type": "toilet",
+      "polygon": [[0.9, 4.3], [2.7, 4.3], [2.7, 5.8], [0.9, 5.8], [0.9, 4.3]],
+      "ceilingHeightM": 3.0
+    },
+    {
+      "id": "dining",
+      "type": "dining",
+      "polygon": [[0.9, 5.8], [3.0, 5.8], [3.0, 8.1], [0.9, 8.1], [0.9, 5.8]],
+      "ceilingHeightM": 3.0
+    },
+    {
+      "id": "living",
+      "type": "living",
+      "polygon": [[6.096, 4.3], [8.244, 4.3], [8.244, 7.0], [6.096, 7.0], [6.096, 4.3]],
+      "ceilingHeightM": 3.0
+    },
+    {
+      "id": "entrance",
+      "type": "entrance",
+      "polygon": [[6.096, 7.0], [8.244, 7.0], [8.244, 8.5], [6.096, 8.5], [6.096, 7.0]],
+      "ceilingHeightM": 3.0
+    },
+    {
+      "id": "kids",
+      "type": "childrens_bedroom",
+      "polygon": [[0.9, 8.1], [4.0, 8.1], [4.0, 11.292], [0.9, 11.292], [0.9, 8.1]],
+      "ceilingHeightM": 3.0
+    },
+    {
+      "id": "utility",
+      "type": "utility",
+      "polygon": [[4.0, 8.1], [5.6, 8.1], [5.6, 9.9], [4.0, 9.9], [4.0, 8.1]],
+      "ceilingHeightM": 3.0
+    },
+    {
+      "id": "pooja",
+      "type": "pooja",
+      "polygon": [[6.5, 8.5], [8.244, 8.5], [8.244, 10.6], [6.5, 10.6], [6.5, 8.5]],
+      "ceilingHeightM": 3.0
+    }
+  ],
+  "doors": [
+    { "id": "d-master", "roomId": "master", "kind": "door", "widthM": 1.0, "heightM": 2.1, "count": 1 },
+    { "id": "d-stair", "roomId": "stair", "kind": "door", "widthM": 0.9, "heightM": 2.1, "count": 1 },
+    { "id": "d-kitchen", "roomId": "kitchen", "kind": "door", "widthM": 0.9, "heightM": 2.1, "count": 1 },
+    { "id": "d-toilet1", "roomId": "toilet1", "kind": "door", "widthM": 0.75, "heightM": 2.0, "count": 1 },
+    { "id": "d-dining", "roomId": "dining", "kind": "door", "widthM": 1.0, "heightM": 2.1, "count": 1 },
+    { "id": "d-living", "roomId": "living", "kind": "door", "widthM": 1.5, "heightM": 2.1, "count": 1 },
+    { "id": "d-entrance", "roomId": "entrance", "kind": "door", "widthM": 1.2, "heightM": 2.1, "count": 1 },
+    { "id": "d-kids", "roomId": "kids", "kind": "door", "widthM": 0.9, "heightM": 2.1, "count": 1 },
+    { "id": "d-utility", "roomId": "utility", "kind": "door", "widthM": 0.8, "heightM": 2.0, "count": 1 },
+    { "id": "d-pooja", "roomId": "pooja", "kind": "door", "widthM": 0.8, "heightM": 2.0, "count": 1 }
+  ],
+  "windows": [
+    { "id": "w-master", "roomId": "master", "kind": "window", "widthM": 1.5, "heightM": 1.2, "count": 1 },
+    { "id": "w-stair", "roomId": "stair", "kind": "window", "widthM": 0.6, "heightM": 1.2, "count": 1 },
+    { "id": "w-kitchen", "roomId": "kitchen", "kind": "window", "widthM": 1.2, "heightM": 1.2, "count": 1 },
+    { "id": "w-toilet1", "roomId": "toilet1", "kind": "window", "widthM": 0.6, "heightM": 0.6, "count": 1 },
+    { "id": "w-dining", "roomId": "dining", "kind": "window", "widthM": 1.2, "heightM": 1.2, "count": 1 },
+    { "id": "w-living", "roomId": "living", "kind": "window", "widthM": 1.8, "heightM": 1.2, "count": 1 },
+    { "id": "w-kids", "roomId": "kids", "kind": "window", "widthM": 1.5, "heightM": 1.2, "count": 1 },
+    { "id": "w-utility", "roomId": "utility", "kind": "window", "widthM": 0.6, "heightM": 0.9, "count": 1 },
+    { "id": "w-pooja", "roomId": "pooja", "kind": "window", "widthM": 0.6, "heightM": 0.9, "count": 1 }
+  ]
+}

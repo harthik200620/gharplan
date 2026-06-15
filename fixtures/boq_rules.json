@@ -1,0 +1,150 @@
+{
+  "version": "1.0",
+  "note": "Data-driven BOQ takeoff. Quantity formulas use room geometry; coefficients and item-code mappings are editable here without touching engine code. TODO(human): tune coefficients and item codes with a practising quantity surveyor.",
+  "wastage": {
+    "flooring": 1.08
+  },
+  "dadoHeightM": {
+    "toilet": 2.1,
+    "bathroom": 2.1,
+    "kitchen": 0.6
+  },
+  "electricalPointsByRoom": {
+    "bedroom": 6,
+    "master_bedroom": 8,
+    "childrens_bedroom": 6,
+    "living": 8,
+    "kitchen": 10,
+    "bathroom": 3,
+    "toilet": 2,
+    "dining": 5,
+    "pooja": 3,
+    "study": 5,
+    "store": 2,
+    "utility": 3,
+    "balcony": 2,
+    "parking": 2,
+    "staircase": 2,
+    "entrance": 2,
+    "default": 4
+  },
+  "plumbingPointsByRoom": {
+    "kitchen": 4,
+    "bathroom": 5,
+    "toilet": 3,
+    "utility": 2,
+    "default": 0
+  },
+  "excludeRoomTypes": ["brahmasthan", "borewell", "overhead_tank"],
+  "items": [
+    {
+      "key": "cement_plaster",
+      "formula": "wall_plaster",
+      "unit": "sqm",
+      "trade": "Civil",
+      "description": "Internal cement plaster (12mm) to walls",
+      "itemCodeByTier": { "economy": "PLS-CEM", "standard": "PLS-CEM", "premium": "PLS-CEM" }
+    },
+    {
+      "key": "flooring",
+      "formula": "flooring",
+      "unit": "sqm",
+      "trade": "Flooring",
+      "description": "Floor finish laid (incl. 8% wastage)",
+      "excludeRoomTypes": ["parking", "balcony"],
+      "itemCodeByTier": { "economy": "FLR-CER", "standard": "FLR-VIT", "premium": "FLR-VITP" }
+    },
+    {
+      "key": "skirting",
+      "formula": "skirting",
+      "unit": "rmt",
+      "trade": "Flooring",
+      "description": "Skirting to match floor (less door openings)",
+      "excludeRoomTypes": ["parking", "balcony"],
+      "itemCodeByTier": { "economy": "SKB-CER", "standard": "SKB-VIT", "premium": "SKB-VITP" }
+    },
+    {
+      "key": "wall_tiles",
+      "formula": "wall_tile_dado",
+      "unit": "sqm",
+      "trade": "Tiling",
+      "description": "Glazed/ceramic wall tiles (dado) in wet areas",
+      "includeRoomTypes": ["toilet", "bathroom", "kitchen"],
+      "itemCodeByTier": { "economy": "WTL-CER", "standard": "WTL-CER", "premium": "WTL-CERP" }
+    },
+    {
+      "key": "putty",
+      "formula": "paintable",
+      "unit": "sqm",
+      "trade": "Painting",
+      "description": "Wall putty 2 coats (walls + ceiling)",
+      "itemCodeByTier": { "economy": "PUT-WAL", "standard": "PUT-WAL", "premium": "PUT-WAL" }
+    },
+    {
+      "key": "primer",
+      "formula": "paintable",
+      "unit": "sqm",
+      "trade": "Painting",
+      "description": "Primer 1 coat (walls + ceiling)",
+      "itemCodeByTier": { "economy": "PRM-WAL", "standard": "PRM-WAL", "premium": "PRM-WAL" }
+    },
+    {
+      "key": "paint",
+      "formula": "paintable",
+      "unit": "sqm",
+      "trade": "Painting",
+      "description": "Emulsion paint 2 coats (walls + ceiling)",
+      "itemCodeByTier": { "economy": "PNT-ECO", "standard": "PNT-STD", "premium": "PNT-PRM" }
+    },
+    {
+      "key": "false_ceiling",
+      "formula": "false_ceiling",
+      "unit": "sqm",
+      "trade": "False Ceiling",
+      "description": "POP/gypsum false ceiling",
+      "optional": true,
+      "itemCodeByTier": { "economy": "FCL-POP", "standard": "FCL-GYP", "premium": "FCL-GYPP" }
+    },
+    {
+      "key": "waterproofing",
+      "formula": "waterproofing",
+      "unit": "sqm",
+      "trade": "Waterproofing",
+      "description": "Waterproofing to wet-area floor",
+      "includeRoomTypes": ["toilet", "bathroom", "utility", "balcony"],
+      "itemCodeByTier": { "economy": "WPF-STD", "standard": "WPF-STD", "premium": "WPF-PRM" }
+    },
+    {
+      "key": "door",
+      "formula": "door_count",
+      "unit": "nos",
+      "trade": "Joinery",
+      "description": "Door shutter with frame & hardware",
+      "itemCodeByTier": { "economy": "DOR-FLM", "standard": "DOR-FL8", "premium": "DOR-TEK" }
+    },
+    {
+      "key": "window",
+      "formula": "window_count",
+      "unit": "nos",
+      "trade": "Joinery",
+      "description": "Window with glazing & hardware",
+      "itemCodeByTier": { "economy": "WIN-ALU", "standard": "WIN-UPV", "premium": "WIN-UPVP" }
+    },
+    {
+      "key": "electrical_points",
+      "formula": "electrical_points",
+      "unit": "nos",
+      "trade": "Electrical",
+      "description": "Electrical point (wiring + accessory)",
+      "itemCodeByTier": { "economy": "ELE-PT", "standard": "ELE-PT", "premium": "ELE-PTP" }
+    },
+    {
+      "key": "plumbing_points",
+      "formula": "plumbing_points",
+      "unit": "nos",
+      "trade": "Plumbing",
+      "description": "Plumbing point (supply + drainage)",
+      "itemCodeByTier": { "economy": "PLM-PT", "standard": "PLM-PT", "premium": "PLM-PTP" }
+    }
+  ]
+}

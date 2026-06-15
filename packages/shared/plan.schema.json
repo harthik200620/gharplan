@@ -1,0 +1,341 @@
+{
+  "$defs": {
+    "City": {
+      "enum": [
+        "Bengaluru",
+        "Hyderabad",
+        "Pune"
+      ],
+      "title": "City",
+      "type": "string"
+    },
+    "Compass": {
+      "enum": [
+        "N",
+        "NE",
+        "E",
+        "SE",
+        "S",
+        "SW",
+        "W",
+        "NW",
+        "CENTER"
+      ],
+      "title": "Compass",
+      "type": "string"
+    },
+    "Facing": {
+      "enum": [
+        "N",
+        "NE",
+        "E",
+        "SE",
+        "S",
+        "SW",
+        "W",
+        "NW"
+      ],
+      "title": "Facing",
+      "type": "string"
+    },
+    "Opening": {
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "roomId": {
+          "title": "Roomid",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "door",
+            "window"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "widthM": {
+          "exclusiveMinimum": 0,
+          "title": "Widthm",
+          "type": "number"
+        },
+        "heightM": {
+          "exclusiveMinimum": 0,
+          "title": "Heightm",
+          "type": "number"
+        },
+        "count": {
+          "default": 1,
+          "minimum": 1,
+          "title": "Count",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "roomId",
+        "kind",
+        "widthM",
+        "heightM"
+      ],
+      "title": "Opening",
+      "type": "object"
+    },
+    "Plot": {
+      "properties": {
+        "widthM": {
+          "description": "Plot width along +x (East), metres",
+          "exclusiveMinimum": 0,
+          "title": "Widthm",
+          "type": "number"
+        },
+        "depthM": {
+          "description": "Plot depth along +y (North), metres",
+          "exclusiveMinimum": 0,
+          "title": "Depthm",
+          "type": "number"
+        },
+        "areaSqm": {
+          "default": 0.0,
+          "description": "Computed = width*depth",
+          "minimum": 0,
+          "title": "Areasqm",
+          "type": "number"
+        },
+        "facing": {
+          "$ref": "#/$defs/Facing"
+        },
+        "state": {
+          "$ref": "#/$defs/StateCode"
+        },
+        "city": {
+          "$ref": "#/$defs/City"
+        },
+        "floors": {
+          "default": 1,
+          "minimum": 1,
+          "title": "Floors",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "widthM",
+        "depthM",
+        "facing",
+        "state",
+        "city"
+      ],
+      "title": "Plot",
+      "type": "object"
+    },
+    "Project": {
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "clientName": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Clientname"
+        },
+        "createdAt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Createdat"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "title": "Project",
+      "type": "object"
+    },
+    "Room": {
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "type": {
+          "$ref": "#/$defs/RoomType"
+        },
+        "polygon": {
+          "description": "Closed ring of [x,y] metre vertices",
+          "items": {
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "type": "array"
+          },
+          "title": "Polygon",
+          "type": "array"
+        },
+        "areaSqm": {
+          "default": 0.0,
+          "minimum": 0,
+          "title": "Areasqm",
+          "type": "number"
+        },
+        "perimeterM": {
+          "default": 0.0,
+          "minimum": 0,
+          "title": "Perimeterm",
+          "type": "number"
+        },
+        "centroid": {
+          "anyOf": [
+            {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Centroid"
+        },
+        "zone": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Compass"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "ceilingHeightM": {
+          "default": 3.0,
+          "exclusiveMinimum": 0,
+          "title": "Ceilingheightm",
+          "type": "number"
+        }
+      },
+      "required": [
+        "id",
+        "type",
+        "polygon"
+      ],
+      "title": "Room",
+      "type": "object"
+    },
+    "RoomType": {
+      "enum": [
+        "pooja",
+        "kitchen",
+        "master_bedroom",
+        "bedroom",
+        "childrens_bedroom",
+        "living",
+        "dining",
+        "toilet",
+        "bathroom",
+        "staircase",
+        "entrance",
+        "study",
+        "store",
+        "utility",
+        "balcony",
+        "parking",
+        "overhead_tank",
+        "borewell",
+        "brahmasthan"
+      ],
+      "title": "RoomType",
+      "type": "string"
+    },
+    "StateCode": {
+      "enum": [
+        "KA",
+        "MH",
+        "TG"
+      ],
+      "title": "StateCode",
+      "type": "string"
+    }
+  },
+  "properties": {
+    "schemaVersion": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schemaversion",
+      "type": "string"
+    },
+    "project": {
+      "$ref": "#/$defs/Project"
+    },
+    "plot": {
+      "$ref": "#/$defs/Plot"
+    },
+    "rooms": {
+      "items": {
+        "$ref": "#/$defs/Room"
+      },
+      "title": "Rooms",
+      "type": "array"
+    },
+    "doors": {
+      "items": {
+        "$ref": "#/$defs/Opening"
+      },
+      "title": "Doors",
+      "type": "array"
+    },
+    "windows": {
+      "items": {
+        "$ref": "#/$defs/Opening"
+      },
+      "title": "Windows",
+      "type": "array"
+    }
+  },
+  "required": [
+    "project",
+    "plot",
+    "rooms"
+  ],
+  "title": "GharPlan Plan",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gharplan.app/schemas/plan-1.0.json"
+}

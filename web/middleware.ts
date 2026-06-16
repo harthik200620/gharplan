@@ -1,9 +1,13 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { hasSupabaseEnv } from "@/lib/supabase/env";
 
-const PUBLIC_PATHS = ["/login", "/auth", "/_next", "/favicon", "/legal"];
+const PUBLIC_PATHS = ["/login", "/auth", "/_next", "/favicon", "/legal", "/demo"];
 
 export async function middleware(request: NextRequest) {
+  // Demo mode (no Supabase configured): skip auth entirely.
+  if (!hasSupabaseEnv()) return NextResponse.next();
+
   let response = NextResponse.next({ request });
 
   const supabase = createServerClient(

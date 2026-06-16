@@ -1,0 +1,45 @@
+import type { Plan } from "@gharplan/shared";
+
+// The curated 30x40 east-facing plan (mirror of fixtures/sample_plan_30x40_east.json)
+// so the demo opens with a populated, Vastu-Excellent layout. Computed fields
+// (area/perimeter/centroid/zone) are filled client-side by the store.
+export const SAMPLE_PLAN = {
+  schemaVersion: "1.0",
+  project: { id: "demo-30x40-e", name: "Demo — 30x40 East-facing", clientName: "Sample Client", createdAt: "2025-01-01" },
+  plot: { widthM: 9.144, depthM: 12.192, areaSqm: 111.484, facing: "E", state: "KA", city: "Bengaluru", floors: 1 },
+  rooms: [
+    { id: "master", type: "master_bedroom", polygon: [[1.0, 0.6], [3.6, 0.6], [3.6, 4.4], [1.0, 4.4], [1.0, 0.6]], areaSqm: 0, perimeterM: 0, centroid: null, zone: null, ceilingHeightM: 3.0 },
+    { id: "stair", type: "staircase", polygon: [[3.6, 0.6], [5.2, 0.6], [5.2, 3.3], [3.6, 3.3], [3.6, 0.6]], areaSqm: 0, perimeterM: 0, centroid: null, zone: null, ceilingHeightM: 3.0 },
+    { id: "kitchen", type: "kitchen", polygon: [[5.2, 0.6], [7.644, 0.6], [7.644, 3.3], [5.2, 3.3], [5.2, 0.6]], areaSqm: 0, perimeterM: 0, centroid: null, zone: null, ceilingHeightM: 3.0 },
+    { id: "toilet1", type: "toilet", polygon: [[1.0, 4.4], [3.0, 4.4], [3.0, 5.9], [1.0, 5.9], [1.0, 4.4]], areaSqm: 0, perimeterM: 0, centroid: null, zone: null, ceilingHeightM: 3.0 },
+    { id: "dining", type: "dining", polygon: [[1.0, 5.9], [3.6, 5.9], [3.6, 8.0], [1.0, 8.0], [1.0, 5.9]], areaSqm: 0, perimeterM: 0, centroid: null, zone: null, ceilingHeightM: 3.0 },
+    { id: "living", type: "living", polygon: [[5.2, 3.3], [7.644, 3.3], [7.644, 7.5], [5.2, 7.5], [5.2, 3.3]], areaSqm: 0, perimeterM: 0, centroid: null, zone: null, ceilingHeightM: 3.0 },
+    { id: "entrance", type: "entrance", polygon: [[5.2, 7.5], [7.644, 7.5], [7.644, 8.9], [5.2, 8.9], [5.2, 7.5]], areaSqm: 0, perimeterM: 0, centroid: null, zone: null, ceilingHeightM: 3.0 },
+    { id: "kids", type: "childrens_bedroom", polygon: [[1.0, 8.2], [3.85, 8.2], [3.85, 11.592], [1.0, 11.592], [1.0, 8.2]], areaSqm: 0, perimeterM: 0, centroid: null, zone: null, ceilingHeightM: 3.0 },
+    { id: "utility", type: "utility", polygon: [[3.85, 8.2], [5.2, 8.2], [5.2, 10.0], [3.85, 10.0], [3.85, 8.2]], areaSqm: 0, perimeterM: 0, centroid: null, zone: null, ceilingHeightM: 3.0 },
+    { id: "pooja", type: "pooja", polygon: [[5.2, 9.0], [7.644, 9.0], [7.644, 10.8], [5.2, 10.8], [5.2, 9.0]], areaSqm: 0, perimeterM: 0, centroid: null, zone: null, ceilingHeightM: 3.0 },
+  ],
+  doors: [
+    { id: "d-master", roomId: "master", kind: "door", widthM: 1.0, heightM: 2.1, count: 1 },
+    { id: "d-stair", roomId: "stair", kind: "door", widthM: 0.9, heightM: 2.1, count: 1 },
+    { id: "d-kitchen", roomId: "kitchen", kind: "door", widthM: 0.9, heightM: 2.1, count: 1 },
+    { id: "d-toilet1", roomId: "toilet1", kind: "door", widthM: 0.75, heightM: 2.0, count: 1 },
+    { id: "d-dining", roomId: "dining", kind: "door", widthM: 1.0, heightM: 2.1, count: 1 },
+    { id: "d-living", roomId: "living", kind: "door", widthM: 1.5, heightM: 2.1, count: 1 },
+    { id: "d-entrance", roomId: "entrance", kind: "door", widthM: 1.2, heightM: 2.1, count: 1 },
+    { id: "d-kids", roomId: "kids", kind: "door", widthM: 0.9, heightM: 2.1, count: 1 },
+    { id: "d-utility", roomId: "utility", kind: "door", widthM: 0.8, heightM: 2.0, count: 1 },
+    { id: "d-pooja", roomId: "pooja", kind: "door", widthM: 0.8, heightM: 2.0, count: 1 },
+  ],
+  windows: [
+    { id: "w-master", roomId: "master", kind: "window", widthM: 1.5, heightM: 1.2, count: 1 },
+    { id: "w-stair", roomId: "stair", kind: "window", widthM: 0.6, heightM: 1.2, count: 1 },
+    { id: "w-kitchen", roomId: "kitchen", kind: "window", widthM: 1.2, heightM: 1.2, count: 1 },
+    { id: "w-toilet1", roomId: "toilet1", kind: "window", widthM: 0.6, heightM: 0.75, count: 1 },
+    { id: "w-dining", roomId: "dining", kind: "window", widthM: 1.2, heightM: 1.2, count: 1 },
+    { id: "w-living", roomId: "living", kind: "window", widthM: 1.8, heightM: 1.2, count: 1 },
+    { id: "w-kids", roomId: "kids", kind: "window", widthM: 1.5, heightM: 1.2, count: 1 },
+    { id: "w-utility", roomId: "utility", kind: "window", widthM: 0.6, heightM: 0.9, count: 1 },
+    { id: "w-pooja", roomId: "pooja", kind: "window", widthM: 0.6, heightM: 0.9, count: 1 },
+  ],
+} as unknown as Plan;

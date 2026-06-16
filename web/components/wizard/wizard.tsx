@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import type { Plan } from "@gharplan/shared";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
+import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { useWizard } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import { StepBoq } from "./step-boq";
@@ -20,12 +21,13 @@ export function Wizard({
   projectId,
   initialPlan,
   canExport,
+  demo = false,
 }: {
   projectId?: string;
   initialPlan: Plan;
   canExport: boolean;
+  demo?: boolean;
 }) {
-  const supabase = createClient();
   const plan = useWizard((s) => s.plan);
   const reset = useWizard((s) => s.reset);
   const [step, setStep] = useState(0);
@@ -41,8 +43,13 @@ export function Wizard({
   }, [initialPlan, reset]);
 
   async function save() {
+    if (demo || !hasSupabaseEnv()) {
+      toast.info("Demo mode — changes aren’t saved. Sign in to keep projects.");
+      return;
+    }
     setSaving(true);
     try {
+      const supabase = createClient();
       const {
         data: { user },
       } = await supabase.auth.getUser();

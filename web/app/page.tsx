@@ -3,13 +3,16 @@ import { redirect } from "next/navigation";
 import { ArrowRight, Compass, FileText, Ruler } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/server";
+import { hasSupabaseEnv } from "@/lib/supabase/env";
 
 export default async function Landing() {
-  const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (user) redirect("/dashboard");
+  if (hasSupabaseEnv()) {
+    const supabase = createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (user) redirect("/dashboard");
+  }
 
   return (
     <main className="mx-auto max-w-5xl px-6 py-16">
@@ -30,11 +33,14 @@ export default async function Landing() {
           Quantities generated <strong>directly from the geometry</strong> — then export a
           branded client proposal and a DXF.
         </p>
-        <div className="mt-8 flex gap-3">
+        <div className="mt-8 flex flex-wrap gap-3">
           <Button asChild size="lg">
-            <Link href="/login">
-              Start a project <ArrowRight className="h-4 w-4" />
+            <Link href="/demo">
+              Try the live demo <ArrowRight className="h-4 w-4" />
             </Link>
+          </Button>
+          <Button asChild size="lg" variant="outline">
+            <Link href="/login">Sign in</Link>
           </Button>
         </div>
       </section>

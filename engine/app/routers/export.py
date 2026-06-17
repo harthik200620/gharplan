@@ -35,7 +35,8 @@ def _attach(filename: str) -> dict:
 @router.post("/dxf")
 def export_dxf(plan: Plan) -> Response:
     norm, _ = normalize(plan)
-    data = build_dxf(norm)
+    code = check_code(norm, get_code_rules())
+    data = build_dxf(norm, code)
     return Response(
         content=data,
         media_type="image/vnd.dxf",
@@ -61,7 +62,8 @@ def _boq_from(req: ExportRequest):
 @router.post("/xlsx")
 def export_xlsx(req: ExportRequest) -> Response:
     norm, boq = _boq_from(req)
-    data = build_xlsx(boq, req.branding)
+    code = check_code(norm, get_code_rules())
+    data = build_xlsx(boq, req.branding, plan=norm, code=code)
     return Response(
         content=data,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

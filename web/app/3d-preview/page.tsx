@@ -17,7 +17,13 @@ const plan = samplePlan as unknown as Plan;
 
 export default function ThreeDPreviewPage() {
   return (
-    <main style={{ height: "100dvh", width: "100vw", background: "#e8edf3" }}>
+    <main style={{ position: "fixed", inset: 0, background: "#e8edf3" }}>
+      {/* Make the FloorPlan3D wrapper + its r3f container + the <canvas> fill the
+          viewport (standalone, the canvas otherwise stays at its 300×150 default). */}
+      <style>{`
+        .r3d-fill, .r3d-fill > div { width: 100%; height: 100%; }
+        .r3d-fill canvas { display: block; width: 100% !important; height: 100% !important; }
+      `}</style>
       <div
         style={{
           position: "absolute",
@@ -37,7 +43,7 @@ export default function ThreeDPreviewPage() {
           Indicative visualisation — not an approved/stamped drawing.
         </span>
       </div>
-      <FloorPlan3D plan={plan} className="h-full w-full" />
+      <FloorPlan3D plan={plan} className="r3d-fill" />
     </main>
   );
 }

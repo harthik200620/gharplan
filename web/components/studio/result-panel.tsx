@@ -14,6 +14,8 @@ import {
   FileText,
   MessageSquare,
   Ruler,
+  Sparkles,
+  Wand2,
   XCircle,
 } from "lucide-react";
 import type { BoqReport, GeneratedOption, GenerateResponse, Status } from "@gharplan/shared";
@@ -47,6 +49,9 @@ export function ResultPanel({
   exporting,
   onExport,
   onOpenInEditor,
+  onRefine,
+  refining,
+  editNote,
   subtitle,
 }: {
   data: GenerateResponse;
@@ -58,6 +63,9 @@ export function ResultPanel({
   exporting: string | null;
   onExport: (type: "pdf" | "dxf" | "xlsx") => void;
   onOpenInEditor: () => void;
+  onRefine: (instruction: string) => void;
+  refining: boolean;
+  editNote: { applied: string[]; unmatched: string[] } | null;
   subtitle: string;
 }) {
   const [colorBy, setColorBy] = React.useState<"zone" | "status">("zone");
@@ -120,6 +128,9 @@ export function ResultPanel({
           </span>
         </div>
       )}
+
+      {/* single-prompt refine — edits the selected scheme in place */}
+      <RefinePanel onRefine={onRefine} refining={refining} editNote={editNote} />
 
       {/* the five schemes — pick one to drive the drawings + checks below */}
       <SchemeGallery options={options} selected={selectedOption} onSelect={onSelectOption} />
@@ -350,6 +361,97 @@ export function ResultPanel({
         </div>
       </div>
     </div>
+  );
+}
+
+const REFINE_EXAMPLES = [
+  "Make the master bedroom bigger",
+  "Move the kitchen to the SE",
+  "Add a study",
+  "Make it two floors",
+];
+
+/** A single-line "tell the studio what to change" control that refines the selected scheme in place. */
+function RefinePanel({
+  onRefine,
+  refining,
+  editNote,
+}: {
+  onRefine: (instruction: string) => void;
+  refining: boolean;
+  editNote: { applied: string[]; unmatched: string[] } | null;
+}) {
+  const [value, setValue] = React.useState("");
+
+  function submit() {
+    const v = value.trim();
+    if (!v || refining) return;
+    onRefine(v);
+    setValue("");
+  }
+
+  return (
+    <section className="rounded-xl border bg-card p-4 shadow-soft">
+      <div className="flex items-center gap-2">
+        <Wand2 className="h-4 w-4 text-primary" />
+        <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Refine this plan</div>
+        {refining && (
+          <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" /> Refining…
+          </span>
+        )}
+      </div>
+      <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+        <input
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              submit();
+            }
+          }}
+          disabled={refining}
+          placeholder="e.g. make the master bedroom bigger, move the kitchen to the SE, add a study, make it two floors"
+          className="h-9 min-w-0 flex-1 rounded-lg border bg-background px-3 text-sm shadow-soft outline-none transition-colors placeholder:text-muted-foreground/70 focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/30 disabled:opacity-60"
+        />
+        <Button size="sm" onClick={submit} disabled={refining || !value.trim()} className="shrink-0">
+          {refining ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+          Apply
+        </Button>
+      </div>
+
+      <div className="mt-2.5 flex flex-wrap gap-1.5">
+        {REFINE_EXAMPLES.map((ex) => (
+          <button
+            key={ex}
+            type="button"
+            disabled={refining}
+            onClick={() => onRefine(ex)}
+            className="rounded-md bg-muted px-2 py-1 text-[11px] font-medium text-foreground transition-colors hover:bg-primary/10 hover:text-primary disabled:opacity-60"
+          >
+            {ex}
+          </button>
+        ))}
+      </div>
+
+      {editNote && (editNote.applied.length > 0 || editNote.unmatched.length > 0) && (
+        <div className="mt-3 space-y-1.5 border-t pt-3">
+          {editNote.applied.map((a, i) => (
+            <div key={`a-${i}`} className="flex items-start gap-1.5 text-xs text-emerald-700 dark:text-emerald-300">
+              <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <span>{a}</span>
+            </div>
+          ))}
+          {editNote.unmatched.length > 0 && (
+            <div className="flex items-start gap-1.5 text-xs text-muted-foreground">
+              <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <span>Couldn’t apply: {editNote.unmatched.join("; ")}</span>
+            </div>
+          )}
+        </div>
+      )}
+    </section>
   );
 }
 

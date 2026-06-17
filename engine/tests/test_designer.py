@@ -80,13 +80,19 @@ def _bbox(poly):
 
 
 def _no_overlaps(plan) -> None:
-    polys = [box(*_bbox(r.polygon)) for r in plan.rooms]
-    for i in range(len(polys)):
-        for j in range(i + 1, len(polys)):
-            inter = polys[i].intersection(polys[j]).area
-            assert inter < 1e-6, (
-                f"rooms {plan.rooms[i].id} & {plan.rooms[j].id} overlap by {inter:.4f} m2"
-            )
+    # Overlap is only a conflict WITHIN a floor; stacked floors of a G+1 share the
+    # same footprint by design, so compare rooms floor-by-floor.
+    by_floor: dict[int, list] = {}
+    for r in plan.rooms:
+        by_floor.setdefault(r.floor or 0, []).append(r)
+    for fl, rooms in by_floor.items():
+        polys = [box(*_bbox(r.polygon)) for r in rooms]
+        for i in range(len(polys)):
+            for j in range(i + 1, len(polys)):
+                inter = polys[i].intersection(polys[j]).area
+                assert inter < 1e-6, (
+                    f"rooms {rooms[i].id} & {rooms[j].id} (floor {fl}) overlap by {inter:.4f} m2"
+                )
 
 
 def _all_rectangles(plan) -> None:
@@ -164,8 +170,16 @@ def test_ka_30x40_east_is_valid(bhk):
     _no_overlaps(plan)
     _within_envelope(plan, env)
 
-    # (b) all essential program rooms for the right-sized tier are present
-    _expected_essentials_present(plan, bhk)
+    # (b) all essential program rooms are present. A 3BHK on 30x40 now auto-promotes
+    # to G+1 (architect's call), so the single-floor essential-id check only applies
+    # to single-floor plans; for a G+1 we assert all requested bedrooms are kept.
+    multifloor = len({(r.floor or 0) for r in plan.rooms}) > 1
+    if multifloor:
+        beds = [r for r in plan.rooms if "bedroom" in r.type.value]
+        assert len(beds) >= bhk
+        assert meta.get("autoStorey") is True
+    else:
+        _expected_essentials_present(plan, bhk)
 
     # (c) Vastu: score >= 70 and grade not failing
     assert vastu.score >= 70
@@ -218,15 +232,19 @@ def test_medium_plot_is_a_2bhk():
     _no_overlaps(plan)
 
 
-def test_bhk4_on_30x40_downscales_and_is_clean():
-    # The 30x40 KA footprint (~72 m2) cannot hold a comfortable 4BHK with an
-    # attached bath per bedroom, so the generator DOWNSCALES rather than cram
-    # sub-minimum rooms; the result is still code-clean and overlap-free.
+def test_bhk4_on_30x40_goes_g1_and_is_clean():
+    # The 30x40 KA footprint (~72 m2) can't hold a 4BHK with an attached bath per
+    # bedroom on ONE floor, so — like a practising architect — the generator builds
+    # UP (G+1) to keep all four bedrooms rather than cramming sub-minimum rooms or
+    # dropping a bedroom. The result is still code-clean and overlap-free.
     plan, vastu, code, meta = generate_plan(4, _plot("KA"))
     assert meta["requestedBhk"] == 4
-    assert meta["downscaled"] is True
-    assert meta["tier"] in {"2BHK", "3BHK"}       # whatever genuinely fits
+    assert meta["autoStorey"] is True
+    assert meta["floorsGenerated"] >= 2
+    assert meta["tier"] == "4BHK"
     assert meta["note"]                            # a human-readable reason
+    beds = [r for r in plan.rooms if "bedroom" in r.type.value]
+    assert len(beds) >= 4                          # all four bedrooms kept across floors
     env, _ = _envelope_and_keepout(plan.plot, get_code_rules())
     _all_rectangles(plan)
     _no_overlaps(plan)

@@ -1,5 +1,6 @@
 import type { City, Facing, FinishTier, GenerateRequest } from "@gharplan/shared";
 import { STATE_BY_CITY } from "@gharplan/shared";
+import type { RefineRequest } from "@/lib/engine";
 
 export type BriefForm = {
   projectName: string;
@@ -49,6 +50,15 @@ export function briefToRequest(b: BriefForm): GenerateRequest {
     clientName: b.clientName || undefined,
     notes: b.notes || undefined,
   };
+}
+
+/** Build a /plan/refine body: the brief request plus the full edit history and selected scheme. */
+export function refineRequest(
+  brief: BriefForm,
+  instructions: string[],
+  variantId?: string,
+): RefineRequest {
+  return { ...briefToRequest(brief), instructions, variantId };
 }
 
 export const FACINGS: Facing[] = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];

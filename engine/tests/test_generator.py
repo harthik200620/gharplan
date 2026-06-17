@@ -118,16 +118,17 @@ def test_endpoint_meta_right_sizing_camelcase():
     assert isinstance(meta["downscaled"], bool)
 
 
-def test_endpoint_downscales_bhk4_on_30x40():
-    # bhk is still validated 1..4, but the generator may return a smaller tier when
-    # that is all the plot can hold; meta.downscaled flags it.
+def test_endpoint_bhk4_on_30x40_goes_g1():
+    # The 30x40 footprint can't hold a 4BHK on one floor, so the generator builds UP
+    # (G+1) to keep all four bedrooms rather than downscaling — the architect's call.
     r = client.post("/plan/generate", json=_brief(bhk=4))
     assert r.status_code == 200
     body = r.json()
     meta = body["meta"]
     assert meta["requestedBhk"] == 4
-    assert meta["downscaled"] is True
-    assert meta["tier"] in {"2BHK", "3BHK"}
+    assert meta["autoStorey"] is True
+    assert meta["floorsGenerated"] >= 2
+    assert meta["tier"] == "4BHK"
     assert body["code"]["summary"]["failCount"] == 0
 
 

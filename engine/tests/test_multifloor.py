@@ -29,11 +29,17 @@ def test_upper_floor_is_living_and_bedrooms_only():
     assert "master_bedroom" in upper  # bedrooms live upstairs
 
 
-def test_ground_floor_is_social_core_no_bedrooms():
+def test_ground_floor_is_social_core_with_guest_bedroom():
+    # A G+1 keeps the social core downstairs PLUS (from 3BHK) one ensuite
+    # guest/parents bedroom so elders avoid the stairs — the Indian convention. The
+    # MASTER is always upstairs; at most one bedroom sits on the ground floor.
     plan, _, _, _ = generate_plan(3, _plot(2), floors=2)
-    ground = {r.type.value for r in plan.rooms if r.floor == 0}
-    assert "kitchen" in ground
-    assert not any("bedroom" in t for t in ground)
+    ground = [r for r in plan.rooms if r.floor == 0]
+    gtypes = {r.type.value for r in ground}
+    assert "kitchen" in gtypes
+    assert "master_bedroom" not in gtypes          # master is upstairs
+    ground_beds = [r for r in ground if "bedroom" in r.type.value]
+    assert len(ground_beds) <= 1                    # only the single guest bedroom
 
 
 def test_no_utility_anywhere():

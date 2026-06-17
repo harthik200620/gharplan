@@ -176,6 +176,139 @@ class ProgramRoom:
     min_area_floor: float = 0.0
 
 
+# Room "kinds" a single-prompt edit may add/remove/resize/move. Keys match a
+# ProgramRoom by ``id`` OR by ``type.value`` so "master", "master_bedroom" and
+# "bedroom" all resolve. Essentials (living/kitchen/master/stair) are protected
+# from removal in ``_apply_edits``.
+_EDIT_ESSENTIAL = {"living", "kitchen", "master", "master_bedroom", "stair", "staircase"}
+# Default target area (m^2) + Vastu key for a room an edit ADDS to the program.
+_ADD_ROOM_SPEC: dict[str, tuple[RoomType, float, str]] = {
+    "study": (RoomType.study, 11.0, "study"),  # > habitable min so it never lands sub-code
+    "store": (RoomType.store, 6.0, "store"),
+    "dining": (RoomType.dining, 10.0, "dining"),
+    "pooja": (RoomType.pooja, 3.0, "pooja"),
+    "sitout": (RoomType.sitout, 6.0, "sitout"),
+    "balcony": (RoomType.balcony, 5.0, "balcony"),
+    "dressing": (RoomType.store, 3.0, "store"),
+    "entrance": (RoomType.entrance, 2.4, "entrance"),
+    "common_toilet": (RoomType.toilet, 2.2, "toilet"),
+}
+# In a G+1, an ADDED social room belongs on the ground floor; everything else
+# (study, dressing, balcony) routes to the private upper floor.
+_GROUND_ADD = {"dining", "pooja", "sitout", "entrance", "common_toilet", "store"}
+# An edit match key -> the room TYPE value(s) it targets, so "master" hits both the
+# single-floor "master" id and the G+1 "u_master" (type master_bedroom), and
+# "bedroom" hits the secondary + children's bedrooms.
+_EDIT_KEY_TYPES: dict[str, set[str]] = {
+    "master": {"master_bedroom"},
+    "living": {"living"},
+    "kitchen": {"kitchen"},
+    "dining": {"dining"},
+    "pooja": {"pooja"},
+    "study": {"study"},
+    "store": {"store"},
+    "balcony": {"balcony"},
+    "sitout": {"sitout"},
+    "toilet": {"toilet"},
+    "stair": {"staircase"},
+    "bedroom": {"bedroom", "childrens_bedroom"},
+}
+
+
+@dataclass
+class EditOverrides:
+    """Program-level changes a single natural-language instruction maps to.
+
+    Folded into ``build_program`` so the whole optimiser re-runs afterwards — an
+    edit therefore always yields a *valid* (non-overlapping, code-checked) plan
+    rather than a hand-mutated geometry. ``bhk`` / ``floors`` / ``variant`` are
+    resolved separately by :mod:`app.services.refine_service` and passed straight
+    to ``generate_plan``; this object carries only the room-list deltas."""
+
+    area_scale: dict[str, float] = field(default_factory=dict)   # match key -> target multiplier
+    zones: dict[str, list[str]] = field(default_factory=dict)    # match key -> preferred zones
+    add: set[str] = field(default_factory=set)                   # _ADD_ROOM_SPEC keys to include
+    remove: set[str] = field(default_factory=set)               # match keys to drop (non-essential)
+    ventilation_boost: bool = False                              # extra cross-ventilation windows
+    parking_cars: Optional[int] = None                          # override car-porch capacity
+
+    def is_empty(self) -> bool:
+        return not (
+            self.area_scale or self.zones or self.add or self.remove
+            or self.ventilation_boost or self.parking_cars
+        )
+
+    def _match(self, room: "ProgramRoom", key: str) -> bool:
+        if key == room.id or key == room.type.value:
+            return True
+        if room.type.value in _EDIT_KEY_TYPES.get(key, ()):  # alias by room type
+            return True
+        if key == "common_toilet" and "toilet_common" in room.id:
+            return True
+        if key == "guest" and room.id.startswith("guest"):
+            return True
+        return False
+
+
+def _apply_edits(
+    prog: list["ProgramRoom"], edits: Optional["EditOverrides"], zones_fn
+) -> list["ProgramRoom"]:
+    """Apply an edit's add/remove/resize/re-zone deltas to a built program.
+
+    ``zones_fn`` resolves a Vastu key -> ideal zone list (build_program's local
+    ``zones`` closure). Removal skips essentials so an edit can never delete the
+    living, kitchen, master bedroom or stair."""
+    if edits is None or edits.is_empty():
+        return prog
+
+    # -- remove (non-essential only) --
+    if edits.remove:
+        kept: list[ProgramRoom] = []
+        for r in prog:
+            drop = any(
+                edits._match(r, k) for k in edits.remove
+            ) and r.id not in _EDIT_ESSENTIAL and r.type.value not in _EDIT_ESSENTIAL
+            if not drop:
+                kept.append(r)
+        prog = kept
+
+    # -- resize (scale target so the water-fill grows/shrinks the room) --
+    for r in prog:
+        for k, mult in edits.area_scale.items():
+            if edits._match(r, k):
+                r.target_sqm *= mult
+                if r.min_area_floor:
+                    r.min_area_floor *= max(mult, 0.85) if mult > 1 else 1.0
+                if r.attach_bath:  # grow the bedroom portion, not the bath
+                    r.bedroom_min_sqm *= mult
+
+    # -- re-zone (move a room toward a requested compass zone) --
+    for r in prog:
+        for k, zs in edits.zones.items():
+            if edits._match(r, k) and zs:
+                r.ideal_zones = list(zs)
+
+    # -- add (only kinds not already present) --
+    have = {r.id for r in prog} | {r.type.value for r in prog}
+    for kind in edits.add:
+        spec = _ADD_ROOM_SPEC.get(kind)
+        if spec is None or kind in have:
+            continue
+        rtype, target, zkey = spec
+        # A habitable add (study) gets a comfort floor so it can't be trimmed below
+        # the code minimum. priority 6 (> the ESS=5 coverage threshold) means a room
+        # the user explicitly ASKED to add survives footprint trimming — a lower-
+        # priority optional gives way instead. It can still be left unplaced on a
+        # genuinely full plot.
+        floor = target * 0.92 if rtype == RoomType.study else 0.0
+        prog.append(
+            ProgramRoom(kind, rtype, target, zones_fn(zkey), priority=6, min_area_floor=floor)
+        )
+        have.add(kind)
+        have.add(rtype.value)
+    return prog
+
+
 @dataclass
 class PlacedRoom:
     id: str
@@ -426,6 +559,7 @@ def build_program(
     tier: Optional[str] = None,
     footprint: Optional[float] = None,
     variant: Optional["VariantProfile"] = None,
+    edits: Optional["EditOverrides"] = None,
 ) -> list[ProgramRoom]:
     """Produce the room list (target areas + Vastu zones) for the effective tier.
 
@@ -479,12 +613,22 @@ def build_program(
         )
         return prog
 
+    # -- Slack distribution: the leftover footprint above the essential core is
+    # handed preferentially to the LIVING and the BEDROOMS (the rooms a family
+    # actually lives in), so they dominate the built-up area while service rooms
+    # (toilets, pooja, stair, dining) stay at their modest comfort targets. Bounded
+    # so one big plot doesn't balloon a single room. -- #
+    slack_pos = max(0.0, slack)
+    living_bonus = min(8.0, slack_pos * 0.16)
+    master_bonus = min(7.0, slack_pos * 0.13)
+    sec_bonus = min(4.5, slack_pos * 0.09)
+
     # -- Living (largest single space) -- #
     # A modest comfort floor (a touch above the code minimum) keeps the hall from
     # collapsing to the bare minimum without starving the bedrooms; the living's
     # large target lets it grow to a roomy size whenever the band has slack.
     living_floor = max(11.0, min_habitable + 1.0)
-    living_target = max(_COMFORT["living"], min_habitable * 1.6)
+    living_target = max(_COMFORT["living"], min_habitable * 1.7) + living_bonus
     if variant is not None:
         # open-plan folds the dining into the hall; big-social variants enlarge it.
         if variant.merge_dining:
@@ -514,10 +658,11 @@ def build_program(
         master_block = master_bed_min + mbath_min + (
             _COMFORT["dressing"] if spec["dressing"] else 0.0
         )
-        # target == block minimum so the master does not balloon and starve the
-        # other bedrooms; the water-fill still grows it when the band has slack.
+        # target = block minimum + a slack share so the master grows into a roomy
+        # 15-21 m^2 bedroom (the carve gives the surplus to the sleeping area, not
+        # the bath) without starving the secondary bedrooms.
         prog.append(
-            ProgramRoom("master", RoomType.master_bedroom, master_block,
+            ProgramRoom("master", RoomType.master_bedroom, master_block + master_bonus,
                         zones("master_bedroom"), priority=10,
                         attach_bath=True, bath_min_sqm=mbath_min,
                         bedroom_min_sqm=master_bed_min, bath_id="toilet_master",
@@ -526,7 +671,7 @@ def build_program(
     else:
         prog.append(
             ProgramRoom("master", RoomType.master_bedroom,
-                        max(_COMFORT["master"], min_habitable * 1.25),
+                        max(_COMFORT["master"], min_habitable * 1.25) + master_bonus,
                         zones("master_bedroom"), priority=10)
         )
 
@@ -535,18 +680,21 @@ def build_program(
     sec_specs = [("kids", RoomType.childrens_bedroom, 7, "childrens_bedroom")]
     for i in range(2, extra + 1):
         sec_specs.append((f"bedroom{i}", RoomType.bedroom, 6, "bedroom"))
+    # entertainer/guest-first keeps the secondary bedrooms lean so the social zone
+    # can grow; every other strategy lets them share the slack like the master.
+    sec_target_bonus = 0.0 if (variant is not None and variant.shrink_secondary) else sec_bonus
     for j in range(extra):
         rid, rtype, base_prio, zkey = sec_specs[j]
         if spec["attached_baths"]:
             prog.append(
-                ProgramRoom(rid, rtype, sec_bed_min + bath_min,
+                ProgramRoom(rid, rtype, sec_bed_min + bath_min + sec_target_bonus,
                             zones(zkey), priority=base_prio,
                             attach_bath=True, bath_min_sqm=bath_min,
                             bedroom_min_sqm=sec_bed_min, bath_id=f"toilet_{rid}")
             )
         else:
             prog.append(
-                ProgramRoom(rid, rtype, max(_COMFORT["bedroom"], min_habitable * 1.05),
+                ProgramRoom(rid, rtype, max(_COMFORT["bedroom"], min_habitable * 1.05) + sec_target_bonus,
                             zones(zkey), priority=base_prio)
             )
 
@@ -606,6 +754,10 @@ def build_program(
             ProgramRoom("sitout", RoomType.sitout, max(_COMFORT.get("sitout", 6.0), 5.0),
                         ["N", "E", "NE"], priority=3)
         )
+
+    # -- Single-prompt edits (add/remove/resize/move) fold in last, then the whole
+    # optimiser re-runs over this program so the result stays a valid plan. -- #
+    prog = _apply_edits(prog, edits, zones)
     return prog
 
 
@@ -1188,45 +1340,92 @@ _WINDOW_SIZE = {
 }
 
 
+# Rooms that NBC treats as habitable for natural light + ventilation: each MUST
+# reach an exterior window (or a ventilation shaft) and the kitchen with it.
+_HABITABLE_VENT = {
+    "living", "master_bedroom", "bedroom", "childrens_bedroom", "study", "kitchen", "dining",
+}
+
+
 def _make_openings(
-    placed: list[PlacedRoom], env: tuple[float, float, float, float]
+    placed: list[PlacedRoom],
+    env: tuple[float, float, float, float],
+    edits: Optional["EditOverrides"] = None,
 ) -> tuple[list[Opening], list[Opening]]:
-    """One door per room (main door for the entrance) and one window per room on
-    an EXTERIOR wall, preferring a North/East exposure where the room touches an
-    exterior edge of the envelope (Vastu light)."""
+    """One door per room + NBC-compliant ventilation windows.
+
+    Every habitable room and the kitchen gets a window sized to at least 1/10 of
+    its floor area (the kitchen +25%, minimum 1 m^2). Corner rooms (touching two
+    exterior walls) get a SECOND window on the perpendicular wall for genuine
+    cross-ventilation. An interior habitable room — one the packer couldn't put on
+    the perimeter — gets a light/ventilation-shaft window on its longest wall so no
+    living space is left unventilated. Service rooms (toilet/store/pooja/stair)
+    keep a small ventilator only where they already reach an exterior wall. Windows
+    prefer a North then East exposure (Vastu light)."""
     minx, miny, maxx, maxy = env
+    boost = bool(edits and edits.ventilation_boost)
     doors: list[Opening] = []
     windows: list[Opening] = []
     for p in placed:
         rt = p.type.value
+        # -- door (main door for the entrance) --
         if rt == "entrance":
             dw, dh = _DOOR_SIZE["main"]
         else:
             dw, dh = _DOOR_SIZE.get(rt, _DOOR_SIZE["default"])
-        # door width can't exceed the wall it sits on
         dw = min(dw, max(0.6, p.width - 0.2), max(0.6, p.depth - 0.2))
         doors.append(
             Opening(id=f"d-{p.id}", room_id=p.id, kind="door", width_m=round(dw, 3), height_m=dh, count=1)
         )
 
-        # windows only on exterior walls; prefer N (top) then E (right).
-        touches_n = abs(p.y1 - maxy) < 1e-6
-        touches_e = abs(p.x1 - maxx) < 1e-6
-        touches_s = abs(p.y0 - miny) < 1e-6
-        touches_w = abs(p.x0 - minx) < 1e-6
-        if touches_n or touches_s:
-            wall_len = p.width
-        elif touches_e or touches_w:
-            wall_len = p.depth
-        else:
-            wall_len = 0.0  # interior room: no exterior window
-        if wall_len <= 0.0:
-            continue
-        ww, wh = _WINDOW_SIZE.get(rt, _WINDOW_SIZE["default"])
-        ww = min(ww, max(0.6, wall_len - 0.3))
-        windows.append(
-            Opening(id=f"w-{p.id}", room_id=p.id, kind="window", width_m=round(ww, 3), height_m=wh, count=1)
-        )
+        # -- exterior walls this room reaches --
+        ext = {
+            "N": abs(p.y1 - maxy) < 1e-6,
+            "S": abs(p.y0 - miny) < 1e-6,
+            "E": abs(p.x1 - maxx) < 1e-6,
+            "W": abs(p.x0 - minx) < 1e-6,
+        }
+        sides = [s for s in ("N", "E", "S", "W") if ext[s]]  # Vastu-preferred order
+        habitable = rt in _HABITABLE_VENT
+        _, wh = _WINDOW_SIZE.get(rt, _WINDOW_SIZE["default"])
+        base_w = _WINDOW_SIZE.get(rt, _WINDOW_SIZE["default"])[0]
+
+        # NBC glazing area to aim for (only enforced on habitable rooms/kitchen).
+        req_area = 0.0
+        if habitable:
+            req_area = max(1.0, p.area / 10.0) * (1.25 if rt == "kitchen" else 1.0)
+
+        def _win(side: str, idx: int, area_aim: float, min_w: float) -> Optional[Opening]:
+            wall_len = p.width if side in ("N", "S") else p.depth
+            if wall_len <= 0.8:
+                return None
+            need_w = max(min_w, area_aim / max(wh, 0.9)) if area_aim else min_w
+            ww = min(need_w, max(0.6, wall_len - 0.3))
+            if boost and habitable:
+                ww = min(ww * 1.15, max(0.6, wall_len - 0.3))
+            wid = f"w-{p.id}" if idx == 0 else f"w{idx + 1}-{p.id}"
+            return Opening(id=wid, room_id=p.id, kind="window",
+                           width_m=round(ww, 3), height_m=wh, count=1)
+
+        if sides:
+            primary = sides[0]
+            w0 = _win(primary, 0, req_area, base_w)
+            if w0:
+                windows.append(w0)
+            # cross-ventilation: a second window on a perpendicular exterior wall.
+            if habitable and len(sides) >= 2:
+                perp = ("E", "W") if primary in ("N", "S") else ("N", "S")
+                cross = next((s for s in sides[1:] if s in perp), sides[1])
+                w1 = _win(cross, 1, max(1.0, req_area * 0.5), max(1.0, base_w * 0.8))
+                if w1:
+                    windows.append(w1)
+        elif habitable:
+            # interior habitable room: a light / ventilation-shaft window so the
+            # space still meets the "every habitable room is ventilated" rule.
+            side = "N" if p.width >= p.depth else "E"
+            w0 = _win(side, 0, req_area, base_w)
+            if w0:
+                windows.append(w0)
     return doors, windows
 
 
@@ -1495,6 +1694,7 @@ def _build_plan(
     plot: Plot,
     env: tuple[float, float, float, float],
     project_name: str,
+    edits: Optional["EditOverrides"] = None,
 ) -> Plan:
     rooms = [
         Room(
@@ -1503,7 +1703,7 @@ def _build_plan(
         )
         for p in placed
     ]
-    doors, windows = _make_openings(placed, env)
+    doors, windows = _make_openings(placed, env, edits)
     return Plan(
         project=Project(id="gen", name=project_name, created_at=None),
         plot=plot,
@@ -1546,13 +1746,18 @@ def _rect_room(
     )
 
 
-def _add_site_utilization(plan: Plan, env: tuple[float, float, float, float]) -> dict:
+def _add_site_utilization(
+    plan: Plan, env: tuple[float, float, float, float], cars: Optional[int] = None
+) -> dict:
     """Use the open plot margins as intentional Indian-house site zones.
 
     These zones are modelled as plan rooms so CAD/3D/MEP can show them, while the
     code and BOQ rules classify them as virtual/open-site spaces. This turns what
     used to look like wasted white space into car porch, sit-out, garden, service
-    shaft, and future-expansion intelligence.
+    shaft, and future-expansion intelligence. The front setback carries a covered
+    car porch sized to ~2.7 m per car bay (one or two cars by frontage, or an
+    explicit ``cars`` override) placed at the non-NE corner, with the rest of the
+    frontage as a sit-out.
     """
     W, D = plan.plot.width_m, plan.plot.depth_m
     minx, miny, maxx, maxy = env
@@ -1563,22 +1768,34 @@ def _add_site_utilization(plan: Plan, env: tuple[float, float, float, float]) ->
         if room is not None:
             rooms.append(room)
 
-    # Front setback: car porch/parking + sit-out, arranged by facing edge.
+    # Covered car porch: ~2.7 m per bay across the frontage x full setback depth.
+    _CAR_BAY = 2.7
+    front_axis_y = facing in ("E", "NE", "SE", "W", "NW", "SW")  # frontage runs N-S
+    frontage = max(0.0, (D - 0.9) if front_axis_y else (W - 0.9))
+    n_cars = cars if cars else (2 if frontage >= 6.0 else 1)
+    n_cars = max(1, min(3, int(n_cars)))
+    span = min(frontage, n_cars * _CAR_BAY + 0.3) if frontage > 0 else 0.0
+
+    # Front setback: porch at the non-NE end of the frontage, sit-out fills the rest.
     if facing in ("E", "NE", "SE"):
-        add(_rect_room("parking_front", RoomType.parking, maxx, 0.45, W, min(D - 0.45, 5.8)))
-        add(_rect_room("sitout_front", RoomType.sitout, maxx, min(D - 0.45, 6.1), W, D - 0.45))
+        add(_rect_room("parking_front", RoomType.parking, maxx, 0.45, W, 0.45 + span))
+        if 0.45 + span + 0.6 < D - 0.45:
+            add(_rect_room("sitout_front", RoomType.sitout, maxx, 0.45 + span + 0.3, W, D - 0.45))
         add(_rect_room("garden_rear", RoomType.garden, 0.0, 0.45, minx, D - 0.45))
     elif facing in ("W", "NW", "SW"):
-        add(_rect_room("parking_front", RoomType.parking, 0.0, 0.45, minx, min(D - 0.45, 5.8)))
-        add(_rect_room("sitout_front", RoomType.sitout, 0.0, min(D - 0.45, 6.1), minx, D - 0.45))
+        add(_rect_room("parking_front", RoomType.parking, 0.0, 0.45, minx, 0.45 + span))
+        if 0.45 + span + 0.6 < D - 0.45:
+            add(_rect_room("sitout_front", RoomType.sitout, 0.0, 0.45 + span + 0.3, minx, D - 0.45))
         add(_rect_room("garden_rear", RoomType.garden, maxx, 0.45, W, D - 0.45))
     elif facing == "N":
-        add(_rect_room("parking_front", RoomType.parking, 0.45, maxy, min(W - 0.45, 3.2), D))
-        add(_rect_room("sitout_front", RoomType.sitout, min(W - 0.45, 3.5), maxy, W - 0.45, D))
+        add(_rect_room("parking_front", RoomType.parking, 0.45, maxy, 0.45 + span, D))
+        if 0.45 + span + 0.6 < W - 0.45:
+            add(_rect_room("sitout_front", RoomType.sitout, 0.45 + span + 0.3, maxy, W - 0.45, D))
         add(_rect_room("garden_rear", RoomType.garden, 0.45, 0.0, W - 0.45, miny))
     else:  # S
-        add(_rect_room("parking_front", RoomType.parking, 0.45, 0.0, min(W - 0.45, 3.2), miny))
-        add(_rect_room("sitout_front", RoomType.sitout, min(W - 0.45, 3.5), 0.0, W - 0.45, miny))
+        add(_rect_room("parking_front", RoomType.parking, 0.45, 0.0, 0.45 + span, miny))
+        if 0.45 + span + 0.6 < W - 0.45:
+            add(_rect_room("sitout_front", RoomType.sitout, 0.45 + span + 0.3, 0.0, W - 0.45, miny))
         add(_rect_room("garden_rear", RoomType.garden, 0.45, maxy, W - 0.45, D))
 
     # Side strips: utility/service shaft and future expansion / rainwater buffer.
@@ -1604,6 +1821,8 @@ def _add_site_utilization(plan: Plan, env: tuple[float, float, float, float]) ->
         "siteZoneCount": len([r for r in rooms if r.id not in existing]),
         "siteZoneTypes": sorted({r.type.value for r in rooms if r.id not in existing}),
         "siteOpenAreaSqm": round(site_area, 2),
+        "parkingCars": n_cars,
+        "parkingType": "stilt (under the building)" if plan.plot.floors >= 2 else "covered front porch",
         "plotUsePct": round(min(100.0, 100.0 * (site_area + sum(_poly_area(r.polygon) for r in plan.rooms if r.type not in _SITE_ROOM_TYPES)) / plot_area), 1) if plot_area else 0.0,
     }
 
@@ -1738,11 +1957,14 @@ def _build_swap_sets(program: list[ProgramRoom]) -> list[Optional[dict[str, int]
     return swaps
 
 
-def _ground_program(env_w, env_d, min_habitable, min_kitchen, min_toilet, vastu, variant=None) -> list[ProgramRoom]:
-    """Ground floor of a G+1/G+2: the social + service core (NO bedrooms — they
-    go upstairs). Fewer rooms let the water-fill make the living/kitchen/dining
-    large, filling the footprint. ``variant`` shifts the social core (open vs.
-    formal dining, pooja room vs. none, a front sit-out)."""
+def _ground_program(
+    env_w, env_d, min_habitable, min_kitchen, min_toilet, vastu, variant=None, guest_bedrooms=0,
+) -> list[ProgramRoom]:
+    """Ground floor of a G+1/G+2: the social + service core PLUS (from 3BHK) one
+    ensuite GUEST / PARENTS bedroom — the Indian convention so elders/guests avoid
+    the stairs. Keeping a bedroom down also absorbs the ground-floor slack so the
+    living stays the largest room instead of the dining ballooning. ``variant``
+    shifts the social core (open vs. formal dining, pooja room vs. none, sit-out)."""
     env_area = env_w * env_d
 
     def z(rt: str) -> list[str]:
@@ -1755,6 +1977,7 @@ def _ground_program(env_w, env_d, min_habitable, min_kitchen, min_toilet, vastu,
         if variant.big_social:
             living_target += 4.0
     pooja_mode = variant.pooja_mode if variant else "auto"
+    bath_min = max(_BATH_AREA_MIN, min_toilet * 1.6)
 
     prog: list[ProgramRoom] = [
         ProgramRoom("living", RoomType.living, living_target,
@@ -1762,6 +1985,15 @@ def _ground_program(env_w, env_d, min_habitable, min_kitchen, min_toilet, vastu,
         ProgramRoom("kitchen", RoomType.kitchen, max(_COMFORT["kitchen"], min_kitchen * 1.5),
                     z("kitchen"), 9, min_area_floor=max(7.0, min_kitchen + 1.5)),
     ]
+    # Guest / parents bedroom on the ground floor (ensuite), 3BHK+ only.
+    sec_bed_min = max(11.0, min_habitable)
+    for gi in range(max(0, int(guest_bedrooms))):
+        rid = "guest" if gi == 0 else f"guest{gi + 1}"
+        prog.append(
+            ProgramRoom(rid, RoomType.bedroom, sec_bed_min + bath_min,
+                        z("bedroom"), 9, attach_bath=True, bath_min_sqm=bath_min,
+                        bedroom_min_sqm=sec_bed_min, bath_id=f"toilet_{rid}")
+        )
     if not merge_dining:
         prog.append(ProgramRoom("dining", RoomType.dining, max(_COMFORT["dining"], min_habitable * 0.9),
                                 z("dining"), 7, min_area_floor=9.0))
@@ -1777,15 +2009,18 @@ def _ground_program(env_w, env_d, min_habitable, min_kitchen, min_toilet, vastu,
     return prog
 
 
-def _upper_program(tier, env_w, env_d, min_habitable, min_toilet, vastu, variant=None) -> list[ProgramRoom]:
-    """Upper floor: a family LIVING area + every bedroom (each its own attached
-    bath) + a common toilet + the stair. No kitchen/dining/pooja upstairs."""
+def _upper_program(tier, env_w, env_d, min_habitable, min_toilet, vastu, variant=None, ground_bedrooms=0) -> list[ProgramRoom]:
+    """Upper floor: a family LIVING area + the master and remaining bedrooms (each
+    its own attached bath) + a common toilet + the stair. No kitchen/dining/pooja
+    upstairs. ``ground_bedrooms`` are the bedrooms already placed downstairs, so
+    the upper floor holds the master + (bedrooms - 1 - ground_bedrooms) others."""
     env_area = env_w * env_d
 
     def z(rt: str) -> list[str]:
         return ideal_zone_for(rt, vastu)
 
     bedrooms = _TIER_BEDROOMS[tier]
+    upper_bedrooms = max(1, bedrooms - max(0, int(ground_bedrooms)))  # master always upstairs
     bath_min = max(_BATH_AREA_MIN, min_toilet * 1.6)
     master_bath_min = max(4.5, bath_min)
     tight = bedrooms >= 3
@@ -1795,19 +2030,22 @@ def _upper_program(tier, env_w, env_d, min_habitable, min_toilet, vastu, variant
     if variant and variant.big_social:
         u_living_target += 4.0
 
+    # Target the bedrooms a step above their minimum so they read as proper rooms
+    # (master 16-18, others 12-14) and claim band width rather than ceding it all to
+    # the upper living — the bedrooms are what the user asked to be large.
     prog: list[ProgramRoom] = [
         ProgramRoom("u_living", RoomType.living, u_living_target,
                     z("living"), 8, min_area_floor=max(11.0, min_habitable)),
-        ProgramRoom("u_master", RoomType.master_bedroom, master_bed_min + master_bath_min,
+        ProgramRoom("u_master", RoomType.master_bedroom, master_bed_min * 1.25 + master_bath_min,
                     z("master_bedroom"), 10, attach_bath=True, bath_min_sqm=master_bath_min,
                     bedroom_min_sqm=master_bed_min, bath_id="toilet_u_master"),
     ]
     sec_specs = [("u_kids", RoomType.childrens_bedroom, "childrens_bedroom")]
-    for i in range(2, bedrooms):
+    for i in range(2, upper_bedrooms):
         sec_specs.append((f"u_bedroom{i}", RoomType.bedroom, "bedroom"))
-    for rid, rtype, zkey in sec_specs[: bedrooms - 1]:
+    for rid, rtype, zkey in sec_specs[: upper_bedrooms - 1]:
         prog.append(
-            ProgramRoom(rid, rtype, sec_bed_min + bath_min, z(zkey), 7,
+            ProgramRoom(rid, rtype, sec_bed_min * 1.2 + bath_min, z(zkey), 7,
                         attach_bath=True, bath_min_sqm=bath_min,
                         bedroom_min_sqm=sec_bed_min, bath_id=f"toilet_{rid}")
         )
@@ -1876,14 +2114,37 @@ def _layout_floor(
 def _generate_multifloor(
     bhk, plot, floors, tier, footprint, env, keepout, plot_area, max_cov,
     min_dim, min_habitable, min_kitchen, min_toilet, min_area_by_type,
-    vastu_rules, project_name, variant=None,
+    vastu_rules, project_name, variant=None, edits=None,
 ) -> tuple[Plan, object, object, dict]:
     """G+1 / G+2: a social ground floor + an upper floor of family living and
     ensuite bedrooms, each room tagged with its ``floor``. The bhk is honoured
-    even on plots a single floor would right-size down (bedrooms move upstairs)."""
+    even on plots a single floor would right-size down (bedrooms move upstairs).
+    ``edits`` (single-prompt refinements) fold in per floor: resize/move/remove
+    hit whichever floor owns the room, while ADDED rooms route to the social floor
+    (dining/pooja/sit-out/store) or the private floor (study/dressing/balcony)."""
     env_w, env_d = env[2] - env[0], env[3] - env[1]
-    ground = _ground_program(env_w, env_d, min_habitable, min_kitchen, min_toilet, vastu_rules, variant)
-    upper = _upper_program(tier, env_w, env_d, min_habitable, min_toilet, vastu_rules, variant)
+    # 3BHK+ keeps one ensuite bedroom downstairs (parents/guest); 2BHK puts both up.
+    ground_bedrooms = 1 if _TIER_BEDROOMS[tier] >= 3 else 0
+    ground = _ground_program(env_w, env_d, min_habitable, min_kitchen, min_toilet, vastu_rules, variant, guest_bedrooms=ground_bedrooms)
+    upper = _upper_program(tier, env_w, env_d, min_habitable, min_toilet, vastu_rules, variant, ground_bedrooms=ground_bedrooms)
+
+    # Fold single-prompt edits into both floors (matching by id/type means a resize
+    # or move only touches the floor that owns the room); split ADDs by social vs.
+    # private so a "add a study" lands upstairs and "add a dining" lands downstairs.
+    if edits is not None and not edits.is_empty():
+        zfn = lambda rt: ideal_zone_for(rt, vastu_rules)  # noqa: E731
+        g_edits = EditOverrides(
+            area_scale=edits.area_scale, zones=edits.zones, remove=edits.remove,
+            ventilation_boost=edits.ventilation_boost,
+            add={k for k in edits.add if k in _GROUND_ADD},
+        )
+        u_edits = EditOverrides(
+            area_scale=edits.area_scale, zones=edits.zones, remove=edits.remove,
+            ventilation_boost=edits.ventilation_boost,
+            add={k for k in edits.add if k not in _GROUND_ADD},
+        )
+        ground = _apply_edits(ground, g_edits, zfn)
+        upper = _apply_edits(upper, u_edits, zfn)
 
     g_placed, g_drop = _layout_floor(
         ground, {r.id: r for r in ground}, env, keepout, plot, min_dim,
@@ -1905,22 +2166,31 @@ def _generate_multifloor(
         for p in u_placed:
             placed.append(PlacedRoom(f"{p.id}_f{extra}", p.type, p.x0, p.y0, p.x1, p.y1, p.ceiling_height_m, extra))
 
-    bedroom_drops = [d for d in u_drop if d.startswith("u_") and "toilet" not in d and "stair" not in d and "living" not in d]
+    def _is_bed_drop(d: str) -> bool:
+        return ("toilet" not in d and "stair" not in d and "living" not in d
+                and (d.startswith("u_") or d.startswith("guest")))
+
+    bedroom_drops = [d for d in (u_drop + g_drop) if _is_bed_drop(d)]
     mf_downscaled = bool(bedroom_drops)
     bedrooms = _TIER_BEDROOMS[tier]
+    ground_bed_txt = (
+        " with one ensuite bedroom (parents/guest) kept downstairs so elders avoid "
+        "the stairs" if ground_bedrooms else ""
+    )
     note = (
         f"Generated G+{floors - 1}: ground floor is the social core "
-        f"(living / kitchen / dining / pooja), upper floor{'s' if floors > 2 else ''} hold "
-        f"{bedrooms - len(bedroom_drops)} bedroom(s) each with an attached bath."
+        f"(living / kitchen / dining / pooja){ground_bed_txt}; upper floor"
+        f"{'s' if floors > 2 else ''} hold the master + remaining bedrooms, each with "
+        f"an attached bath ({bedrooms - len(bedroom_drops)} of {bedrooms} bedrooms placed)."
     )
     if mf_downscaled:
-        note += f" The upper floor could not fit {len(bedroom_drops)} of the requested bedrooms."
+        note += f" Could not fit {len(bedroom_drops)} of the requested bedrooms."
 
     name = project_name or (
         f"Generated {tier} G+{floors - 1} — {plot.facing.value}-facing ({plot.state.value})"
     )
-    plan = _build_plan(placed, plot, env, name)
-    site_meta = _add_site_utilization(plan, env)
+    plan = _build_plan(placed, plot, env, name, edits)
+    site_meta = _add_site_utilization(plan, env, cars=(edits.parking_cars if edits else None))
     plan, vastu, code = _score_candidate(plan)
     cov_ratio = round(min(1.0, sum(p.area for p in g_placed) / footprint), 2) if footprint else 0.0
     meta = {
@@ -1944,12 +2214,15 @@ def generate_plan(
     code_rules: Optional[CodeRules] = None,
     vastu_rules: Optional[VastuRules] = None,
     variant: Optional["VariantProfile"] = None,
+    edits: Optional["EditOverrides"] = None,
 ) -> tuple[Plan, object, object, dict]:
     """Deterministically generate a Vastu-aware plan for the brief.
 
     Returns ``(plan, vastu_report, code_report, meta)`` where ``meta`` carries
     ``{vastuScore, vastuGrade, codeFails, droppedRooms, attempts, tier,
-    requestedBhk, downscaled, note}``. The plan is already normalised. Raises
+    requestedBhk, downscaled, note}``. The plan is already normalised. ``edits``
+    (from a single-prompt refinement) folds add/remove/resize/move deltas into the
+    program before the optimiser runs, so a refined plan is always valid. Raises
     ``ValueError`` for genuinely infeasible input (handled as HTTP 422 by the
     router)."""
     code_rules = code_rules or get_code_rules()
@@ -1982,9 +2255,28 @@ def generate_plan(
     effective_tier, requested_tier, downscaled, tier_note = resolve_tier(bhk, footprint)
     effective_bhk = _TIER_BEDROOMS[effective_tier]
 
+    # --- AUTO-STOREY: a practising architect builds UP rather than dropping a
+    # bedroom. When the brief didn't ask for G+1 but a single floor right-sizes the
+    # requested bhk DOWN (footprint too small), and the envelope can stack, promote
+    # to G+1 so all bedrooms are kept (social core down, bedrooms up). Falls back to
+    # the single floor if a multi-floor layout genuinely can't be placed. ---
+    # Promote 3BHK+ that won't fit one floor (a 2BHK comfortably fits a single
+    # storey on a typical plot, so it is never auto-promoted — ask for floors=2).
+    can_stack = env_w >= 2.0 * min_dim and env_d >= 2.0 * min_dim
+    auto_storey = floors < 2 and downscaled and bhk >= 3 and can_stack
+    if auto_storey:
+        floors = 2
+        plot = plot.model_copy(update={"floors": 2})
+    auto_note = (
+        f"Promoted to G+1: a single floor right-sizes the requested {requested_tier} "
+        f"down to {effective_tier} on this {round(footprint, 1)} m² footprint, so "
+        f"the design goes up a storey to keep all {bhk} bedrooms — the call a "
+        f"practising architect would make."
+    ) if auto_storey else None
+
     program = build_program(
         effective_bhk, floors, env_w, env_d, min_habitable, min_kitchen, min_toilet,
-        vastu_rules, tier=effective_tier, footprint=footprint, variant=variant,
+        vastu_rules, tier=effective_tier, footprint=footprint, variant=variant, edits=edits,
     )
     program_by_id = {r.id: r for r in program}
 
@@ -1995,12 +2287,23 @@ def generate_plan(
     # --- MULTI-FLOOR (G+1/G+2): a social ground floor + upper floor(s) of family
     # living and ensuite bedrooms. Bedrooms move upstairs, so the requested bhk is
     # honoured even on plots a single floor would right-size down.
-    if floors >= 2 and env_w >= 2.0 * min_dim and env_d >= 2.0 * min_dim:
-        return _generate_multifloor(
-            bhk, plot, floors, requested_tier, footprint, env, keepout, plot_area,
-            max_cov, min_dim, min_habitable, min_kitchen, min_toilet,
-            min_area_by_type, vastu_rules, project_name, variant,
-        )
+    if floors >= 2 and can_stack:
+        try:
+            plan, vastu, code, meta = _generate_multifloor(
+                bhk, plot, floors, requested_tier, footprint, env, keepout, plot_area,
+                max_cov, min_dim, min_habitable, min_kitchen, min_toilet,
+                min_area_by_type, vastu_rules, project_name, variant, edits,
+            )
+        except ValueError:
+            if not auto_storey:
+                raise  # an explicit G+1 brief that genuinely can't be laid out
+            floors = 1  # auto-promotion didn't pan out: stay on a single floor
+            plot = plot.model_copy(update={"floors": 1})
+        else:
+            if auto_note:
+                meta["note"] = f"{auto_note} {meta.get('note', '')}".strip()
+                meta["autoStorey"] = True
+            return plan, vastu, code, meta
 
     # --- STUDIO: bespoke single-room layout (band packer would slice it too thin).
     if effective_tier == "STUDIO":
@@ -2012,13 +2315,13 @@ def generate_plan(
             _enforce_coverage(placed, env, plot_area, max_cov, {p.id: 10 for p in placed}, 5)
             _assert_no_overlap(placed)
             _assert_inside(placed, env)
-            plan = _build_plan(placed, plot, env, name)
+            plan = _build_plan(placed, plot, env, name, edits)
             plan, vastu, code = _score_candidate(plan)
             key = (code.summary.fail_count, -round(vastu.score))
             if best_studio is None or key < best_studio.score_key:
                 best_studio = _Candidate(plan=plan, vastu=vastu, code=code, dropped=[], score_key=key)
         assert best_studio is not None
-        site_meta = _add_site_utilization(best_studio.plan, env)
+        site_meta = _add_site_utilization(best_studio.plan, env, cars=(edits.parking_cars if edits else None))
         plan, vastu, code = _score_candidate(best_studio.plan)
         meta = {
             "vastuScore": vastu.score, "vastuGrade": vastu.grade,
@@ -2124,7 +2427,7 @@ def generate_plan(
             all_dropped = result.dropped + cov_dropped
             _assert_no_overlap(result.placed)
             _assert_inside(result.placed, env)
-            plan = _build_plan(result.placed, plot, env, name)
+            plan = _build_plan(result.placed, plot, env, name, edits)
             plan, vastu, code = _score_candidate(plan)
             # Ranking (best = smallest): correctness first — never sacrifice an
             # essential room, then minimise code fails — then quality per the
@@ -2156,7 +2459,7 @@ def generate_plan(
         raise ValueError("could not generate a feasible plan for the given brief")
 
     best = min(candidates, key=lambda c: c.score_key)
-    site_meta = _add_site_utilization(best.plan, env)
+    site_meta = _add_site_utilization(best.plan, env, cars=(edits.parking_cars if edits else None))
     plan, vastu, code = _score_candidate(best.plan)
     meta = {
         "vastuScore": vastu.score,

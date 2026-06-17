@@ -104,6 +104,10 @@ export interface GenerateMeta {
   variantTagline?: string;
   courtyard?: boolean;
   openKitchen?: boolean;
+  /** Set on responses from /plan/refine. */
+  appliedEdits?: string[];
+  unmatchedEdits?: string[];
+  editVariantId?: string | null;
 }
 
 export interface GenerateResponse {

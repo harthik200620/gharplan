@@ -19,11 +19,12 @@ from fastapi import APIRouter, HTTPException
 from pydantic import Field, field_validator
 
 from app import config
-from app.generator.designer import generate_options, generate_plan
+from app.generator.designer import VARIANT_PROFILES, generate_options, generate_plan
 from app.models.base import CamelModel
 from app.models.enums import City, Facing, FinishTier, StateCode
 from app.models.plan import Plan, Plot
 from app.models.reports import CodeReport, VastuReport
+from app.services.refine_service import parse_edits
 from app.services.rules import get_code_rules, get_vastu_rules
 
 router = APIRouter(prefix="/plan", tags=["generate"])
@@ -91,6 +92,16 @@ class GeneratedOption(CamelModel):
 class GenerateOptionsResponse(CamelModel):
     options: list[GeneratedOption]
     count: int
+
+
+class RefineRequest(GenerateRequest):
+    """A brief PLUS an ordered list of plain-English edit instructions and the id of
+    the scheme being refined. The instructions are the full edit history (applied in
+    order) so refinement is stateless: the same brief + instructions always yields the
+    same plan."""
+
+    instructions: list[str] = Field(default_factory=list)
+    variant_id: Optional[str] = None
 
 
 def _validated_plot(req: "GenerateRequest") -> Plot:
@@ -207,3 +218,46 @@ def plan_options(req: GenerateRequest) -> GenerateOptionsResponse:
         for o in options
     ]
     return GenerateOptionsResponse(options=models, count=len(models))
+
+
+def _variant_by_id(vid: Optional[str]):
+    if not vid:
+        return None
+    return next((v for v in VARIANT_PROFILES if v.id == vid), None)
+
+
+@router.post("/refine", response_model=GenerateResponse)
+def plan_refine(req: RefineRequest) -> GenerateResponse:
+    """Apply single-prompt edits to a generated plan and return the refined plan.
+
+    The instructions ("make the master bigger", "move the kitchen to the SE", "add a
+    study", "make it two floors") are parsed into generator overrides and folded back
+    into ``generate_plan``, so the refined plan is re-optimised end-to-end and stays
+    valid (non-overlapping, Vastu-zoned, code-checked). ``meta.appliedEdits`` lists what
+    changed in plain English; ``meta.unmatchedEdits`` lists anything we couldn't map."""
+    plot = _validated_plot(req)
+    result = parse_edits(
+        req.instructions, base_bhk=req.bhk, base_floors=req.floors, base_variant_id=req.variant_id
+    )
+    plot = plot.model_copy(update={"floors": result.floors})
+    try:
+        plan, vastu, code, meta = generate_plan(
+            bhk=result.bhk,
+            plot=plot,
+            floors=result.floors,
+            vastu_priority=req.vastu_priority,
+            code_rules=get_code_rules(),
+            vastu_rules=get_vastu_rules(),
+            variant=_variant_by_id(result.variant_id),
+            edits=result.edits,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={"status": "infeasible_brief", "message": str(exc)},
+        )
+
+    meta["appliedEdits"] = result.applied
+    meta["unmatchedEdits"] = result.unmatched
+    meta["editVariantId"] = result.variant_id
+    return GenerateResponse(plan=plan, vastu=vastu, code=code, meta=meta)

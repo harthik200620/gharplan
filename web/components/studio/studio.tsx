@@ -9,7 +9,7 @@ import { engine, EngineError } from "@/lib/engine";
 import { useWizard } from "@/lib/store";
 import { BriefPanel } from "./brief-panel";
 import { ResultPanel } from "./result-panel";
-import { DEFAULT_BRIEF, FACING_LABELS, briefToRequest, type BriefForm } from "@/lib/studio";
+import { DEFAULT_BRIEF, FACING_LABELS, briefToRequest, refineRequest, type BriefForm } from "@/lib/studio";
 
 export function Studio() {
   const router = useRouter();
@@ -21,6 +21,9 @@ export function Studio() {
   const [boqLoading, setBoqLoading] = React.useState(false);
   const [exporting, setExporting] = React.useState<string | null>(null);
   const [aiLoading, setAiLoading] = React.useState(false);
+  const [edits, setEdits] = React.useState<string[]>([]);
+  const [refining, setRefining] = React.useState(false);
+  const [editNote, setEditNote] = React.useState<{ applied: string[]; unmatched: string[] } | null>(null);
 
   const patch = (p: Partial<BriefForm>) => setBrief((b) => ({ ...b, ...p }));
 
@@ -69,6 +72,8 @@ export function Studio() {
     setOptions([]);
     setSelected(0);
     setBoq(null);
+    setEdits([]);
+    setEditNote(null);
     try {
       const res = await engine.generateOptions(briefToRequest(brief));
       if (!res.options.length) throw new Error("No feasible design for this brief");
@@ -98,7 +103,45 @@ export function Studio() {
     if (i === selected || i < 0 || i >= options.length) return;
     setSelected(i);
     setBoq(null);
+    // A fresh scheme starts with a clean edit history.
+    setEdits([]);
+    setEditNote(null);
     void costPlan(options[i].plan);
+  }
+
+  async function onRefine(instruction: string) {
+    const trimmed = instruction.trim();
+    if (!trimmed || refining || !options.length) return;
+    const next = [...edits, trimmed];
+    setRefining(true);
+    try {
+      const res = await engine.refine(refineRequest(brief, next, options[selected]?.meta.variantId));
+      const copy = [...options];
+      copy[selected] = {
+        ...options[selected],
+        plan: res.plan,
+        vastu: res.vastu,
+        code: res.code,
+        meta: res.meta ?? options[selected].meta,
+      };
+      setOptions(copy);
+      setEdits(next);
+      setEditNote({ applied: res.meta?.appliedEdits ?? [], unmatched: res.meta?.unmatchedEdits ?? [] });
+      setBoq(null);
+      void costPlan(res.plan);
+    } catch (e: unknown) {
+      const msg =
+        e instanceof EngineError
+          ? typeof e.detail === "string"
+            ? e.detail
+            : `Engine error ${e.status}`
+          : e instanceof Error
+            ? e.message
+            : "Refine failed";
+      toast.error(msg);
+    } finally {
+      setRefining(false);
+    }
   }
 
   async function costPlan(plan: Plan) {
@@ -171,6 +214,9 @@ export function Studio() {
             exporting={exporting}
             onExport={onExport}
             onOpenInEditor={openInEditor}
+            onRefine={onRefine}
+            refining={refining}
+            editNote={editNote}
             subtitle={subtitle}
           />
         ) : (

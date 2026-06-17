@@ -12,6 +12,15 @@ import type {
   VastuReport,
 } from "@gharplan/shared";
 
+/**
+ * Body for POST /plan/refine — same shape as a generate request plus the full
+ * ordered edit history and the currently-selected scheme to refine.
+ */
+export type RefineRequest = GenerateRequest & {
+  instructions: string[];
+  variantId?: string;
+};
+
 const ENGINE_URL = process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8000";
 
 export class EngineError extends Error {
@@ -51,5 +60,7 @@ export const engine = {
     post<GenerateResponse>("/plan/generate", req, signal),
   generateOptions: (req: GenerateRequest, signal?: AbortSignal) =>
     post<GenerateOptionsResponse>("/plan/options", req, signal),
+  refine: (req: RefineRequest, signal?: AbortSignal) =>
+    post<GenerateResponse>("/plan/refine", req, signal),
   engineUrl: ENGINE_URL,
 };

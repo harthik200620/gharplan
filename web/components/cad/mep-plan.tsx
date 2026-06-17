@@ -11,6 +11,7 @@ import {
   type ElecPoint,
   type Fixture,
   type MepModel,
+  type MepNode,
   type PipeRun,
 } from "@/lib/mep";
 import { cn } from "@/lib/utils";
@@ -59,7 +60,7 @@ export function MepPlan({ plan, floor }: { plan: Plan; floor?: number }) {
         <span className="text-[11px] text-muted-foreground">
           {layer === "plumbing"
             ? `${model.wetRooms.length} wet rooms · ${model.fixtures.length} fixtures`
-            : `${model.elec.filter((p) => p.kind === "switchboard").length} boards · 1 DB`}
+            : `${model.elec.filter((p) => p.kind === "switchboard").length} boards · ${model.circuits.length} circuits · 1 DB`}
         </span>
       </div>
 
@@ -109,7 +110,14 @@ export function MepPlan({ plan, floor }: { plan: Plan; floor?: number }) {
         </svg>
 
         <div className="border-t bg-muted/30 px-3 py-2">
-          {layer === "plumbing" ? <PlumbingLegend model={model} /> : <ElectricalLegend />}
+          {layer === "plumbing" ? (
+            <PlumbingLegend model={model} />
+          ) : (
+            <>
+              <ElectricalLegend />
+              <CircuitSchedule model={model} />
+            </>
+          )}
         </div>
       </div>
 
@@ -140,6 +148,79 @@ function Defs() {
 }
 
 type Proj = (v: number) => number;
+
+/* --------------------------------------------------------------------------- */
+/* whole-house service nodes (OHT / sump / pump / meter / IC / septic / RWH)    */
+/* --------------------------------------------------------------------------- */
+
+const NODE_STYLE: Record<string, { color: string; sym: string }> = {
+  oht: { color: "#2563eb", sym: "OHT" },
+  sump: { color: "#0ea5e9", sym: "SUMP" },
+  pump: { color: "#0891b2", sym: "P" },
+  meter: { color: "#b45309", sym: "kWh" },
+  inspection: { color: "#7c4a1e", sym: "IC" },
+  septic: { color: "#6b4423", sym: "ST" },
+  rainpit: { color: "#7c3aed", sym: "RWH" },
+};
+const PLUMB_NODES = new Set(["oht", "sump", "pump", "inspection", "septic", "rainpit"]);
+const ELEC_NODES = new Set(["meter"]);
+
+function NodeGlyph({ node, X, Y }: { node: MepNode; X: Proj; Y: Proj }) {
+  const st = NODE_STYLE[node.kind] ?? { color: "#475569", sym: "?" };
+  const cx = X(node.x);
+  const cy = Y(node.y);
+  const square = node.kind === "oht" || node.kind === "meter" || node.kind === "inspection" || node.kind === "septic";
+  return (
+    <g>
+      {square ? (
+        <rect x={cx - 12} y={cy - 9} width={24} height={18} rx={2} fill="#fff" stroke={st.color} strokeWidth={1.8} />
+      ) : (
+        <circle cx={cx} cy={cy} r={10} fill="#fff" stroke={st.color} strokeWidth={1.8} />
+      )}
+      <text x={cx} y={cy + 2.6} textAnchor="middle" fontSize={7} fontWeight={800} fill={st.color} stroke="none">
+        {st.sym}
+      </text>
+      <text x={cx} y={cy + 20} textAnchor="middle" fontSize={7.5} fill="#475569" stroke="none">
+        {node.label}
+      </text>
+    </g>
+  );
+}
+
+function ServiceNodes({ nodes, X, Y, kinds }: { nodes: MepNode[]; X: Proj; Y: Proj; kinds: Set<string> }) {
+  return (
+    <>
+      {nodes.filter((n) => kinds.has(n.kind)).map((n) => (
+        <NodeGlyph key={n.id} node={n} X={X} Y={Y} />
+      ))}
+    </>
+  );
+}
+
+const CIRCUIT_COLOR: Record<string, string> = {
+  Lighting: "#f59e0b",
+  Power: "#2563eb",
+  "Kitchen/Power": "#dc2626",
+  AC: "#0891b2",
+  Geyser: "#b45309",
+  Pump: "#15803d",
+};
+
+function CircuitSchedule({ model }: { model: MepModel }) {
+  if (!model.circuits.length) return null;
+  return (
+    <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-muted-foreground">
+      <span className="font-medium text-slate-500">DB sub-circuits:</span>
+      {model.circuits.map((c) => (
+        <span key={c.id} className="inline-flex items-center gap-1">
+          <span className="inline-block h-2 w-2 rounded-sm" style={{ background: CIRCUIT_COLOR[c.name] ?? "#64748b" }} />
+          {c.name} · {c.mcbA}A {c.phase}
+          {c.points ? ` · ${c.points} pts` : ""}
+        </span>
+      ))}
+    </div>
+  );
+}
 
 /* --------------------------------------------------------------------------- */
 /* PLUMBING                                                                     */
@@ -182,6 +263,9 @@ function PlumbingLayer({ model, X, Y }: { model: MepModel; X: Proj; Y: Proj }) {
       {model.fixtures.map((f) => (
         <FixtureGlyph key={f.id} fx={f} X={X} Y={Y} />
       ))}
+
+      {/* whole-house plant: OHT, sump + pump, inspection chamber, septic, rain pit */}
+      <ServiceNodes nodes={model.nodes} X={X} Y={Y} kinds={PLUMB_NODES} />
     </g>
   );
 }
@@ -339,6 +423,8 @@ function ElectricalLayer({ model, X, Y }: { model: MepModel; X: Proj; Y: Proj })
       {model.elec.map((p) => (
         <ElecGlyph key={p.id} pt={p} X={X} Y={Y} />
       ))}
+      {/* energy meter at the entry */}
+      <ServiceNodes nodes={model.nodes} X={X} Y={Y} kinds={ELEC_NODES} />
     </g>
   );
 }

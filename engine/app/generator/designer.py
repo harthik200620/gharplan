@@ -1720,6 +1720,7 @@ _SITE_ROOM_TYPES = {
     RoomType.garden,
     RoomType.service_shaft,
     RoomType.future_expansion,
+    RoomType.balcony,  # semi-open: projects into a setback, not counted as FAR built-up
 }
 
 
@@ -1777,41 +1778,68 @@ def _add_site_utilization(
     span = min(frontage, n_cars * _CAR_BAY + 0.3) if frontage > 0 else 0.0
 
     # Front setback: porch at the non-NE end of the frontage, sit-out fills the rest.
+    # `rear` is the opposite (back) setback strip + the axis its length runs along.
     if facing in ("E", "NE", "SE"):
         add(_rect_room("parking_front", RoomType.parking, maxx, 0.45, W, 0.45 + span))
         if 0.45 + span + 0.6 < D - 0.45:
             add(_rect_room("sitout_front", RoomType.sitout, maxx, 0.45 + span + 0.3, W, D - 0.45))
-        add(_rect_room("garden_rear", RoomType.garden, 0.0, 0.45, minx, D - 0.45))
+        rear, rear_axis = (0.0, 0.45, minx, D - 0.45), "y"
     elif facing in ("W", "NW", "SW"):
         add(_rect_room("parking_front", RoomType.parking, 0.0, 0.45, minx, 0.45 + span))
         if 0.45 + span + 0.6 < D - 0.45:
             add(_rect_room("sitout_front", RoomType.sitout, 0.0, 0.45 + span + 0.3, minx, D - 0.45))
-        add(_rect_room("garden_rear", RoomType.garden, maxx, 0.45, W, D - 0.45))
+        rear, rear_axis = (maxx, 0.45, W, D - 0.45), "y"
     elif facing == "N":
         add(_rect_room("parking_front", RoomType.parking, 0.45, maxy, 0.45 + span, D))
         if 0.45 + span + 0.6 < W - 0.45:
             add(_rect_room("sitout_front", RoomType.sitout, 0.45 + span + 0.3, maxy, W - 0.45, D))
-        add(_rect_room("garden_rear", RoomType.garden, 0.45, 0.0, W - 0.45, miny))
+        rear, rear_axis = (0.45, 0.0, W - 0.45, miny), "x"
     else:  # S
         add(_rect_room("parking_front", RoomType.parking, 0.45, 0.0, 0.45 + span, miny))
         if 0.45 + span + 0.6 < W - 0.45:
             add(_rect_room("sitout_front", RoomType.sitout, 0.45 + span + 0.3, 0.0, W - 0.45, miny))
-        add(_rect_room("garden_rear", RoomType.garden, 0.45, maxy, W - 0.45, D))
+        rear, rear_axis = (0.45, maxy, W - 0.45, D), "x"
+
+    # Rear setback: a covered UTILITY / WASH balcony (washing machine + wash sink +
+    # drying) at one end and a garden in the rest — the standard Indian back service
+    # yard. The washing machine + floor drain + a tap are plumbed here (see MEP).
+    rx0, ry0, rx1, ry1 = rear
+    avail = (ry1 - ry0) if rear_axis == "y" else (rx1 - rx0)
+    wspan = min(3.0, max(1.8, avail * 0.5))
+    if rear_axis == "y":
+        add(_rect_room("utility_balcony", RoomType.balcony, rx0, ry0, rx1, ry0 + wspan))
+        if ry0 + wspan + 0.6 < ry1:
+            add(_rect_room("garden_rear", RoomType.garden, rx0, ry0 + wspan + 0.3, rx1, ry1))
+    else:
+        add(_rect_room("utility_balcony", RoomType.balcony, rx0, ry0, rx0 + wspan, ry1))
+        if rx0 + wspan + 0.6 < rx1:
+            add(_rect_room("garden_rear", RoomType.garden, rx0 + wspan + 0.3, ry0, rx1, ry1))
 
     # Side strips: utility/service shaft and future expansion / rainwater buffer.
     add(_rect_room("service_shaft_side", RoomType.service_shaft, minx, 0.0, maxx, miny))
     add(_rect_room("future_expansion_side", RoomType.future_expansion, minx, maxy, maxx, D))
 
-    # If upper floors exist, put a usable balcony on the first floor facing edge.
+    # Upper-floor balconies (G+1+): a FRONT balcony (over the porch, off the front
+    # bedroom) and a REAR balcony (off a back bedroom) — usable open balconies that
+    # get a railing in 3D. Upper-floor setbacks are otherwise free.
     if plan.plot.floors >= 2:
         if facing in ("E", "NE", "SE"):
-            add(_rect_room("u_balcony_front", RoomType.balcony, maxx, D * 0.45, W, D - 0.45, floor=1))
+            front_b = (maxx, D * 0.30, W, D * 0.70)
         elif facing in ("W", "NW", "SW"):
-            add(_rect_room("u_balcony_front", RoomType.balcony, 0.0, D * 0.45, minx, D - 0.45, floor=1))
+            front_b = (0.0, D * 0.30, minx, D * 0.70)
         elif facing == "N":
-            add(_rect_room("u_balcony_front", RoomType.balcony, W * 0.45, maxy, W - 0.45, D, floor=1))
+            front_b = (W * 0.30, maxy, W * 0.70, D)
         else:
-            add(_rect_room("u_balcony_front", RoomType.balcony, W * 0.45, 0.0, W - 0.45, miny, floor=1))
+            front_b = (W * 0.30, 0.0, W * 0.70, miny)
+        add(_rect_room("u_balcony_front", RoomType.balcony, *front_b, floor=1))
+        half = min(2.2, avail * 0.3)
+        if rear_axis == "y":
+            mid = (ry0 + ry1) / 2
+            rear_b = (rx0, mid - half, rx1, mid + half)
+        else:
+            mid = (rx0 + rx1) / 2
+            rear_b = (mid - half, ry0, mid + half, ry1)
+        add(_rect_room("u_balcony_rear", RoomType.balcony, *rear_b, floor=1))
 
     existing = {r.id for r in plan.rooms}
     plan.rooms.extend([r for r in rooms if r.id not in existing])

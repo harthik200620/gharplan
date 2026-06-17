@@ -76,6 +76,16 @@ ELEC_CODE = {
     "bell": "BL",
     "switchboard": "SB",
 }
+# Whole-house services plant — short code drawn beside each node symbol.
+NODE_CODE = {
+    "oht": "OHT",
+    "sump": "SUMP",
+    "pump": "P",
+    "meter": "kWh",
+    "inspection": "IC",
+    "septic": "ST",
+    "rainpit": "RWH",
+}
 
 
 def _ascii(s: str) -> str:
@@ -256,7 +266,8 @@ def _draw_mep(msp, doc, plan: Plan, floor: Optional[int], dx: float, dy: float):
     _draw_plan(msp, doc, plan, floor, dx, dy, mep_base=True)
     m = build_mep_model(plan, floor)
     for name, aci in [
-        ("MEP_SHAFT", 2), ("MEP_FIXTURE", 7), ("MEP_ELEC", 2), ("MEP_DB", 1), ("MEP_CONDUIT", 8), ("MEP_TEXT", 7),
+        ("MEP_SHAFT", 2), ("MEP_FIXTURE", 7), ("MEP_ELEC", 2), ("MEP_DB", 1),
+        ("MEP_CONDUIT", 8), ("MEP_NODE", 30), ("MEP_TEXT", 7),
     ]:
         _ensure(doc, name, aci)
     for s, aci in SERVICE_ACI.items():
@@ -285,6 +296,19 @@ def _draw_mep(msp, doc, plan: Plan, floor: Optional[int], dx: float, dy: float):
     if m.db:
         _rect(msp, dx + m.db.x - 0.2, dy + m.db.y - 0.15, 0.4, 0.3, "MEP_DB")
         _text(msp, "DB", dx + m.db.x, dy + m.db.y, 0.12, "MEP_DB", TextEntityAlignment.MIDDLE_CENTER)
+
+    # whole-house services plant (OHT, sump, pump, meter, IC, septic, RWH pit)
+    for nd in m.nodes:
+        msp.add_circle((dx + nd.x, dy + nd.y), 0.25, dxfattribs={"layer": "MEP_NODE"})
+        code = NODE_CODE.get(nd.kind, "?")
+        _text(msp, code, dx + nd.x, dy + nd.y, 0.12, "MEP_NODE", TextEntityAlignment.MIDDLE_CENTER)
+        _text(msp, _ascii(nd.label), dx + nd.x, dy + nd.y - 0.42, 0.1, "MEP_NODE", TextEntityAlignment.MIDDLE_CENTER)
+
+    # circuit schedule (final sub-circuits off the DB with their MCB ratings)
+    if m.circuits:
+        sched_txt = _ascii(" - ".join(f"{ck.name} {ck.mcb_a}A" for ck in m.circuits))
+        _text(msp, "CIRCUITS: " + sched_txt, dx, dy - 0.6, 0.16, "MEP_TEXT")
+
     _text(msp, "MEP SERVICES (plumbing + electrical)", dx, dy + plan.plot.depth_m + 0.5, 0.3, "MEP_TEXT")
 
 

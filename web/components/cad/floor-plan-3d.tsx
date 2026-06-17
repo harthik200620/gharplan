@@ -223,6 +223,42 @@ function Furniture3D({ room, W, D }: { room: Room; W: number; D: number }) {
   return null;
 }
 
+const RAIL_H = 0.95; // balcony balustrade height
+const RAIL_T = 0.08;
+
+/** A balcony balustrade: a low wall on the three OPEN edges (the edge nearest the
+ *  building centre is the step-out from the room, so it's left open). */
+function Railing({ room, W, D }: { room: Room; W: number; D: number }) {
+  const r = bounds(room.polygon);
+  const cx = r.x + r.w / 2 - W / 2;
+  const cz = D / 2 - (r.y + r.h / 2);
+  const edges: { pos: [number, number, number]; size: [number, number, number]; mid: [number, number] }[] = [
+    { pos: [cx, FLOOR_Y + RAIL_H / 2, D / 2 - (r.y + r.h)], size: [r.w, RAIL_H, RAIL_T], mid: [r.x + r.w / 2, r.y + r.h] },
+    { pos: [cx, FLOOR_Y + RAIL_H / 2, D / 2 - r.y], size: [r.w, RAIL_H, RAIL_T], mid: [r.x + r.w / 2, r.y] },
+    { pos: [r.x - W / 2, FLOOR_Y + RAIL_H / 2, cz], size: [RAIL_T, RAIL_H, r.h], mid: [r.x, r.y + r.h / 2] },
+    { pos: [r.x + r.w - W / 2, FLOOR_Y + RAIL_H / 2, cz], size: [RAIL_T, RAIL_H, r.h], mid: [r.x + r.w, r.y + r.h / 2] },
+  ];
+  let skip = 0;
+  let best = Infinity;
+  edges.forEach((e, i) => {
+    const d = (e.mid[0] - W / 2) ** 2 + (e.mid[1] - D / 2) ** 2;
+    if (d < best) {
+      best = d;
+      skip = i;
+    }
+  });
+  return (
+    <>
+      {edges.filter((_, i) => i !== skip).map((e, i) => (
+        <mesh key={i} position={e.pos} castShadow receiveShadow>
+          <boxGeometry args={e.size} />
+          <meshStandardMaterial color="#c9b495" roughness={0.8} />
+        </mesh>
+      ))}
+    </>
+  );
+}
+
 function FloorGroup({ plan, floor, W, D, openings }: { plan: Plan; floor: number; W: number; D: number; openings: PlacedOpening[] }) {
   const rooms = plan.rooms.filter((r) => !VIRTUAL.has(r.type) && (r.floor ?? 0) === floor);
   return (
@@ -251,6 +287,7 @@ function FloorGroup({ plan, floor, W, D, openings }: { plan: Plan; floor: number
               </mesh>
             ))}
             <Furniture3D room={room} W={W} D={D} />
+            {room.type === "balcony" && <Railing room={room} W={W} D={D} />}
           </group>
         );
       })}

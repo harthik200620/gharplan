@@ -79,6 +79,38 @@ export type ElecPoint = {
   kind: ElectricalKind;
   x: number;
   y: number;
+  /** Final sub-circuit this point sits on (lighting / power / kitchen / AC / geyser / pump). */
+  circuit?: string;
+};
+
+/** A whole-house services node drawn as a labelled symbol: the overhead tank, the
+ *  underground sump + pump, the energy meter, the drainage inspection chamber, the
+ *  septic tank, and the rainwater-harvesting pit — the fixed plant a real Indian
+ *  house is built around. */
+export type MepNodeKind =
+  | "oht"        // overhead tank on the roof (SW), gravity down-take
+  | "sump"       // underground water sump (NE)
+  | "pump"       // sump → OHT pump
+  | "meter"      // energy meter at the compound entry
+  | "inspection" // drainage inspection chamber
+  | "septic"     // septic tank / sewer connection
+  | "rainpit";   // rainwater-harvesting recharge pit
+
+export type MepNode = {
+  id: string;
+  kind: MepNodeKind;
+  x: number;
+  y: number;
+  label: string;
+};
+
+/** A final electrical sub-circuit off the DB, with its protective MCB rating. */
+export type Circuit = {
+  id: string;
+  name: string;
+  mcbA: number;
+  phase: "1ph" | "3ph";
+  points: number;
 };
 
 export type Conduit = {
@@ -113,6 +145,10 @@ export type MepModel = {
   elec: ElecPoint[];
   conduits: Conduit[];
   db: ElecPoint | null;
+  /** Whole-house plant: OHT, sump, pump, meter, inspection chamber, septic, rain pit. */
+  nodes: MepNode[];
+  /** Final electrical sub-circuits off the DB with their MCB ratings. */
+  circuits: Circuit[];
   clashes: Clash[];
   summary: { errors: number; warns: number };
   legend: ServiceLegendItem[];
@@ -185,7 +221,8 @@ function fixturesFor(room: Room, fp: Rect): Fixture[] {
   const r = bounds(room.polygon);
   if (r.w < 0.6 || r.h < 0.6) return [];
   const edge = wetWall(r, fp);
-  const t = room.type;
+  // a rear "utility / wash" balcony plumbs like a wash area even though it's typed balcony
+  const t = /utility|wash/.test(room.id) ? "utility" : room.type;
   let kinds: FixtureKind[];
   if (/toilet|bath/.test(t)) kinds = ["wc", "basin", "shower"];
   else if (/kitchen/.test(t)) kinds = ["sink"];
@@ -376,7 +413,8 @@ function spread(r: Rect, n: number): [number, number][] {
 }
 
 function elecFor(room: Room, door: PlacedOpening | undefined): ElecPoint[] {
-  const spec = ELEC_SCHEDULE[room.type];
+  // the rear utility/wash balcony gets a light + a 16A point for the washing machine
+  const spec = /utility|wash/.test(room.id) ? { light: 1, socket16a: 1 } : ELEC_SCHEDULE[room.type];
   if (!spec) return [];
   const r = bounds(room.polygon);
   const c = center(room);
@@ -557,19 +595,149 @@ function computeClashes(
 }
 
 // --------------------------------------------------------------------------- //
+// Whole-house services: overhead tank + sump + pump, drainage outlet, rainwater
+// --------------------------------------------------------------------------- //
+
+const DOWNTAKE_MM = 32; // OHT gravity down-take main
+const PUMP_RISER_MM = 25; // sump → OHT delivery
+const SOIL_MAIN_MM = 110; // shaft → inspection chamber → septic
+const RWP_MM = 75; // rainwater downpipe
+
+function clampPt(p: [number, number], W: number, D: number): [number, number] {
+  return [Math.max(0.2, Math.min(W - 0.2, p[0])), Math.max(0.2, Math.min(D - 0.2, p[1]))];
+}
+
+/** Water supply the Indian way: municipal/borewell → underground SUMP (NE) → PUMP
+ *  lifts to the OVERHEAD TANK on the roof (SW) → a gravity DOWN-TAKE main feeds the
+ *  shaft manifold, where the per-room cold branches tap off. */
+function buildWaterSource(fp: Rect | null, shaft: Rect | null, W: number, D: number): { nodes: MepNode[]; pipes: PipeRun[] } {
+  if (!fp) return { nodes: [], pipes: [] };
+  const oht = clampPt([fp.x + 0.8, fp.y + 0.8], W, D); // SW (Vastu: tank SW)
+  const sump = clampPt([fp.x + fp.w - 0.8, fp.y + fp.h - 0.8], W, D); // NE (Vastu: water NE)
+  const pump = clampPt([sump[0] - 1.1, sump[1]], W, D);
+  const nodes: MepNode[] = [
+    { id: "oht", kind: "oht", x: oht[0], y: oht[1], label: "OHT 1000L" },
+    { id: "sump", kind: "sump", x: sump[0], y: sump[1], label: "Sump" },
+    { id: "pump", kind: "pump", x: pump[0], y: pump[1], label: "Pump" },
+  ];
+  const pipes: PipeRun[] = [
+    { id: "supply-riser", roomId: "service", service: "cold", points: [sump, pump, [pump[0], oht[1]], oht], sizeMm: PUMP_RISER_MM, label: `${PUMP_RISER_MM}∅` },
+  ];
+  if (shaft) {
+    const port = shaftPort(shaft);
+    pipes.push({ id: "downtake", roomId: "service", service: "cold", points: [oht, [oht[0], port[1]], port], sizeMm: DOWNTAKE_MM, label: `${DOWNTAKE_MM}∅` });
+  }
+  return { nodes, pipes };
+}
+
+/** Drainage outlet: soil/waste gathered at the shaft runs to an INSPECTION CHAMBER
+ *  just outside, then to the SEPTIC TANK / sewer at the plot edge (110 mm, 1:40). */
+function buildDrainageOutlet(fp: Rect | null, shaft: Rect | null, W: number, D: number): { nodes: MepNode[]; pipes: PipeRun[] } {
+  if (!shaft || !fp) return { nodes: [], pipes: [] };
+  const port = shaftPort(shaft);
+  const fcx = fp.x + fp.w / 2;
+  const fcy = fp.y + fp.h / 2;
+  let dx = port[0] - fcx;
+  let dy = port[1] - fcy;
+  const m = Math.hypot(dx, dy) || 1;
+  dx /= m;
+  dy /= m;
+  const ic = clampPt([port[0] + dx * 0.8, port[1] + dy * 0.8], W, D);
+  const septic = clampPt([port[0] + dx * 2.2, port[1] + dy * 2.2], W, D);
+  const nodes: MepNode[] = [
+    { id: "ic", kind: "inspection", x: ic[0], y: ic[1], label: "IC" },
+    { id: "septic", kind: "septic", x: septic[0], y: septic[1], label: "Septic" },
+  ];
+  const pipes: PipeRun[] = [
+    { id: "soil-outlet", roomId: "service", service: "soil", points: [port, ic, septic], sizeMm: SOIL_MAIN_MM, slope: "1:40", label: `${SOIL_MAIN_MM}∅` },
+  ];
+  return { nodes, pipes };
+}
+
+/** Rainwater: downpipes at the two front building corners carry roof run-off to a
+ *  recharge PIT (rainwater harvesting), as required by most Indian municipalities. */
+function buildRainwater(fp: Rect | null, W: number, D: number): { nodes: MepNode[]; pipes: PipeRun[] } {
+  if (!fp) return { nodes: [], pipes: [] };
+  const pit = clampPt([fp.x + fp.w + 0.5, fp.y - 0.4], W, D);
+  const corners: [number, number][] = [
+    [fp.x + 0.15, fp.y + 0.15],
+    [fp.x + fp.w - 0.15, fp.y + 0.15],
+  ];
+  const nodes: MepNode[] = [{ id: "rainpit", kind: "rainpit", x: pit[0], y: pit[1], label: "RWH pit" }];
+  const pipes: PipeRun[] = corners.map((c, i) => ({
+    id: `rwp-${i}`,
+    roomId: "service",
+    service: "rainwater" as ServiceKind,
+    points: [c, [c[0], pit[1]], pit],
+    sizeMm: RWP_MM,
+    label: `${RWP_MM}∅`,
+  }));
+  return { nodes, pipes };
+}
+
+/** Tag every electrical point with its final sub-circuit and return the circuit
+ *  schedule (lighting / power / kitchen / AC / geyser / pump) with MCB ratings —
+ *  the way an Indian DB is actually loaded. */
+function assignCircuits(elec: ElecPoint[]): Circuit[] {
+  const circuitOf = (p: ElecPoint): string => {
+    switch (p.kind) {
+      case "light":
+      case "fan":
+      case "bell":
+      case "exhaust":
+        return "Lighting";
+      case "socket16a":
+        return "Kitchen/Power";
+      case "ac":
+        return "AC";
+      case "geyser":
+        return "Geyser";
+      default:
+        return "Power"; // socket6a etc.
+    }
+  };
+  const counts = new Map<string, number>();
+  for (const p of elec) {
+    if (p.kind === "switchboard" || p.kind === "db") continue;
+    p.circuit = circuitOf(p);
+    counts.set(p.circuit, (counts.get(p.circuit) ?? 0) + 1);
+  }
+  const SPEC: Record<string, { mcbA: number; phase: "1ph" | "3ph" }> = {
+    Lighting: { mcbA: 6, phase: "1ph" },
+    Power: { mcbA: 16, phase: "1ph" },
+    "Kitchen/Power": { mcbA: 20, phase: "1ph" },
+    AC: { mcbA: 20, phase: "1ph" },
+    Geyser: { mcbA: 16, phase: "1ph" },
+    Pump: { mcbA: 16, phase: "1ph" },
+  };
+  const order = ["Lighting", "Power", "Kitchen/Power", "AC", "Geyser", "Pump"];
+  return order
+    .filter((n) => (counts.get(n) ?? 0) > 0 || n === "Pump")
+    .map((n) => ({ id: `ckt-${n}`, name: n, mcbA: SPEC[n].mcbA, phase: SPEC[n].phase, points: counts.get(n) ?? (n === "Pump" ? 1 : 0) }));
+}
+
+// --------------------------------------------------------------------------- //
 // Public entry point
 // --------------------------------------------------------------------------- //
 
 export function buildMepModel(plan: Plan, floor?: number): MepModel {
   const W = plan.plot.widthM;
   const D = plan.plot.depthM;
-  const fp = buildingFootprint(plan);
+  const fp = buildingFootprint(plan, floor);
   const rooms = floorRooms(plan, floor);
-  const wetRooms = rooms.filter((r) => isWet(r.type));
+  const wetRooms = rooms.filter((r) => isWet(r.type) || /utility|wash/.test(r.id));
 
   const fixtures = wetRooms.flatMap((r) => fixturesFor(r, fp));
   const shaft = computeShaft(wetRooms, W, D);
   const pipes = buildPlumbing(wetRooms, fixtures, shaft);
+
+  // whole-house plant + mains: OHT down-take, sump + pump, drainage outlet to the
+  // septic tank, and rainwater downpipes to a recharge pit.
+  const water = buildWaterSource(fp, shaft, W, D);
+  const drain = buildDrainageOutlet(fp, shaft, W, D);
+  const rain = buildRainwater(fp, W, D);
+  const nodes: MepNode[] = [...water.nodes, ...drain.nodes, ...rain.nodes];
+  pipes.push(...water.pipes, ...drain.pipes, ...rain.pipes);
 
   // door placements for this floor (latch-side switchboards + clash geometry)
   const placed = placeOpenings(plan);
@@ -583,6 +751,13 @@ export function buildMepModel(plan: Plan, floor?: number): MepModel {
   const db = placeDb(rooms);
   if (db) elec.push(db);
   const conduits = buildConduits(elec, db);
+  // energy meter at the entry; the metered service main runs meter → DB.
+  if (db) {
+    const meter = clampPt([db.x, db.y - 0.9], W, D);
+    nodes.push({ id: "meter", kind: "meter", x: meter[0], y: meter[1], label: "Meter" });
+    conduits.push({ id: "cd-main", roomId: "service", points: [meter, [db.x, db.y]] });
+  }
+  const circuits = assignCircuits(elec);
 
   const clashes = computeClashes(plan, floor, wetRooms, fixtures, db, elec, floorDoors);
   const summary = {
@@ -605,6 +780,8 @@ export function buildMepModel(plan: Plan, floor?: number): MepModel {
     elec,
     conduits,
     db,
+    nodes,
+    circuits,
     clashes,
     summary,
     legend,

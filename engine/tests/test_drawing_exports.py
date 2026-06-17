@@ -51,7 +51,7 @@ def test_dxf_carries_every_view(sample_plan):
     data = build_dxf(plan, code)
     doc = ezdxf.read(io.StringIO(data.decode("latin-1")))
     layers = {layer.dxf.name for layer in doc.layers}
-    for expected in ("ELEV", "SECTION", "SECTION_POCHE", "MEP_SOIL", "MEP_ELEC", "SCHEDULE"):
+    for expected in ("ELEV", "SECTION", "SECTION_POCHE", "MEP_SOIL", "MEP_ELEC", "MEP_NODE", "SCHEDULE"):
         assert expected in layers, f"missing DXF layer {expected}"
     kinds = {e.dxftype() for e in doc.modelspace()}
     assert {"LWPOLYLINE", "TEXT", "MTEXT", "CIRCLE"} <= kinds

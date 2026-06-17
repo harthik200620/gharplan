@@ -33,6 +33,7 @@ from app.services.cad_geom import (
 # ServiceKind:    "cold" | "hot" | "soil" | "waste" | "vent" | "rainwater"
 # ElectricalKind: "light" | "fan" | "socket6a" | "socket16a" | "ac" | "exhaust"
 #                 | "geyser" | "switchboard" | "db" | "bell"
+# MepNodeKind:    "oht" | "sump" | "pump" | "meter" | "inspection" | "septic" | "rainpit"
 
 
 @dataclass
@@ -62,6 +63,33 @@ class ElecPoint:
     kind: str
     x: float
     y: float
+    # Final sub-circuit this point sits on (lighting / power / kitchen / AC / geyser / pump).
+    circuit: Optional[str] = None
+
+
+@dataclass
+class MepNode:
+    """A whole-house services node drawn as a labelled symbol: overhead tank,
+    underground sump + pump, energy meter, drainage inspection chamber, septic
+    tank, rainwater-harvesting pit — the fixed plant a real Indian house is
+    built around. ``kind`` is one of the MepNodeKind strings above."""
+
+    id: str
+    kind: str
+    x: float
+    y: float
+    label: str
+
+
+@dataclass
+class Circuit:
+    """A final electrical sub-circuit off the DB, with its protective MCB rating."""
+
+    id: str
+    name: str
+    mcb_a: int
+    phase: str  # "1ph" | "3ph"
+    points: int
 
 
 @dataclass
@@ -99,6 +127,10 @@ class MepModel:
     elec: list[ElecPoint]
     db: Optional[ElecPoint]
     conduits: list[Conduit]
+    # Whole-house plant: OHT, sump, pump, meter, inspection chamber, septic, rain pit.
+    nodes: list[MepNode]
+    # Final electrical sub-circuits off the DB with their MCB ratings.
+    circuits: list[Circuit]
     clashes: list[Clash]
     summary: dict
     legend: list[ServiceLegendItem]
@@ -173,7 +205,8 @@ def fixtures_for(room: Room, fp: Rect) -> list[Fixture]:
     if r.w < 0.6 or r.h < 0.6:
         return []
     edge = wet_wall(r, fp)
-    t = room.type.value
+    # a rear "utility / wash" balcony plumbs like a wash area even though it's typed balcony
+    t = "utility" if re.search(r"utility|wash", room.id) else room.type.value
     if re.search(r"toilet|bath", t):
         kinds = ["wc", "basin", "shower"]
     elif re.search(r"kitchen", t):
@@ -346,7 +379,11 @@ def spread(r: Rect, n: int) -> list[tuple[float, float]]:
 
 
 def elec_for(room: Room, door: Optional[PlacedOpening]) -> list[ElecPoint]:
-    spec = ELEC_SCHEDULE.get(room.type.value)
+    # the rear utility/wash balcony gets a light + a 16A point for the washing machine
+    if re.search(r"utility|wash", room.id):
+        spec: Optional[dict[str, int]] = {"light": 1, "socket16a": 1}
+    else:
+        spec = ELEC_SCHEDULE.get(room.type.value)
     if not spec:
         return []
     r = bounds(room.polygon)
@@ -416,6 +453,169 @@ def build_conduits(elec: list[ElecPoint], db: Optional[ElecPoint]) -> list[Condu
     return [
         Conduit(id=f"cd-{b.room_id}", room_id=b.room_id, points=manhattan((b.x, b.y), (db.x, db.y)))
         for b in boards
+    ]
+
+
+# --------------------------------------------------------------------------- #
+# Whole-house services: overhead tank + sump + pump, drainage outlet, rainwater
+# --------------------------------------------------------------------------- #
+
+DOWNTAKE_MM = 32  # OHT gravity down-take main
+PUMP_RISER_MM = 25  # sump -> OHT delivery
+SOIL_MAIN_MM = 110  # shaft -> inspection chamber -> septic
+RWP_MM = 75  # rainwater downpipe
+
+
+def clamp_pt(p: tuple[float, float], w: float, d: float) -> tuple[float, float]:
+    return (max(0.2, min(w - 0.2, p[0])), max(0.2, min(d - 0.2, p[1])))
+
+
+def build_water_source(
+    fp: Optional[Rect], shaft: Optional[Rect], w: float, d: float
+) -> tuple[list[MepNode], list[PipeRun]]:
+    """Water supply the Indian way: municipal/borewell -> underground SUMP (NE) ->
+    PUMP lifts to the OVERHEAD TANK on the roof (SW) -> a gravity DOWN-TAKE main
+    feeds the shaft manifold, where the per-room cold branches tap off."""
+    if not fp:
+        return ([], [])
+    oht = clamp_pt((fp.x + 0.8, fp.y + 0.8), w, d)  # SW (Vastu: tank SW)
+    sump = clamp_pt((fp.x + fp.w - 0.8, fp.y + fp.h - 0.8), w, d)  # NE (Vastu: water NE)
+    pump = clamp_pt((sump[0] - 1.1, sump[1]), w, d)
+    nodes: list[MepNode] = [
+        MepNode(id="oht", kind="oht", x=oht[0], y=oht[1], label="OHT 1000L"),
+        MepNode(id="sump", kind="sump", x=sump[0], y=sump[1], label="Sump"),
+        MepNode(id="pump", kind="pump", x=pump[0], y=pump[1], label="Pump"),
+    ]
+    pipes: list[PipeRun] = [
+        PipeRun(
+            id="supply-riser",
+            room_id="service",
+            service="cold",
+            points=[sump, pump, (pump[0], oht[1]), oht],
+            size_mm=PUMP_RISER_MM,
+            label=f"{PUMP_RISER_MM}∅",
+        ),
+    ]
+    if shaft:
+        port = shaft_port(shaft)
+        pipes.append(
+            PipeRun(
+                id="downtake",
+                room_id="service",
+                service="cold",
+                points=[oht, (oht[0], port[1]), port],
+                size_mm=DOWNTAKE_MM,
+                label=f"{DOWNTAKE_MM}∅",
+            )
+        )
+    return (nodes, pipes)
+
+
+def build_drainage_outlet(
+    fp: Optional[Rect], shaft: Optional[Rect], w: float, d: float
+) -> tuple[list[MepNode], list[PipeRun]]:
+    """Drainage outlet: soil/waste gathered at the shaft runs to an INSPECTION
+    CHAMBER just outside, then to the SEPTIC TANK / sewer at the plot edge
+    (110 mm, 1:40)."""
+    if not shaft or not fp:
+        return ([], [])
+    port = shaft_port(shaft)
+    fcx = fp.x + fp.w / 2
+    fcy = fp.y + fp.h / 2
+    dx = port[0] - fcx
+    dy = port[1] - fcy
+    m = math.hypot(dx, dy) or 1
+    dx /= m
+    dy /= m
+    ic = clamp_pt((port[0] + dx * 0.8, port[1] + dy * 0.8), w, d)
+    septic = clamp_pt((port[0] + dx * 2.2, port[1] + dy * 2.2), w, d)
+    nodes: list[MepNode] = [
+        MepNode(id="ic", kind="inspection", x=ic[0], y=ic[1], label="IC"),
+        MepNode(id="septic", kind="septic", x=septic[0], y=septic[1], label="Septic"),
+    ]
+    pipes: list[PipeRun] = [
+        PipeRun(
+            id="soil-outlet",
+            room_id="service",
+            service="soil",
+            points=[port, ic, septic],
+            size_mm=SOIL_MAIN_MM,
+            slope="1:40",
+            label=f"{SOIL_MAIN_MM}∅",
+        ),
+    ]
+    return (nodes, pipes)
+
+
+def build_rainwater(
+    fp: Optional[Rect], w: float, d: float
+) -> tuple[list[MepNode], list[PipeRun]]:
+    """Rainwater: downpipes at the two front building corners carry roof run-off
+    to a recharge PIT (rainwater harvesting), as required by most Indian
+    municipalities."""
+    if not fp:
+        return ([], [])
+    pit = clamp_pt((fp.x + fp.w + 0.5, fp.y - 0.4), w, d)
+    corners = [
+        (fp.x + 0.15, fp.y + 0.15),
+        (fp.x + fp.w - 0.15, fp.y + 0.15),
+    ]
+    nodes: list[MepNode] = [MepNode(id="rainpit", kind="rainpit", x=pit[0], y=pit[1], label="RWH pit")]
+    pipes: list[PipeRun] = [
+        PipeRun(
+            id=f"rwp-{i}",
+            room_id="service",
+            service="rainwater",
+            points=[c, (c[0], pit[1]), pit],
+            size_mm=RWP_MM,
+            label=f"{RWP_MM}∅",
+        )
+        for i, c in enumerate(corners)
+    ]
+    return (nodes, pipes)
+
+
+def assign_circuits(elec: list[ElecPoint]) -> list[Circuit]:
+    """Tag every electrical point with its final sub-circuit and return the
+    circuit schedule (lighting / power / kitchen / AC / geyser / pump) with MCB
+    ratings — the way an Indian DB is actually loaded."""
+
+    def circuit_of(p: ElecPoint) -> str:
+        if p.kind in ("light", "fan", "bell", "exhaust"):
+            return "Lighting"
+        if p.kind == "socket16a":
+            return "Kitchen/Power"
+        if p.kind == "ac":
+            return "AC"
+        if p.kind == "geyser":
+            return "Geyser"
+        return "Power"  # socket6a etc.
+
+    counts: dict[str, int] = {}
+    for p in elec:
+        if p.kind in ("switchboard", "db"):
+            continue
+        p.circuit = circuit_of(p)
+        counts[p.circuit] = counts.get(p.circuit, 0) + 1
+    spec: dict[str, dict[str, int | str]] = {
+        "Lighting": {"mcb_a": 6, "phase": "1ph"},
+        "Power": {"mcb_a": 16, "phase": "1ph"},
+        "Kitchen/Power": {"mcb_a": 20, "phase": "1ph"},
+        "AC": {"mcb_a": 20, "phase": "1ph"},
+        "Geyser": {"mcb_a": 16, "phase": "1ph"},
+        "Pump": {"mcb_a": 16, "phase": "1ph"},
+    }
+    order = ["Lighting", "Power", "Kitchen/Power", "AC", "Geyser", "Pump"]
+    return [
+        Circuit(
+            id=f"ckt-{n}",
+            name=n,
+            mcb_a=spec[n]["mcb_a"],  # type: ignore[arg-type]
+            phase=spec[n]["phase"],  # type: ignore[arg-type]
+            points=counts.get(n, 1 if n == "Pump" else 0),
+        )
+        for n in order
+        if counts.get(n, 0) > 0 or n == "Pump"
     ]
 
 
@@ -513,12 +713,21 @@ def compute_clashes(
 def build_mep_model(plan: Plan, floor: Optional[int] = None) -> MepModel:
     w = plan.plot.width_m
     d = plan.plot.depth_m
-    fp = building_footprint(plan)
+    fp = building_footprint(plan, floor)
     rooms = floor_rooms(plan, floor)
-    wet_rooms = [r for r in rooms if is_wet(r.type.value)]
+    wet_rooms = [r for r in rooms if is_wet(r.type.value) or re.search(r"utility|wash", r.id)]
     fixtures = [f for r in wet_rooms for f in fixtures_for(r, fp)]
     shaft = compute_shaft(wet_rooms, w, d)
     pipes = build_plumbing(wet_rooms, fixtures, shaft)
+
+    # whole-house plant + mains: OHT down-take, sump + pump, drainage outlet to the
+    # septic tank, and rainwater downpipes to a recharge pit.
+    water = build_water_source(fp, shaft, w, d)
+    drain = build_drainage_outlet(fp, shaft, w, d)
+    rain = build_rainwater(fp, w, d)
+    nodes: list[MepNode] = [*water[0], *drain[0], *rain[0]]
+    pipes += [*water[1], *drain[1], *rain[1]]
+
     placed = place_openings(plan)
     room_ids = {r.id for r in rooms}
     floor_doors = [o for o in placed if o.room_id in room_ids]
@@ -528,6 +737,13 @@ def build_mep_model(plan: Plan, floor: Optional[int] = None) -> MepModel:
     if db:
         elec.append(db)
     conduits = build_conduits(elec, db)
+    # energy meter at the entry; the metered service main runs meter -> DB.
+    if db:
+        meter = clamp_pt((db.x, db.y - 0.9), w, d)
+        nodes.append(MepNode(id="meter", kind="meter", x=meter[0], y=meter[1], label="Meter"))
+        conduits.append(Conduit(id="cd-main", room_id="service", points=[meter, (db.x, db.y)]))
+    circuits = assign_circuits(elec)
+
     clashes = compute_clashes(plan, floor, wet_rooms, fixtures, db, elec, floor_doors)
     summary = {
         "errors": len([c for c in clashes if c.severity == "error"]),
@@ -546,6 +762,8 @@ def build_mep_model(plan: Plan, floor: Optional[int] = None) -> MepModel:
         elec=elec,
         db=db,
         conduits=conduits,
+        nodes=nodes,
+        circuits=circuits,
         clashes=clashes,
         summary=summary,
         legend=legend,

@@ -106,6 +106,25 @@ FIXTURE_CODE = {
     "floor_drain": "FD",
     "washing_machine": "WM",
 }
+# Whole-house services plant — short code + symbol colour.
+NODE_CODE = {
+    "oht": "OHT",
+    "sump": "SUMP",
+    "pump": "P",
+    "meter": "kWh",
+    "inspection": "IC",
+    "septic": "ST",
+    "rainpit": "RWH",
+}
+NODE_COLOR = {
+    "oht": colors.HexColor("#2563eb"),
+    "sump": colors.HexColor("#0891b2"),
+    "pump": colors.HexColor("#475569"),
+    "meter": colors.HexColor("#1e293b"),
+    "inspection": colors.HexColor("#7c4a1e"),
+    "septic": colors.HexColor("#7c4a1e"),
+    "rainpit": colors.HexColor("#7c3aed"),
+}
 
 
 def _inr(x) -> str:
@@ -545,6 +564,26 @@ class MepFlowable(Flowable):
                 c.setFillColor(colors.white)
                 c.setFont("Helvetica-Bold", 4.6)
                 c.drawCentredString(px, py - 1.6, "DB")
+
+        # whole-house services plant (OHT, sump, pump, meter, IC, septic, RWH pit)
+        for nd in m.nodes:
+            px, py = P(nd.x, nd.y)
+            c.setFillColor(colors.white)
+            c.setStrokeColor(NODE_COLOR.get(nd.kind, INK))
+            c.setLineWidth(0.7)
+            c.circle(px, py, 5.0, fill=1, stroke=1)
+            c.setFillColor(NODE_COLOR.get(nd.kind, INK))
+            c.setFont("Helvetica-Bold", 3.8)
+            c.drawCentredString(px, py - 1.3, NODE_CODE.get(nd.kind, "?"))
+            c.setFont("Helvetica", 3.4)
+            c.drawCentredString(px, py - 7.2, nd.label)
+
+        # circuit schedule strip on the electrical sub-view
+        if self.layer != "plumbing" and m.circuits:
+            sched_txt = " · ".join(f"{ck.name} {ck.mcb_a}A" for ck in m.circuits)
+            c.setFillColor(colors.HexColor("#475569"))
+            c.setFont("Helvetica", 4.6)
+            c.drawString(ox, oy - 7, "Circuits: " + sched_txt)
 
 
 def _mep_legend(plan, floor, styles):

@@ -394,6 +394,14 @@ _BATH_STRIP_MIN_W = 1.5   # >= 1.5 m clear
 _BATH_STRIP_MAX_W = 1.8   # keep it a strip, not a second room
 _BATH_AREA_MIN = 3.3      # doc: attached bath area >= 3.3 m^2
 
+# Soft upper bound on a bedroom+bath block's bounding aspect (max side / min side).
+# The packer caps a block's stacked RUN at this multiple of its column width so a
+# block never stretches into a ribbon on a narrow side band; the leftover band depth
+# goes to the band's living / bare habitable room instead. A touch below the 1.9
+# "ribbon" line so the post-carve bedroom (slightly shorter than the block) lands
+# comfortably under it.
+_ASPECT_SOFT = 1.85
+
 
 # --------------------------------------------------------------------------- #
 # DESIGN VARIANTS — one brief, five distinct-but-all-good plans.
@@ -844,11 +852,20 @@ class VastuGridPacker:
     }
 
     def _max_run_for(self, room: ProgramRoom, col_w: float) -> float:
-        """Upper run for a room in a ``col_w``-wide column. Habitable rooms and
-        bedroom+bath blocks are uncapped (return +inf); service rooms are capped at
-        their useful area so they do not balloon when alone in a column."""
+        """Upper run for a room in a ``col_w``-wide column. The living and bare
+        bedrooms are uncapped (return +inf) so they soak up a band's slack. A
+        bedroom+bath BLOCK is capped so its bounding aspect stays at most
+        ``_ASPECT_SOFT`` — it grows to a generous size on a wide band but never
+        stretches into a 3:1 ribbon on a narrow one (the lone full-depth bedroom
+        defect). The min-run floor still wins if a room genuinely needs more depth to
+        meet its minimum area (a sub-minimum room is worse than a slightly long one).
+        Service rooms keep their useful-area cap so they never balloon when alone."""
         rt = room.type.value
-        if room.attach_bath or rt in self._HABITABLE:
+        if room.attach_bath:
+            if col_w <= 1e-6:
+                return float("inf")
+            return max(self._effective_min_run(room, col_w), _ASPECT_SOFT * col_w)
+        if rt in self._HABITABLE:
             return float("inf")
         cap = self._MAX_AREA_BY_TYPE.get(rt)
         if cap is None or col_w <= 1e-6:
@@ -996,6 +1013,17 @@ class VastuGridPacker:
             return min(max(widest, w), 0.66 * self.env_w)
         return widest
 
+    def _column_hab_floor(self, members: list[ProgramRoom]) -> float:
+        """The width a column MUST keep so every *code-habitable* room it carries
+        (living / bedroom / study — the rooms code checks for ``min_dim`` on their
+        narrowest side) clears that minimum. A column with no code-habitable room
+        (a pure service spine, or a dining/kitchen-only band) returns 0 here, so the
+        forced-shrink path may squeeze it instead of pushing a habitable band's
+        living below ``min_dim`` and tripping a code fail."""
+        if any(r.type.value in _HABITABLE_TYPES for r in members):
+            return self.min_dim
+        return 0.0
+
     def _column_widths(self, cols: dict[int, list[ProgramRoom]]) -> list[float]:
         """Column widths: each populated column is given AT LEAST its widest
         member's minimum width, and the remaining envelope width is shared in
@@ -1003,12 +1031,33 @@ class VastuGridPacker:
 
         Empty columns get zero width. If the floors alone exceed ``env_w`` (an
         over-columned narrow plot — the centre-fold normally prevents this) we
-        distribute by floor weight as a best-effort and let the stacker clamp."""
+        still PROTECT every column carrying a code-habitable room at ``min_dim``
+        (so its living/bedroom never lands under the code-min narrowest side) and
+        take the shrink out of the non-habitable spine; only if even the protected
+        floors don't fit do we fall back to a proportional squeeze."""
         f = self.band_fracs
         floor = [self._column_floor(cols[ci]) for ci in (0, 1, 2)]
         total_floor = sum(floor)
 
         if total_floor > self.env_w + 1e-9:
+            # Protect code-habitable bands at min_dim; shrink the rest to fit.
+            hab = [self._column_hab_floor(cols[ci]) for ci in (0, 1, 2)]
+            protected = sum(hab)
+            if protected <= self.env_w + 1e-9 and protected > 1e-9:
+                slack = self.env_w - protected
+                # bands above their habitable floor share the leftover by their own
+                # floor weight; a pure-service band (hab=0) can shrink to its widest
+                # member's bare minimum width but never below.
+                excess = [max(0.0, floor[ci] - hab[ci]) for ci in (0, 1, 2)]
+                bare = [self._column_bare_floor(cols[ci]) for ci in (0, 1, 2)]
+                # first satisfy every band's bare minimum width out of the slack
+                bare_extra = [max(0.0, bare[ci] - hab[ci]) for ci in (0, 1, 2)]
+                if sum(bare_extra) <= slack + 1e-9:
+                    rem = slack - sum(bare_extra)
+                    base = [hab[ci] + bare_extra[ci] for ci in (0, 1, 2)]
+                    esum = sum(excess) or 1.0
+                    return [base[ci] + rem * excess[ci] / esum for ci in (0, 1, 2)]
+            # genuinely can't protect — proportional squeeze (legacy best-effort).
             s = total_floor or 1.0
             return [self.env_w * fl / s for fl in floor]
 
@@ -1022,6 +1071,13 @@ class VastuGridPacker:
                 weight.append(0.65 * area + 0.35 * f[ci] * self.env_w * 3.0)
         wsum = sum(weight) or 1.0
         return [floor[ci] + slack * weight[ci] / wsum for ci in (0, 1, 2)]
+
+    def _column_bare_floor(self, members: list[ProgramRoom]) -> float:
+        """The widest member's own minimum width (no area-driven inflation) — the
+        absolute floor a column can shrink to under width pressure."""
+        if not members:
+            return 0.0
+        return max(self._min_width_for(r.type.value) for r in members)
 
     # -- packing ----------------------------------------------------------- #
     def pack(self, program: list[ProgramRoom]) -> PackResult:
@@ -1164,8 +1220,10 @@ class VastuGridPacker:
             h = need_area / col_w if col_w > 0 else mn
             desired.append(max(h, mn))
         desired = self._normalise_runs(desired, mins, avail, maxes)
-        # weld to the full column depth so capped service rooms don't leave a gap
-        self._stretch_to_fill(desired, maxes, avail)
+        # Hand any slack from capped rooms to the band's uncapped (habitable) room;
+        # a lone capped bedroom block with no habitable band-mate is left short so
+        # its surplus depth becomes open plot at the North edge, not a ribbon.
+        self._stretch_to_fill(desired, maxes, avail, members)
 
         y = self.miny
         for r, h in zip(members, desired):
@@ -1220,10 +1278,20 @@ class VastuGridPacker:
                     break  # filled all headroom; remaining gap welded by _fill_one_band
         return runs
 
-    def _stretch_to_fill(self, runs: list[float], maxes: list[float], avail: float) -> None:
-        """If capping service rooms left the column short of ``avail``, hand the
-        slack to the uncapped (habitable) rooms so the band tiles its full depth
-        without re-inflating a service room. Mutates ``runs`` in place."""
+    def _stretch_to_fill(
+        self, runs: list[float], maxes: list[float], avail: float,
+        members: Optional[list[ProgramRoom]] = None,
+    ) -> None:
+        """If capping rooms left the column short of ``avail``, hand the slack to the
+        uncapped (habitable) rooms so the band tiles its full depth without
+        re-inflating a capped room. Mutates ``runs`` in place.
+
+        With no uncapped room to absorb the slack, a PURE SERVICE column (only
+        WC/store/stair) is still filled evenly (a deep lone WC is harmless). But a
+        capped BEDROOM block with no habitable band-mate is left short: the slack
+        becomes open plot at the band's North edge (``_fill_one_band`` keeps it)
+        rather than stretching the bedroom into a ribbon. ``members`` (aligned with
+        ``runs``) lets us tell those two cases apart."""
         gap = avail - sum(runs)
         if gap <= 1e-9:
             return
@@ -1232,19 +1300,30 @@ class VastuGridPacker:
             base = sum(runs[i] for i in uncapped) or float(len(uncapped))
             for i in uncapped:
                 runs[i] += gap * (runs[i] / base if base > 0 else 1.0 / len(uncapped))
-        else:
-            # no habitable room here (pure service column): share evenly
+            return
+        # no uncapped room. Only fill evenly if the whole column is service rooms
+        # (no bedroom block); otherwise leave the gap as open plot.
+        has_block = bool(members) and any(m.attach_bath for m in members)
+        if not has_block:
             for i in range(len(runs)):
                 runs[i] += gap / len(runs)
 
+    # A gap larger than this (m) at a band's North edge is an INTENTIONAL open-plot
+    # strip left by ``_stretch_to_fill`` (a lone capped bedroom that would otherwise
+    # ribbon); smaller gaps are numerical drift to be welded out.
+    _BAND_GAP_TOL = 0.25
+
     def _fill_one_band(self, band: list[PlacedRoom]) -> None:
-        """Snap a single fully-stacked band to [miny, maxy] and weld neighbours so
-        there are no slivers from numerical drift (the band tiles its column)."""
+        """Snap a fully-stacked band to [miny, maxy] and weld neighbours so there are
+        no slivers from numerical drift. A genuine gap at the North edge (left
+        deliberately for a lone capped bedroom, see ``_stretch_to_fill``) is kept as
+        open plot rather than re-inflating the last room into a ribbon."""
         band = sorted(band, key=lambda p: p.y0)
         if not band:
             return
         band[0].y0 = self.miny
-        band[-1].y1 = self.maxy
+        if self.maxy - band[-1].y1 <= self._BAND_GAP_TOL:
+            band[-1].y1 = self.maxy  # drift only — weld to the edge
         for a, b in zip(band, band[1:]):
             mid = 0.5 * (a.y1 + b.y0)
             a.y1 = mid
@@ -1369,6 +1448,10 @@ def _make_openings(
     windows: list[Opening] = []
     for p in placed:
         rt = p.type.value
+        # Open / virtual rooms (courtyard, sit-out, balcony, parking, shafts) are
+        # open-to-sky or non-enclosed — they get no conventional door/window.
+        if p.type in _SITE_ROOM_TYPES:
+            continue
         # -- door (main door for the entrance) --
         if rt == "entrance":
             dw, dh = _DOOR_SIZE["main"]
@@ -1892,6 +1975,7 @@ def _enforce_coverage(
     max_cov_pct: float,
     priority_of: dict[str, int],
     essential_priority: int,
+    min_dim: float = 0.0,
 ) -> list[str]:
     """Bring the footprint under the ground-coverage limit (1% margin) and return
     the ids dropped to do so.
@@ -1899,15 +1983,66 @@ def _enforce_coverage(
     Footprint is reduced by removing the lowest-priority OPTIONAL rooms first
     (utility/entrance/dining/pooja) — never undersizing a habitable room. Only if
     nothing optional remains and the layout is still marginally over (dense, all-
-    essential programs) do we apply a tiny shrink toward the SW origin, which is
-    safe there because such layouts have large, well-above-minimum rooms."""
+    essential programs) do we apply a shrink toward the SW origin.
+
+    On a tight ground-coverage cap (e.g. Telangana's 55 %) that residual shrink is
+    the one place a habitable room can be pushed below the code-min narrowest side
+    (``min_dim``). To keep code fails at zero we shrink ANISOTROPICALLY: bands run
+    full-height as vertical strips, so a y-only scale leaves every band's WIDTH (and
+    thus the living/bedroom min-dim side) untouched while still reducing the
+    footprint. We put as much of the reduction as possible on the axis that has
+    slack and clamp so no code-habitable room's narrowest side drops under
+    ``min_dim``; if a single global (sx, sy) can't keep every habitable room legal
+    we shed one more optional room and retry, falling back to the legacy uniform
+    squeeze only when nothing optional is left (large, well-above-minimum rooms)."""
     dropped: list[str] = []
     if not placed:
         return dropped
     cap = (max_cov_pct - 1.0) / 100.0 * plot_area
+    minx, miny, _, _ = env
 
     def footprint() -> float:
         return sum(p.area for p in placed)
+
+    def _shrink(sx: float, sy: float) -> None:
+        for p in placed:
+            p.x0 = minx + (p.x0 - minx) * sx
+            p.x1 = minx + (p.x1 - minx) * sx
+            p.y0 = miny + (p.y0 - miny) * sy
+            p.y1 = miny + (p.y1 - miny) * sy
+
+    def _hab(p: PlacedRoom) -> bool:
+        return p.type.value in _HABITABLE_TYPES
+
+    def _aniso_factors(fac: float) -> Optional[tuple[float, float]]:
+        """Pick (sx, sy) with sx*sy == fac that keeps every code-habitable room's
+        narrowest side >= ``min_dim``. Prefer keeping the smaller axis (so we don't
+        eat into a width that is already at the min) by loading the shrink onto the
+        axis with the most habitable slack. Returns None if no global pair works."""
+        if min_dim <= 0.0:
+            return None
+        hab = [p for p in placed if _hab(p)]
+        if not hab:
+            return (fac ** 0.5, fac ** 0.5)
+        # smallest legal per-axis scale: any less and some habitable room's width
+        # (sx) or depth (sy) drops under min_dim.
+        sx_floor = max(min_dim / p.width for p in hab)
+        sy_floor = max(min_dim / p.depth for p in hab)
+        # Candidate (sx, sy) pairs with sx*sy == fac, in preference order: shrink
+        # depth only (bands are vertical strips, so widths — the usual min-dim side —
+        # stay put), then width only, then the least width-shrink that still clears
+        # sx_floor with the remainder on depth.
+        for sx, sy in (
+            (1.0, fac),
+            (fac, 1.0),
+            (max(sx_floor, fac), fac / max(sx_floor, fac)),
+        ):
+            if (
+                sx + 1e-9 >= sx_floor and sy + 1e-9 >= sy_floor
+                and sx <= 1.0 + 1e-9 and sy <= 1.0 + 1e-9
+            ):
+                return (sx, sy)
+        return None
 
     # 1) shed optional rooms, lowest priority first
     while footprint() > cap:
@@ -1918,16 +2053,207 @@ def _enforce_coverage(
         placed.remove(victim)
         dropped.append(victim.id)
 
-    # 2) residual shrink toward SW only if still over (all-essential & dense)
-    if footprint() > cap > 0:
-        minx, miny, _, _ = env
-        s = (cap / footprint()) ** 0.5
-        for p in placed:
-            p.x0 = minx + (p.x0 - minx) * s
-            p.x1 = minx + (p.x1 - minx) * s
-            p.y0 = miny + (p.y0 - miny) * s
-            p.y1 = miny + (p.y1 - miny) * s
+    # 2) residual shrink — anisotropic + min-dim-safe; shed one more optional and
+    #    retry if a legal global scale doesn't exist, else legacy uniform squeeze.
+    while footprint() > cap > 0:
+        fac = cap / footprint()
+        factors = _aniso_factors(fac)
+        if factors is not None:
+            _shrink(*factors)
+            break
+        optional = [p for p in placed if priority_of.get(p.id, 0) < essential_priority]
+        if optional:
+            victim = min(optional, key=lambda p: priority_of.get(p.id, 0))
+            placed.remove(victim)
+            dropped.append(victim.id)
+            continue
+        s = fac ** 0.5  # nothing optional left: uniform squeeze (rooms well over min)
+        _shrink(s, s)
+        break
     return dropped
+
+
+# Any leftover rectangle inside the building footprint bigger than this (m^2) is
+# real floor a 10-yr architect would never ship blank: it is welded into a
+# neighbour (thin drift strip) or made a labelled COURTYARD (open-to-sky
+# light/ventilation court — a premium Indian feature, Vastu-positive in the
+# N/NE/centre). Below it the rectangle is wall-thickness / rounding noise, ignored.
+_VOID_NOISE_SQM = 0.3
+# Don't weld two void slabs into one courtyard across a tiny edge mismatch.
+_VOID_X_TOL = 0.05
+
+
+def _footprint_voids(
+    placed: list[PlacedRoom], env: tuple[float, float, float, float]
+) -> list[tuple[float, float, float, float]]:
+    """Rectangles INSIDE the buildable envelope that no built-up room covers.
+
+    Rooms tile the envelope in axis-aligned bands; a tight bedroom-block band can
+    stop short of the North edge (see ``VastuGridPacker._stretch_to_fill``) leaving
+    an unassigned gap that renders as blank floor. We find every such gap exactly:
+    split the envelope into vertical slabs at each room x-edge, find the uncovered
+    y-intervals in each slab, then merge horizontally-adjacent slabs that share the
+    same uncovered interval into the widest possible rectangle. Site/open rooms
+    (sit-out, parking, balcony, an existing courtyard) are NOT counted as cover —
+    they live in the setback margins, not the footprint — and any room already
+    outside the envelope is clipped to it."""
+    minx, miny, maxx, maxy = env
+    builtup = [p for p in placed if p.type not in _SITE_ROOM_TYPES]
+    # candidate x-edges inside the envelope (clamped + de-duplicated)
+    xs = {minx, maxx}
+    for p in builtup:
+        for x in (p.x0, p.x1):
+            if minx - 1e-9 <= x <= maxx + 1e-9:
+                xs.add(min(max(x, minx), maxx))
+    xe = sorted(xs)
+
+    # per-slab uncovered y-intervals
+    slabs: list[tuple[float, float, list[tuple[float, float]]]] = []
+    for xa, xb in zip(xe, xe[1:]):
+        if xb - xa <= _VOID_X_TOL:
+            continue
+        xm = 0.5 * (xa + xb)
+        covered = sorted(
+            (max(miny, p.y0), min(maxy, p.y1))
+            for p in builtup
+            if p.x0 - 1e-9 <= xm <= p.x1 + 1e-9 and p.y1 > p.y0
+        )
+        gaps: list[tuple[float, float]] = []
+        cursor = miny
+        for c0, c1 in covered:
+            if c0 > cursor + 1e-6:
+                gaps.append((cursor, c0))
+            cursor = max(cursor, c1)
+        if maxy > cursor + 1e-6:
+            gaps.append((cursor, maxy))
+        slabs.append((xa, xb, gaps))
+
+    # merge horizontally-adjacent slabs sharing an (approximately) identical gap
+    rects: list[tuple[float, float, float, float]] = []
+    used = [set() for _ in slabs]
+    for i, (xa, xb, gaps) in enumerate(slabs):
+        for gi, (ga, gb) in enumerate(gaps):
+            if gi in used[i]:
+                continue
+            x_end = xb
+            j = i + 1
+            while j < len(slabs) and abs(slabs[j][0] - x_end) <= _VOID_X_TOL:
+                match = None
+                for gj, (ha, hb) in enumerate(slabs[j][2]):
+                    if gj not in used[j] and abs(ha - ga) <= 0.06 and abs(hb - gb) <= 0.06:
+                        match = gj
+                        break
+                if match is None:
+                    break
+                used[j].add(match)
+                x_end = slabs[j][1]
+                j += 1
+            rects.append((xa, ga, x_end, gb))
+    # Return every gap above a small noise floor (wall thickness / rounding). The
+    # caller welds thin drift strips into a neighbour and courtyards genuine voids,
+    # so a thin strip need NOT clear the courtyard area threshold to be removed.
+    return [r for r in rects if (r[2] - r[0]) * (r[3] - r[1]) >= _VOID_NOISE_SQM]
+
+
+# A leftover rectangle this thin (m) on its short side is not a usable room — it
+# is the drift strip between a band's last room and the setback line (often opened
+# up by the coverage shrink). It is WELDED into the abutting room rather than made
+# a courtyard, so the band simply reaches the envelope edge.
+_VOID_WELD_MAX_THIN = 1.2
+
+
+def _fill_footprint_voids(
+    placed: list[PlacedRoom],
+    env: tuple[float, float, float, float],
+    floor: int = 0,
+    cov_cap: float = float("inf"),
+    plot_area: float = 0.0,
+) -> list[PlacedRoom]:
+    """Leave NO unassigned blank floor inside the envelope.
+
+    Every leftover rectangle is handled one of two ways:
+      * a THIN drift strip (short side < ``_VOID_WELD_MAX_THIN`` — e.g. the 0.3-0.7 m
+        gap between a band's top room and the rear setback) is WELDED into the
+        built-up room it abuts, so the band reaches the edge — but only when that
+        extra built-up area stays under the ground-coverage cap (``cov_cap``);
+      * otherwise (a genuine room-sized void — the interior-gap defect — or a thin
+        strip the cap won't allow welding) it becomes a labelled COURTYARD: a
+        virtual/open room type (not code-habitable, not FAR built-up, see
+        ``classification.virtualRoomTypes``) so it never trips a min-area/dim code
+        fail or the coverage cap, rendering + labelling as a Vastu-positive
+        open-to-sky court.
+    Mutates ``placed`` (welds existing rooms / appends courtyards) and returns the
+    courtyards added."""
+    added: list[PlacedRoom] = []
+    suffix = "" if floor == 0 else f"_f{floor}"
+    builtup = [p for p in placed if p.type not in _SITE_ROOM_TYPES]
+    k = 0
+    # Largest first: handle big interior gaps before the thin edge strips.
+    for (x0, y0, x1, y1) in sorted(
+        _footprint_voids(placed, env), key=lambda r: -(r[2] - r[0]) * (r[3] - r[1])
+    ):
+        short = min(x1 - x0, y1 - y0)
+        # A thin drift strip is preferentially WELDED into the room it abuts — BUT
+        # welding adds built-up area, so it is only safe when it won't push the
+        # footprint over the ground-coverage cap. We try the weld and roll it back if
+        # it would violate coverage; otherwise (and for every gap a single room can't
+        # span) we drop in a COURTYARD, which is virtual and never counts toward
+        # coverage. Either way no blank floor is left inside the envelope.
+        if short < _VOID_WELD_MAX_THIN and _weld_strip(
+            builtup, x0, y0, x1, y1, cov_cap=cov_cap, plot_area=plot_area
+        ):
+            continue
+        rid = f"courtyard{suffix}" if k == 0 else f"courtyard{k + 1}{suffix}"
+        court = PlacedRoom(rid, RoomType.courtyard, x0, y0, x1, y1, 3.0, floor)
+        placed.append(court)
+        added.append(court)
+        k += 1
+    return added
+
+
+def _weld_strip(
+    builtup: list[PlacedRoom],
+    x0: float, y0: float, x1: float, y1: float,
+    cov_cap: float = float("inf"),
+    plot_area: float = 0.0,
+) -> bool:
+    """Grow a built-up room to swallow a thin leftover strip [x0,y0,x1,y1].
+
+    To stay overlap-free the welded room must span the strip's WHOLE long edge
+    (then extending that one wall to the strip's far edge fills the strip exactly and
+    abuts no other room across it). The weld is REJECTED if the strip's area would
+    push the total built-up footprint over the ground-coverage cap (``cov_cap``) —
+    on a coverage-bound plot the gap is the cap eating into the footprint, so it must
+    become a (virtual) courtyard, not extra built-up area. A strip narrower than the
+    room it abuts is left for the courtyard path. Returns True if a room absorbed
+    it."""
+    strip_area = (x1 - x0) * (y1 - y0)
+    builtup_now = sum(p.area for p in builtup)
+    if builtup_now + strip_area > cov_cap + 1e-6:
+        return False  # welding would breach ground coverage — courtyard it instead
+    horizontal = (x1 - x0) >= (y1 - y0)  # strip runs E-W -> weld a N/S neighbour
+    for p in builtup:
+        if horizontal:
+            spans = p.x0 <= x0 + 0.06 and p.x1 >= x1 - 0.06
+            if not spans:
+                continue
+            if abs(p.y1 - y0) < 0.06:      # room sits directly BELOW the strip
+                p.y1 = max(p.y1, y1)
+                return True
+            if abs(p.y0 - y1) < 0.06:      # room sits directly ABOVE the strip
+                p.y0 = min(p.y0, y0)
+                return True
+        else:
+            spans = p.y0 <= y0 + 0.06 and p.y1 >= y1 - 0.06
+            if not spans:
+                continue
+            if abs(p.x1 - x0) < 0.06:      # room sits directly to the WEST
+                p.x1 = max(p.x1, x1)
+                return True
+            if abs(p.x0 - x1) < 0.06:      # room sits directly to the EAST
+                p.x0 = min(p.x0, x0)
+                return True
+    return False
 
 
 @dataclass
@@ -1978,17 +2304,61 @@ def _kitchen_dining_adjacent(placed: list[PlacedRoom]) -> bool:
 
 _HABITABLE_TYPES = {"living", "master_bedroom", "bedroom", "childrens_bedroom", "study"}
 
+# Above this bounding-box aspect a habitable room reads as a RIBBON (a 2.6 m-wide
+# corridor that can't take a bed + wardrobe + circulation, or a bowling-alley
+# "big living"). A practising architect keeps living/bedroom proportions roughly
+# in [1 : 1.9]; past that the room is unusable however large its area.
+_ASPECT_MAX = 1.9
+
+
+def _room_aspect(p: PlacedRoom) -> float:
+    w, h = p.width, p.depth
+    if min(w, h) <= 1e-6:
+        return 1.0
+    return max(w, h) / min(w, h)
+
+
+def _aspect_bad(placed: list[PlacedRoom]) -> int:
+    """Count of HABITABLE rooms (living + every bedroom + study) whose bounding-box
+    aspect — max(w, h) / min(w, h) — exceeds ``_ASPECT_MAX``. A ranking term: a
+    layout that gives the family rooms workable proportions beats one that packs
+    the same area into ribbons. Ranks above Vastu / living-centre but below the
+    hard code + kitchen-dining invariants."""
+    return sum(
+        1 for p in placed
+        if p.type.value in _HABITABLE_TYPES and _room_aspect(p) > _ASPECT_MAX
+    )
+
+
+def _worst_aspect(placed: list[PlacedRoom]) -> float:
+    """Worst habitable-room aspect on a layout (rounded), used as a FINER ranking
+    term right after ``_aspect_bad``: when two layouts tie on the ribbon COUNT,
+    prefer the one whose worst room is less elongated (a 2.2 master beats a 3.0
+    bowling-alley living). Keeps the optimiser pushing toward squarer rooms even
+    when it can't get every room under the threshold on a tight plot."""
+    return round(
+        max((_room_aspect(p) for p in placed if p.type.value in _HABITABLE_TYPES), default=1.0),
+        2,
+    )
+
 
 def _living_in_center(plan: Plan) -> int:
-    """Count of livings whose centroid lands in the Brahmasthan (CENTER). A hall in
-    the dead-centre is a Vastu defect (and reads as a room with no exterior wall),
-    so the ranker prefers an otherwise-equal layout that keeps the living on a
-    compass edge — pushing the big hall to the front (E/NE for an East plot) and
-    leaving the Brahmasthan open for circulation."""
-    return sum(
-        1 for r in plan.rooms
-        if r.type.value == "living" and r.zone is not None and r.zone.value == "CENTER"
-    )
+    """Count of HABITABLE rooms (living + every bedroom) whose centroid lands in the
+    Brahmasthan (CENTER). A hall — or a bedroom — in the dead-centre is a Vastu
+    defect (and reads as a room with no exterior wall), so the ranker prefers an
+    otherwise-equal layout that keeps the living on a compass edge (the big hall to
+    the front, E/NE) and the master/bedrooms on their sectors (SW/W/...), leaving the
+    Brahmasthan open for circulation. The living is weighted double so the front-hall
+    intent still dominates when a layout must choose which room sits centre-most."""
+    n = 0
+    for r in plan.rooms:
+        if r.zone is None or r.zone.value != "CENTER":
+            continue
+        if r.type.value == "living":
+            n += 2
+        elif r.type.value in _HABITABLE_TYPES:
+            n += 1
+    return n
 
 
 def _living_not_largest(placed: list[PlacedRoom]) -> int:
@@ -2028,6 +2398,26 @@ _BAND_VARIANTS = [
     (0.52, 0.14, 0.34),
     (0.54, 0.12, 0.34),
     (0.38, 0.16, 0.46),
+]
+
+# Two-band (force_two_band) fraction variants for NARROW plots. The centre is set
+# to ~0 (the service spine folds into the sides), giving two WIDE bands (~3.5-4.8 m)
+# instead of three thin ones. A full-depth room in a ~3.8 m band is ~3.8 x 5
+# (aspect ~1.3) rather than a 2.6 m ribbon. The WEST-heavy entries (0.60+) make the
+# West band hold the guest + dining comfortably and push the East band's living far
+# enough East that its centroid clears the centre third (so the hall reads E/NE, not
+# a CENTER Brahmasthan). Balanced entries help the upper floor (master + bedroom
+# West, living + stair East). Sorted West-heavy first so a good-proportioned,
+# front-living candidate is found early.
+_TWO_BAND_VARIANTS = [
+    (0.62, 0.0, 0.38),
+    (0.60, 0.0, 0.40),
+    (0.58, 0.0, 0.42),
+    (0.56, 0.0, 0.44),
+    (0.54, 0.0, 0.46),
+    (0.50, 0.0, 0.50),
+    (0.46, 0.0, 0.54),
+    (0.40, 0.0, 0.60),
 ]
 
 
@@ -2193,39 +2583,69 @@ def _layout_floor(
         for r in program
         if r.type.value == "staircase" or r.id in ("toilet_common", "u_toilet_common")
     }
+    # Sweep the 3-band layouts, and ALSO a 2-band (force_two_band) collapse — but
+    # only on the private UPPER floor (no kitchen). On a narrow plot the 3-band split
+    # makes side bands ~2.6 m wide, so a full-depth room becomes a 3:1 ribbon; folding
+    # the centre spine into two ~3.8 m side bands lets the master + a bedroom share
+    # one band and the living + stair the other, each ~3.8 x 5 (aspect ~1.3).
+    #
+    # The social GROUND / single floor keeps the 3-band sweep so the kitchen stays
+    # SE, the pooja NE/N and the stair on the central service spine (a 2-band collapse
+    # there shoves the pooja to NW and the dining to CENTER — Vastu losses the ruleset
+    # and tests forbid). Its lone guest/parents bedroom is squared instead by the
+    # bedroom-block area cap PLUS leaving the freed band depth as front circulation
+    # rather than re-inflating the bedroom to a ribbon (see ``_stack_column``).
+    env_w = env[2] - env[0]
+    has_kitchen = any(r.type.value == "kitchen" for r in program)
+    two_band_first = env_w < 9.0 and not has_kitchen
     best: Optional[tuple] = None
-    for bands in _BAND_VARIANTS:
-        for base in _build_swap_sets(program):
-            overrides = dict(pins, **(base or {}))
-            packer = VastuGridPacker(
-                env, min_dim, min_habitable, min_area_by_type, keepout,
-                band_fracs=bands, col_overrides=overrides, fill_center=True,
-            )
-            result = packer.pack(program)
-            if not result.placed:
-                continue
-            result.placed[:] = _carve_attached_baths(result.placed, program_by_id, plot, min_dim)
-            cov_dropped = _enforce_coverage(result.placed, env, plot_area, max_cov, prio, ESS)
-            try:
-                _assert_no_overlap(result.placed)
-                _assert_inside(result.placed, env)
-            except AssertionError:
-                continue
-            all_dropped = result.dropped + cov_dropped
-            ess_drop = sum(1 for d in all_dropped if prio.get(d, 0) >= ESS)
-            plan, vastu, code = _score_candidate(_build_plan(list(result.placed), plot, env, "floor"))
-            kd_bad = 0 if _kitchen_dining_adjacent(result.placed) else 1
-            liv_center = _living_in_center(plan)
-            liv_not_largest = _living_not_largest(result.placed)
-            # Ladder (best = smallest): no essential drop, then no code fail, then
-            # kitchen-dining adjacent, then keep the hall OFF the Brahmasthan centre
-            # (big living lands at the front, E/NE — not dead-centre), then highest
-            # Vastu, then fewest drops; "living is largest" is only a last-resort
-            # tiebreaker so it never DRIVES the hall into the centre.
-            key = (ess_drop, code.summary.fail_count, kd_bad, liv_center,
-                   -round(vastu.score), len(all_dropped), liv_not_largest)
-            if best is None or key < best[0]:
-                best = (key, list(result.placed), all_dropped)
+    for two_band in ((False, True) if two_band_first else (False,)):
+        band_set = _TWO_BAND_VARIANTS if two_band else _BAND_VARIANTS
+        for bands in band_set:
+            for base in _build_swap_sets(program):
+                overrides = dict(pins, **(base or {}))
+                packer = VastuGridPacker(
+                    env, min_dim, min_habitable, min_area_by_type, keepout,
+                    band_fracs=bands, col_overrides=overrides, fill_center=True,
+                    force_two_band=two_band,
+                )
+                result = packer.pack(program)
+                if not result.placed:
+                    continue
+                result.placed[:] = _carve_attached_baths(result.placed, program_by_id, plot, min_dim)
+                cov_dropped = _enforce_coverage(result.placed, env, plot_area, max_cov, prio, ESS, min_dim)
+                # Any leftover band space inside the footprint becomes a labelled
+                # courtyard (or is welded into a neighbour where coverage allows) so
+                # the floor never renders a blank gap; the courtyard is virtual, so it
+                # never affects code/coverage.
+                _fill_footprint_voids(
+                    result.placed, env, cov_cap=(max_cov - 1.0) / 100.0 * plot_area,
+                    plot_area=plot_area,
+                )
+                try:
+                    _assert_no_overlap(result.placed)
+                    _assert_inside(result.placed, env)
+                except AssertionError:
+                    continue
+                all_dropped = result.dropped + cov_dropped
+                ess_drop = sum(1 for d in all_dropped if prio.get(d, 0) >= ESS)
+                plan, vastu, code = _score_candidate(_build_plan(list(result.placed), plot, env, "floor"))
+                kd_bad = 0 if _kitchen_dining_adjacent(result.placed) else 1
+                aspect_bad = _aspect_bad(result.placed)
+                worst_asp = _worst_aspect(result.placed)
+                liv_center = _living_in_center(plan)
+                liv_not_largest = _living_not_largest(result.placed)
+                # Ladder (best = smallest): no essential drop, then no code fail, then
+                # kitchen-dining adjacent, then good room PROPORTIONS (ribbon COUNT),
+                # then keep the hall OFF the Brahmasthan centre (front hall, E/NE),
+                # then highest Vastu, then the worst single aspect as a FINE squareness
+                # tie-break (placed below Vastu so a marginally squarer layout never
+                # displaces the pooja/stair from their sectors), then fewest drops;
+                # "living is largest" is only a last-resort tiebreaker.
+                key = (ess_drop, code.summary.fail_count, kd_bad, aspect_bad, liv_center,
+                       -round(vastu.score), worst_asp, len(all_dropped), liv_not_largest)
+                if best is None or key < best[0]:
+                    best = (key, list(result.placed), all_dropped)
     if best is None:
         return [], [r.id for r in program]
     return best[1], best[2]
@@ -2286,6 +2706,10 @@ def _generate_multifloor(
         p.floor = 0
     for p in u_placed:
         p.floor = 1
+        # courtyard ids are minted per-floor as "courtyard"; suffix the upper one so
+        # ground + upper voids never collide on room / opening ids.
+        if p.type == RoomType.courtyard and not p.id.endswith("_f1"):
+            p.id = f"{p.id}_f1"
     placed = list(g_placed) + list(u_placed)
     for extra in range(2, floors):  # G+2+: repeat the upper layout one level up
         for p in u_placed:
@@ -2530,13 +2954,21 @@ def generate_plan(
     def essential_dropped(dropped: list[str]) -> int:
         return sum(1 for d in dropped if prio.get(d, 0) >= _ESSENTIAL_PRIORITY)
 
-    for bands in _BAND_VARIANTS:
+    # Sweep the 3-band layouts. The bedroom-block area cap (see
+    # ``VastuGridPacker._max_run_for``) already squares bedrooms on a narrow plot, so
+    # the single-floor social plan keeps the Vastu-friendly 3-band sweep (kitchen SE,
+    # pooja NE, stair on the central spine) rather than a 2-band collapse that would
+    # displace them.
+    band_plan = [(False, b) for b in _BAND_VARIANTS]
+
+    for force_two_band, bands in band_plan:
         for overrides in swap_sets:
             attempts += 1
             packer = VastuGridPacker(
                 env, min_dim, min_habitable, min_area_by_type, keepout,
                 band_fracs=bands, col_overrides=overrides,
                 fill_center=bool(variant and variant.fill_center),
+                force_two_band=force_two_band,
             )
             result = packer.pack(program)
             if not result.placed:
@@ -2549,7 +2981,15 @@ def generate_plan(
             # trim the footprint under the coverage limit (drops optional rooms,
             # never undersizes a habitable one).
             cov_dropped = _enforce_coverage(
-                result.placed, env, plot_area, max_cov, prio, _ESSENTIAL_PRIORITY
+                result.placed, env, plot_area, max_cov, prio, _ESSENTIAL_PRIORITY, min_dim
+            )
+            # Fill any leftover footprint band space with a labelled courtyard (or
+            # weld a thin strip into a neighbour where coverage allows) so the floor
+            # never ships an unassigned blank gap; the courtyard is virtual — it
+            # neither counts toward coverage nor triggers a min-area/dim code fail.
+            _fill_footprint_voids(
+                result.placed, env, cov_cap=(max_cov - 1.0) / 100.0 * plot_area,
+                plot_area=plot_area,
             )
             all_dropped = result.dropped + cov_dropped
             _assert_no_overlap(result.placed)
@@ -2564,6 +3004,12 @@ def generate_plan(
             cov = getattr(code.metrics, "ground_coverage_pct", 0.0) or 0.0
             # dining must abut the kitchen (functional must, just under code safety).
             kd_bad = 0 if _kitchen_dining_adjacent(result.placed) else 1
+            # good room proportions (ribbon COUNT) rank just below the hard code +
+            # kitchen-dining invariants and above Vastu; the worst single aspect is a
+            # finer squareness tie-break placed just below the front-living term so a
+            # marginally squarer layout can never shove the hall into the centre.
+            aspect_bad = _aspect_bad(result.placed)
+            worst_asp = _worst_aspect(result.placed)
             # keep the big hall off the dead-centre Brahmasthan (front living), and
             # only use "hall is largest" as a last-resort tiebreaker so it never
             # forces the hall central on a narrow plot.
@@ -2575,10 +3021,12 @@ def generate_plan(
                     essential_dropped(all_dropped),
                     code.summary.fail_count,
                     kd_bad,
+                    aspect_bad,
                     liv_center,
                     len(all_dropped),
                     -round(cov),
                     -round(vastu.score),
+                    worst_asp,
                     liv_not_largest,
                 )
             else:
@@ -2586,8 +3034,10 @@ def generate_plan(
                     essential_dropped(all_dropped),
                     code.summary.fail_count,
                     kd_bad,
+                    aspect_bad,
                     liv_center,
                     -round(vastu.score),
+                    worst_asp,
                     len(all_dropped),
                     liv_not_largest,
                 )

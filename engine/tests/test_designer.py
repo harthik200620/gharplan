@@ -79,11 +79,15 @@ def _bbox(poly):
     return (min(xs), min(ys), max(xs), max(ys))
 
 
-def _no_overlaps(plan) -> None:
+def _no_overlaps(plan, builtup_only: bool = False) -> None:
     # Overlap is only a conflict WITHIN a floor; stacked floors of a G+1 share the
-    # same footprint by design, so compare rooms floor-by-floor.
+    # same footprint by design, so compare rooms floor-by-floor. ``builtup_only``
+    # restricts the check to enclosed footprint rooms (excludes the open SITE rooms
+    # laid out in the setback margins) when only the footprint tiling is under test.
     by_floor: dict[int, list] = {}
     for r in plan.rooms:
+        if builtup_only and r.type.value in SITE_OR_VIRTUAL_TYPES:
+            continue
         by_floor.setdefault(r.floor or 0, []).append(r)
     for fl, rooms in by_floor.items():
         polys = [box(*_bbox(r.polygon)) for r in rooms]
@@ -116,6 +120,34 @@ def _within_envelope(plan, env) -> None:
         x0, y0, x1, y1 = _bbox(r.polygon)
         assert x0 >= minx - 1e-6 and y0 >= miny - 1e-6
         assert x1 <= maxx + 1e-6 and y1 <= maxy + 1e-6
+
+
+def _worst_interior_void(plan, env) -> float:
+    """Largest per-floor blank gap INSIDE the buildable envelope: the envelope area
+    minus the area of every room whose rectangle sits inside it (a courtyard counts
+    as filling; site rooms live in the setback margins, outside the envelope, so are
+    excluded). A 10-yr architect ships no unassigned interior floor — this must be
+    ~0 once the generator courtyards / welds every leftover band space."""
+    minx, miny, maxx, maxy = env
+    env_area = max(0.0, maxx - minx) * max(0.0, maxy - miny)
+    worst = 0.0
+    for fl in sorted({(r.floor or 0) for r in plan.rooms}):
+        floor_rooms = [r for r in plan.rooms if (r.floor or 0) == fl]
+        # Skip a storey with no enclosed (non-site) room — that is an un-built-up
+        # floor (e.g. a 2BHK forced to G+1), not blank floor inside a room layout.
+        if not any(r.type.value not in SITE_OR_VIRTUAL_TYPES for r in floor_rooms):
+            continue
+        used = 0.0
+        for r in floor_rooms:
+            x0, y0, x1, y1 = _bbox(r.polygon)
+            inside = (
+                x0 >= minx - 0.02 and y0 >= miny - 0.02
+                and x1 <= maxx + 0.02 and y1 <= maxy + 0.02
+            )
+            if inside:
+                used += (x1 - x0) * (y1 - y0)
+        worst = max(worst, env_area - used)
+    return worst
 
 
 def _share_edge(a, b, tol=0.05) -> bool:
@@ -574,3 +606,64 @@ def test_e_facing_roomy_bedrooms_meet_comfort_minimums():
         assert _area(s) >= 12.5 - 1e-6, (
             f"secondary bedroom {s.id} is only {_area(s):.1f} m2"
         )
+
+
+# --------------------------------------------------------------------------- #
+# R5 — no unassigned interior void, and every state's 4BHK is code-clean.
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize(
+    "state,city,facing,bhk",
+    [
+        ("KA", "Bengaluru", "E", 3), ("KA", "Bengaluru", "E", 4),
+        ("KA", "Bengaluru", "W", 4), ("KA", "Bengaluru", "N", 4),
+        ("KA", "Bengaluru", "S", 4),
+        ("TG", "Hyderabad", "E", 3), ("TG", "Hyderabad", "E", 4),
+        ("AP", "Tirupati", "E", 3), ("AP", "Tirupati", "E", 4),
+    ],
+)
+def test_no_interior_void_in_footprint(state, city, facing, bhk):
+    # A prior round left leftover band space inside the footprint as blank floor (a
+    # ~13.6 m2 void on KA E 3BHK G+1). The generator now turns every leftover into a
+    # labelled courtyard (or welds a thin drift strip into its neighbour where
+    # ground coverage allows), so NO floor carries an unassigned gap > 2 m2.
+    plot = _plot(state, city=city, facing=facing)
+    plan, _, code, _ = generate_plan(bhk, plot)
+    env, _ = _envelope_and_keepout(plan.plot, get_code_rules())
+    _no_overlaps(plan, builtup_only=True)   # courtyards/welds keep the footprint tiling valid
+    _within_envelope(plan, env)
+    void = _worst_interior_void(plan, env)
+    assert void <= 2.0, f"{state} {facing} {bhk}BHK leaves a {void:.1f} m2 interior void"
+
+
+def test_ka_e_3bhk_g1_void_is_a_courtyard():
+    # The exact defect: KA E 3BHK G+1 ground floor used to have a ~13.6 m2 blank gap
+    # in the West band (north of the guest + toilet). It must now be a real, labelled
+    # courtyard room that renders + fills the gap.
+    plan, _, _, _ = generate_plan(3, _plot("KA", facing="E"))
+    courts = [r for r in plan.rooms if r.type.value == "courtyard"]
+    assert courts, "no courtyard placed to fill the leftover footprint band"
+    ground_courts = [r for r in courts if (r.floor or 0) == 0]
+    assert ground_courts, "ground-floor void was not filled with a courtyard"
+    # the ground courtyard is a genuine room, not a sliver
+    assert max(_area(c) for c in ground_courts) >= 2.0
+    env, _ = _envelope_and_keepout(plan.plot, get_code_rules())
+    _within_envelope(plan, env)
+
+
+@pytest.mark.parametrize(
+    "state,city", [("KA", "Bengaluru"), ("TG", "Hyderabad"), ("AP", "Tirupati")]
+)
+def test_4bhk_every_state_is_code_clean(state, city):
+    # DEFECT 2: TG E 4BHK G+1 used to ship code fail_count == 1 (the living's
+    # narrowest side ~2.36 m < the 2.4 m min). On a tight ground-coverage cap (TG is
+    # 55 %) the coverage shrink must stay anisotropic + min-dim-safe, so no habitable
+    # room is pushed below the code-min narrowest side. Code fails MUST be 0 for the
+    # 4BHK on every state ruleset.
+    plot = _plot(state, city=city, facing="E")
+    plan, vastu, code, meta = generate_plan(4, plot)
+    assert meta["requestedBhk"] == 4
+    assert code.summary.fail_count == 0, (
+        f"{state} 4BHK has {code.summary.fail_count} code fail(s): "
+        + "; ".join(c.message for c in code.checks if c.status == "fail")
+    )
+    _no_overlaps(plan, builtup_only=True)

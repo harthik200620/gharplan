@@ -128,3 +128,36 @@ def test_e_facing_g1_stair_touches_living_on_both_floors():
         assert any(_share_edge(s, lv) for s in stairs for lv in livings), (
             f"floor {fl}: staircase does not share a wall with any living"
         )
+
+
+_HABITABLE = {"living", "master_bedroom", "bedroom", "childrens_bedroom", "study"}
+
+
+def _aspect(poly) -> float:
+    x0, y0, x1, y1 = _bbox(poly)
+    w, h = x1 - x0, y1 - y0
+    return max(w, h) / max(1e-6, min(w, h))
+
+
+def test_e_facing_g1_no_ribbon_habitable_rooms():
+    # Proportions lock (10-yr architect): on the canonical E-facing 30x40 3BHK G+1,
+    # NO habitable room (living / any bedroom) may be a ribbon — every one must have
+    # a workable bounding-box aspect so a bed + wardrobe + circulation actually fit
+    # and the hall is a real room, not a 2.6 m bowling-alley. A prior round produced
+    # a 3.66-aspect ground guest bedroom and a 3.0-aspect upper living; this guards
+    # against that regression. ~2.0 is the ceiling; the generator lands well under it.
+    plan, vastu, code, meta = generate_plan(3, _plot(2), floors=2)
+    assert code.summary.fail_count == 0
+    habs = [r for r in plan.rooms if r.type.value in _HABITABLE]
+    assert habs, "expected habitable rooms"
+    worst = max(habs, key=lambda r: _aspect(r.polygon))
+    assert _aspect(worst.polygon) <= 2.0, (
+        f"ribbon habitable room {worst.id} on floor {worst.floor}: "
+        f"aspect {_aspect(worst.polygon):.2f} > 2.0"
+    )
+    # the upper family living must be a proper wide hall, not a narrow corridor.
+    u_livings = [r for r in plan.rooms if r.type.value == "living" and (r.floor or 0) == 1]
+    for lv in u_livings:
+        assert _aspect(lv.polygon) <= 2.0, (
+            f"upper living {lv.id} is a ribbon (aspect {_aspect(lv.polygon):.2f})"
+        )

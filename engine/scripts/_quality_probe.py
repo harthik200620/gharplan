@@ -17,10 +17,17 @@ import sys
 # dir is on sys.path[0], not the engine root).
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.generator.designer import generate_plan
+from app.generator.designer import _envelope_and_keepout, generate_plan
 from app.models.plan import Plot
+from app.services.rules import get_code_rules
 
 HAB = {"living", "master_bedroom", "bedroom", "childrens_bedroom", "study"}
+
+# A leftover gap larger than this (m^2) inside the building footprint on any floor
+# is an unassigned interior void — a 10-yr architect would never ship blank floor.
+# The generator fills every such gap with a labelled courtyard (or welds a thin
+# strip), so this must stay ~0 across the matrix.
+VOID_MAX_SQM = 2.0
 
 
 def _bb(poly):
@@ -48,10 +55,47 @@ def _plot(state, facing, w, d):
 
 CASES = [
     ("KA", "E", 9.144, 12.192, 2), ("KA", "E", 9.144, 12.192, 3), ("KA", "E", 9.144, 12.192, 4),
-    ("TG", "E", 9.144, 12.192, 3), ("AP", "E", 9.144, 12.192, 3),
-    ("KA", "W", 9.144, 12.192, 3), ("KA", "N", 9.144, 12.192, 3), ("KA", "S", 9.144, 12.192, 3),
+    ("TG", "E", 9.144, 12.192, 3), ("TG", "E", 9.144, 12.192, 4),
+    ("AP", "E", 9.144, 12.192, 3), ("AP", "E", 9.144, 12.192, 4),
+    ("KA", "W", 9.144, 12.192, 3), ("KA", "W", 9.144, 12.192, 4),
+    ("KA", "N", 9.144, 12.192, 3), ("KA", "N", 9.144, 12.192, 4),
+    ("KA", "S", 9.144, 12.192, 3), ("KA", "S", 9.144, 12.192, 4),
     ("KA", "E", 14.0, 16.0, 3), ("KA", "E", 16.0, 18.0, 4),
 ]
+
+_CODE_RULES = get_code_rules()
+
+
+def _interior_void(plan, plot) -> tuple[float, int]:
+    """Worst per-floor interior void and which floor it is on. A floor's void is the
+    buildable-envelope area MINUS the area of every room whose rectangle lies inside
+    the envelope (a courtyard counts as filling; site rooms in the setback margins
+    sit OUTSIDE the envelope and so are excluded automatically)."""
+    env, _ = _envelope_and_keepout(plot, _CODE_RULES)
+    mnx, mny, mxx, mxy = env
+    env_area = max(0.0, mxx - mnx) * max(0.0, mxy - mny)
+    worst, worst_fl = 0.0, 0
+    site = {
+        "parking", "sitout", "courtyard", "garden", "service_shaft",
+        "future_expansion", "balcony", "overhead_tank", "borewell", "brahmasthan",
+    }
+    for fl in sorted({(r.floor or 0) for r in plan.rooms}):
+        # A floor with NO enclosed (non-site) room isn't a "blank gap inside a room
+        # layout" — it's a storey that simply wasn't built up (e.g. a 2BHK forced to
+        # G+1 keeps every room on the ground). Skip it; the void check is about
+        # unassigned floor WITHIN a populated footprint.
+        floor_rooms = [r for r in plan.rooms if (r.floor or 0) == fl]
+        if not any(r.type.value not in site for r in floor_rooms):
+            continue
+        used = 0.0
+        for r in floor_rooms:
+            x0, y0, x1, y1 = _bb(r.polygon)
+            if x0 >= mnx - 0.02 and y0 >= mny - 0.02 and x1 <= mxx + 0.02 and y1 <= mxy + 0.02:
+                used += (x1 - x0) * (y1 - y0)
+        void = env_area - used
+        if void > worst:
+            worst, worst_fl = void, fl
+    return worst, worst_fl
 
 
 def main() -> int:
@@ -91,11 +135,15 @@ def main() -> int:
         max_asp = max((_aspect(r) for r in beds), default=0.0)
         lz = [r.zone.value for r in rooms if r.type.value == "living"]
         la = [round(r.area_sqm, 1) for r in rooms if r.type.value == "living"]
+        void, void_fl = _interior_void(plan, _plot(state, facing, w, d))
+        has_void = void > VOID_MAX_SQM
         flags = []
         if fails:
             flags.append("FAILS")
         if not kd:
             flags.append("KD")
+        if has_void:
+            flags.append(f"VOID={void:.1f}@f{void_fl}")
         if "SW" in lz:
             flags.append("LIV-SW")
         tag = "G+1" if len(floors) > 1 else "1F"
@@ -103,11 +151,12 @@ def main() -> int:
         print(
             f"{state} {facing} {bhk}BHK {tag:3} fails={fails} v={vastu.score:5} "
             f"KD={'Y' if kd else 'N'} SL={'Y' if sl else 'N'} livLargest={liv_largest} "
-            f"lz={lz} livA={la} minBed={min_bed_a:.1f} maxAsp={max_asp:.2f}  {status}"
+            f"lz={lz} livA={la} minBed={min_bed_a:.1f} maxAsp={max_asp:.2f} "
+            f"void={void:.1f}  {status}"
         )
-        if fails or not kd:
+        if fails or not kd or has_void:
             bad += 1
-    print(f"\nbad (code-fail or kitchen-dining break) = {bad}")
+    print(f"\nbad (code-fail / kitchen-dining break / interior-void > {VOID_MAX_SQM} m2) = {bad}")
     return 1 if bad else 0
 
 

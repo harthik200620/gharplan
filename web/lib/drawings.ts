@@ -3,8 +3,12 @@
 // table of standard Indian building levels (NBC 2016 + common practice, in metres).
 // Coordinates in metres; origin = plot SW, +x = East, +y = North.
 
-import type { Plan, Point, Room } from "@gharplan/shared";
-import { bounds, placeOpenings, type Edge, type Rect } from "./cad";
+import type { Plan } from "@gharplan/shared";
+import { bounds, buildingFootprint, placeOpenings, structuralRooms, type Edge } from "./cad";
+
+// structuralRooms / buildingFootprint now live in cad.ts (mirroring cad_geom.py);
+// re-export so callers importing them from drawings.ts keep working.
+export { buildingFootprint, structuralRooms };
 
 /** Standard vertical levels, metres from finished ground-floor level (±0.000). */
 export const LEVELS = {
@@ -24,30 +28,10 @@ export const LEVELS = {
   DOOR_MAIN_W: 1.1,
 } as const;
 
-const VIRTUAL = new Set(["overhead_tank", "borewell", "brahmasthan"]);
-const SITE = new Set(["parking", "sitout", "courtyard", "garden", "service_shaft", "future_expansion"]);
 const WET = /toilet|bath|kitchen|utility|wash/;
-
-/** Rooms that form the built mass (exclude virtual markers + open site zones). */
-export function structuralRooms(plan: Plan, floor?: number): Room[] {
-  return plan.rooms.filter(
-    (r) =>
-      !VIRTUAL.has(r.type) &&
-      !SITE.has(r.type) &&
-      (floor === undefined || (r.floor ?? 0) === floor),
-  );
-}
 
 export function floorsOf(plan: Plan): number[] {
   return Array.from(new Set(plan.rooms.map((r) => r.floor ?? 0))).sort((a, b) => a - b);
-}
-
-/** Bounding box of the built mass (all floors) — the elevation's overall width. */
-export function buildingFootprint(plan: Plan): Rect {
-  const rooms = structuralRooms(plan);
-  if (!rooms.length) return { x: 0, y: 0, w: plan.plot.widthM, h: plan.plot.depthM };
-  const pts: Point[] = rooms.flatMap((r) => r.polygon);
-  return bounds(pts);
 }
 
 /** The facing of the plot reduced to a cardinal elevation face. */

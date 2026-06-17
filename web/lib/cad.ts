@@ -1,7 +1,7 @@
 // Geometry + styling helpers for the in-app CAD floor-plan renderer.
 // Coordinates are in METRES, origin = plot SW corner, +x = East, +y = North.
 
-import type { Plan, Point } from "@gharplan/shared";
+import type { Plan, Point, Room } from "@gharplan/shared";
 
 export type Rect = { x: number; y: number; w: number; h: number };
 export type Edge = "N" | "S" | "E" | "W";
@@ -38,16 +38,47 @@ export const INK = "#0f172a";
 export const WALL = "#0f172a";
 export const PAPER = "#ffffff";
 
+// Virtual point markers — never part of the built mass or openings.
 const VIRTUAL = new Set(["overhead_tank", "borewell", "brahmasthan"]);
-const SITE_TYPES = new Set(["parking", "sitout", "courtyard", "garden", "service_shaft", "future_expansion", "balcony"]);
+// Open site zones excluded from the built mass (elevations / sections / 3D).
+const SITE_STRUCTURAL = new Set([
+  "parking",
+  "sitout",
+  "courtyard",
+  "garden",
+  "service_shaft",
+  "future_expansion",
+]);
+// Open zones additionally skipped when inferring openings (drop balcony too).
+const SITE_OPENINGS = new Set([...SITE_STRUCTURAL, "balcony"]);
+
+/** Rooms that form the built mass (exclude virtual markers + open site zones). */
+export function structuralRooms(plan: Plan, floor?: number): Room[] {
+  return plan.rooms.filter(
+    (r) =>
+      !VIRTUAL.has(r.type) &&
+      !SITE_STRUCTURAL.has(r.type) &&
+      (floor === undefined || (r.floor ?? 0) === floor),
+  );
+}
+
+/** Bounding box of the built mass (all floors) — the building's outer wall extents. */
+export function buildingFootprint(plan: Plan): Rect {
+  const rooms = structuralRooms(plan);
+  if (!rooms.length) return { x: 0, y: 0, w: plan.plot.widthM, h: plan.plot.depthM };
+  const pts: Point[] = rooms.flatMap((r) => r.polygon);
+  return bounds(pts);
+}
 
 const TOL = 0.06;
-export function exteriorEdges(r: Rect, W: number, D: number): Record<Edge, boolean> {
+// An edge is "exterior" when it lies on the building-footprint perimeter (± tol),
+// NOT the raw plot — so rooms set back from the plot still get outer walls/windows.
+export function exteriorEdges(r: Rect, fp: Rect): Record<Edge, boolean> {
   return {
-    W: r.x <= TOL,
-    E: r.x + r.w >= W - TOL,
-    S: r.y <= TOL,
-    N: r.y + r.h >= D - TOL,
+    W: r.x <= fp.x + TOL,
+    E: r.x + r.w >= fp.x + fp.w - TOL,
+    S: r.y <= fp.y + TOL,
+    N: r.y + r.h >= fp.y + fp.h - TOL,
   };
 }
 
@@ -99,13 +130,14 @@ export function placeOpenings(plan: Plan): PlacedOpening[] {
   const W = plan.plot.widthM;
   const D = plan.plot.depthM;
   const core: [number, number] = [W / 2, D / 2];
+  const fp = buildingFootprint(plan);
   const out: PlacedOpening[] = [];
 
   for (const room of plan.rooms) {
-    if (VIRTUAL.has(room.type) || SITE_TYPES.has(room.type)) continue;
+    if (VIRTUAL.has(room.type) || SITE_OPENINGS.has(room.type)) continue;
     const r = bounds(room.polygon);
     if (r.w < 0.6 || r.h < 0.6) continue;
-    const ext = exteriorEdges(r, W, D);
+    const ext = exteriorEdges(r, fp);
     const edges: Edge[] = ["N", "S", "E", "W"];
 
     // door: interior edge closest to the plot core

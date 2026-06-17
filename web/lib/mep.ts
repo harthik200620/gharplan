@@ -7,7 +7,7 @@
 // corner, +x = East, +y = North (same convention as lib/cad.ts).
 
 import type { Plan, Room } from "@gharplan/shared";
-import { bounds, exteriorEdges, placeOpenings, type Edge, type PlacedOpening, type Rect } from "./cad";
+import { bounds, buildingFootprint, exteriorEdges, placeOpenings, type Edge, type PlacedOpening, type Rect } from "./cad";
 
 // --------------------------------------------------------------------------- //
 // Room classification
@@ -140,17 +140,17 @@ const SUPPLY_BRANCH_MM = 15;
 
 const INSET = 0.4; // metres in from the chosen wall
 
-/** Pick the exterior wall for a wet room (prefer a real exterior edge; else nearest core). */
-function wetWall(r: Rect, W: number, D: number): Edge {
-  const ext = exteriorEdges(r, W, D);
+/** Pick the exterior wall for a wet room (prefer a real exterior edge; else nearest footprint edge). */
+function wetWall(r: Rect, fp: Rect): Edge {
+  const ext = exteriorEdges(r, fp);
   const order: Edge[] = ["S", "W", "E", "N"]; // drainage prefers the lower/utility side
   const exterior = order.find((e) => ext[e]);
   if (exterior) return exterior;
-  // landlocked wet room: drop toward the side nearest the plot edge it is closest to
-  const dl = r.x;
-  const dr = W - (r.x + r.w);
-  const db = r.y;
-  const dt = D - (r.y + r.h);
+  // landlocked wet room: drop toward the nearest building-footprint edge
+  const dl = r.x - fp.x;
+  const dr = fp.x + fp.w - (r.x + r.w);
+  const db = r.y - fp.y;
+  const dt = fp.y + fp.h - (r.y + r.h);
   const min = Math.min(dl, dr, db, dt);
   if (min === db) return "S";
   if (min === dl) return "W";
@@ -181,10 +181,10 @@ function alongWall(r: Rect, edge: Edge, n: number): [number, number][] {
   return pts;
 }
 
-function fixturesFor(room: Room, W: number, D: number): Fixture[] {
+function fixturesFor(room: Room, fp: Rect): Fixture[] {
   const r = bounds(room.polygon);
   if (r.w < 0.6 || r.h < 0.6) return [];
-  const edge = wetWall(r, W, D);
+  const edge = wetWall(r, fp);
   const t = room.type;
   let kinds: FixtureKind[];
   if (/toilet|bath/.test(t)) kinds = ["wc", "basin", "shower"];
@@ -563,10 +563,11 @@ function computeClashes(
 export function buildMepModel(plan: Plan, floor?: number): MepModel {
   const W = plan.plot.widthM;
   const D = plan.plot.depthM;
+  const fp = buildingFootprint(plan);
   const rooms = floorRooms(plan, floor);
   const wetRooms = rooms.filter((r) => isWet(r.type));
 
-  const fixtures = wetRooms.flatMap((r) => fixturesFor(r, W, D));
+  const fixtures = wetRooms.flatMap((r) => fixturesFor(r, fp));
   const shaft = computeShaft(wetRooms, W, D);
   const pipes = buildPlumbing(wetRooms, fixtures, shaft);
 

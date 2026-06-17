@@ -83,12 +83,14 @@ def bounds(poly: list[tuple[float, float]]) -> Rect:
 _TOL = 0.06
 
 
-def exterior_edges(r: Rect, w: float, d: float) -> dict[str, bool]:
+def exterior_edges(r: Rect, fp: Rect) -> dict[str, bool]:
+    # An edge is "exterior" when it lies on the building-footprint perimeter (+- tol),
+    # NOT the raw plot - so rooms set back from the plot still get outer walls/windows.
     return {
-        "W": r.x <= _TOL,
-        "E": r.x + r.w >= w - _TOL,
-        "S": r.y <= _TOL,
-        "N": r.y + r.h >= d - _TOL,
+        "W": r.x <= fp.x + _TOL,
+        "E": r.x + r.w >= fp.x + fp.w - _TOL,
+        "S": r.y <= fp.y + _TOL,
+        "N": r.y + r.h >= fp.y + fp.h - _TOL,
     }
 
 
@@ -125,6 +127,7 @@ def place_openings(plan: Plan) -> list[PlacedOpening]:
     w = plan.plot.width_m
     d = plan.plot.depth_m
     core = (w / 2, d / 2)
+    fp = building_footprint(plan)
     out: list[PlacedOpening] = []
 
     for room in plan.rooms:
@@ -134,7 +137,7 @@ def place_openings(plan: Plan) -> list[PlacedOpening]:
         r = bounds(room.polygon)
         if r.w < 0.6 or r.h < 0.6:
             continue
-        ext = exterior_edges(r, w, d)
+        ext = exterior_edges(r, fp)
         edges: list[str] = ["N", "S", "E", "W"]
 
         # door: interior edge closest to the plot core

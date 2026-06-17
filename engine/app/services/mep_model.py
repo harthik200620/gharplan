@@ -20,6 +20,7 @@ from app.services.cad_geom import (
     PlacedOpening,
     Rect,
     bounds,
+    building_footprint,
     exterior_edges,
     floor_rooms,
     is_wet,
@@ -124,18 +125,18 @@ SUPPLY_BRANCH_MM = 15
 INSET = 0.4
 
 
-def wet_wall(r: Rect, w: float, d: float) -> str:
+def wet_wall(r: Rect, fp: Rect) -> str:
     """Pick the wall a wet room's fixtures hug: first exterior in S,W,E,N order,
     else the closest interior wall (tie-break bottom > left > right > top)."""
-    ext = exterior_edges(r, w, d)
+    ext = exterior_edges(r, fp)
     order = ["S", "W", "E", "N"]
     exterior = next((e for e in order if ext[e]), None)
     if exterior:
         return exterior
-    dl = r.x
-    dr = w - (r.x + r.w)
-    db = r.y
-    dt = d - (r.y + r.h)
+    dl = r.x - fp.x
+    dr = fp.x + fp.w - (r.x + r.w)
+    db = r.y - fp.y
+    dt = fp.y + fp.h - (r.y + r.h)
     mn = min(dl, dr, db, dt)
     if mn == db:
         return "S"
@@ -167,11 +168,11 @@ def along_wall(r: Rect, edge: str, n: int) -> list[tuple[float, float]]:
     return pts
 
 
-def fixtures_for(room: Room, w: float, d: float) -> list[Fixture]:
+def fixtures_for(room: Room, fp: Rect) -> list[Fixture]:
     r = bounds(room.polygon)
     if r.w < 0.6 or r.h < 0.6:
         return []
-    edge = wet_wall(r, w, d)
+    edge = wet_wall(r, fp)
     t = room.type.value
     if re.search(r"toilet|bath", t):
         kinds = ["wc", "basin", "shower"]
@@ -512,9 +513,10 @@ def compute_clashes(
 def build_mep_model(plan: Plan, floor: Optional[int] = None) -> MepModel:
     w = plan.plot.width_m
     d = plan.plot.depth_m
+    fp = building_footprint(plan)
     rooms = floor_rooms(plan, floor)
     wet_rooms = [r for r in rooms if is_wet(r.type.value)]
-    fixtures = [f for r in wet_rooms for f in fixtures_for(r, w, d)]
+    fixtures = [f for r in wet_rooms for f in fixtures_for(r, fp)]
     shaft = compute_shaft(wet_rooms, w, d)
     pipes = build_plumbing(wet_rooms, fixtures, shaft)
     placed = place_openings(plan)

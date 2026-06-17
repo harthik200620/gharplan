@@ -1976,6 +1976,42 @@ def _kitchen_dining_adjacent(placed: list[PlacedRoom]) -> bool:
     return True
 
 
+_HABITABLE_TYPES = {"living", "master_bedroom", "bedroom", "childrens_bedroom", "study"}
+
+
+def _living_in_center(plan: Plan) -> int:
+    """Count of livings whose centroid lands in the Brahmasthan (CENTER). A hall in
+    the dead-centre is a Vastu defect (and reads as a room with no exterior wall),
+    so the ranker prefers an otherwise-equal layout that keeps the living on a
+    compass edge — pushing the big hall to the front (E/NE for an East plot) and
+    leaving the Brahmasthan open for circulation."""
+    return sum(
+        1 for r in plan.rooms
+        if r.type.value == "living" and r.zone is not None and r.zone.value == "CENTER"
+    )
+
+
+def _living_not_largest(placed: list[PlacedRoom]) -> int:
+    """Soft score: count of floors whose largest habitable room is NOT the living.
+    0 when every floor that has a living makes it the biggest habitable room. Floors
+    without a living don't count. This is only a LAST-RESORT tiebreaker — the living
+    is sized large by its target and kept off the centre/front by `_living_in_center`,
+    but it must NOT be forced to be the single largest room when that would shove it
+    into the Brahmasthan on a narrow plot. So it sits at the very end of the key."""
+    by_floor: dict[int, list[PlacedRoom]] = {}
+    for p in placed:
+        if p.type.value in _HABITABLE_TYPES:
+            by_floor.setdefault(p.floor, []).append(p)
+    bad = 0
+    for rooms in by_floor.values():
+        if not any(p.type.value == "living" for p in rooms):
+            continue
+        biggest = max(rooms, key=lambda p: p.area)
+        if biggest.type.value != "living":
+            bad += 1
+    return bad
+
+
 # Band-proportion variants the optimiser sweeps (West, Centre, East fractions).
 # Spread from balanced to West-heavy: a wider West band lets a tight 3BHK fit all
 # three bedrooms; a narrower East band pushes the SE/NE corner rooms (kitchen,
@@ -2045,6 +2081,13 @@ def _ground_program(
     bath_min = max(_BATH_AREA_MIN, min_toilet * 1.6)
 
     prog: list[ProgramRoom] = [
+        # The ground hall is the home's centrepiece and the architect anchors it at
+        # the FRONT (E/NE for an East plot). Its area floor is kept modest here on
+        # purpose: on the narrow 30x40 G+1 the front living and the pooja both want
+        # the NE/N corner, so pushing the living past ~13.5 m² exiles the pooja out
+        # of its NE/N/E sector (a Vastu defect the tests lock). The hall still reads
+        # large via the UPPER family living (~20-24 m²); the ground hall stays front
+        # and lets the pooja keep its corner. (Owner R3: large + front beats largest.)
         ProgramRoom("living", RoomType.living, living_target,
                     z("living"), 9, min_area_floor=max(12.0, min_habitable + 2.0)),
         ProgramRoom("kitchen", RoomType.kitchen, max(_COMFORT["kitchen"], min_kitchen * 1.5),
@@ -2172,7 +2215,15 @@ def _layout_floor(
             ess_drop = sum(1 for d in all_dropped if prio.get(d, 0) >= ESS)
             plan, vastu, code = _score_candidate(_build_plan(list(result.placed), plot, env, "floor"))
             kd_bad = 0 if _kitchen_dining_adjacent(result.placed) else 1
-            key = (ess_drop, code.summary.fail_count, kd_bad, -round(vastu.score), len(all_dropped))
+            liv_center = _living_in_center(plan)
+            liv_not_largest = _living_not_largest(result.placed)
+            # Ladder (best = smallest): no essential drop, then no code fail, then
+            # kitchen-dining adjacent, then keep the hall OFF the Brahmasthan centre
+            # (big living lands at the front, E/NE — not dead-centre), then highest
+            # Vastu, then fewest drops; "living is largest" is only a last-resort
+            # tiebreaker so it never DRIVES the hall into the centre.
+            key = (ess_drop, code.summary.fail_count, kd_bad, liv_center,
+                   -round(vastu.score), len(all_dropped), liv_not_largest)
             if best is None or key < best[0]:
                 best = (key, list(result.placed), all_dropped)
     if best is None:
@@ -2192,8 +2243,13 @@ def _generate_multifloor(
     hit whichever floor owns the room, while ADDED rooms route to the social floor
     (dining/pooja/sit-out/store) or the private floor (study/dressing/balcony)."""
     env_w, env_d = env[2] - env[0], env[3] - env[1]
-    # 3BHK+ keeps one ensuite bedroom downstairs (parents/guest); 2BHK puts both up.
-    ground_bedrooms = 1 if _TIER_BEDROOMS[tier] >= 3 else 0
+    # 3BHK keeps one ensuite bedroom downstairs (parents/guest); 2BHK puts both up.
+    # A 4BHK keeps TWO downstairs: on a narrow plot, cramming master + 3 bedrooms +
+    # a hall onto one upper floor forces tiny, elongated rooms off their Vastu zones
+    # (the old E-facing 4BHK G+1 scored ~65 with a 3.7 aspect ratio). Splitting the
+    # bedrooms 2-and-2 across the floors gives each room its proper size and sector —
+    # the call a practising architect makes — and lifts the 4BHK Vastu to ~94.
+    ground_bedrooms = 2 if _TIER_BEDROOMS[tier] >= 4 else (1 if _TIER_BEDROOMS[tier] >= 3 else 0)
     ground = _ground_program(env_w, env_d, min_habitable, min_kitchen, min_toilet, vastu_rules, variant, guest_bedrooms=ground_bedrooms)
     upper = _upper_program(tier, env_w, env_d, min_habitable, min_toilet, vastu_rules, variant, ground_bedrooms=ground_bedrooms)
 
@@ -2508,23 +2564,32 @@ def generate_plan(
             cov = getattr(code.metrics, "ground_coverage_pct", 0.0) or 0.0
             # dining must abut the kitchen (functional must, just under code safety).
             kd_bad = 0 if _kitchen_dining_adjacent(result.placed) else 1
+            # keep the big hall off the dead-centre Brahmasthan (front living), and
+            # only use "hall is largest" as a last-resort tiebreaker so it never
+            # forces the hall central on a narrow plot.
+            liv_center = _living_in_center(plan)
+            liv_not_largest = _living_not_largest(result.placed)
             if variant is not None and variant.prefer_area:
                 # value plan: prefer denser / fewer-drops, then Vastu
                 key = (
                     essential_dropped(all_dropped),
                     code.summary.fail_count,
                     kd_bad,
+                    liv_center,
                     len(all_dropped),
                     -round(cov),
                     -round(vastu.score),
+                    liv_not_largest,
                 )
             else:
                 key = (
                     essential_dropped(all_dropped),
                     code.summary.fail_count,
                     kd_bad,
+                    liv_center,
                     -round(vastu.score),
                     len(all_dropped),
+                    liv_not_largest,
                 )
             candidates.append(
                 _Candidate(plan=plan, vastu=vastu, code=code, dropped=all_dropped, score_key=key)

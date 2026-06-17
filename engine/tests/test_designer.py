@@ -428,3 +428,149 @@ def test_ap_code_rules_load_and_validate():
     assert report.state == "AP"
     assert report.metrics.far_allowed == ap["FAR"]
     assert report.metrics.ground_coverage_pct <= report.metrics.max_ground_coverage_pct
+
+
+# --------------------------------------------------------------------------- #
+# E-facing design invariants: big front-anchored living, roomy bedrooms
+# --------------------------------------------------------------------------- #
+_HABITABLE = {"living", "master_bedroom", "bedroom", "childrens_bedroom", "study"}
+
+
+def _area(room) -> float:
+    """Rectangle area of a room from its polygon bbox (m^2)."""
+    x0, y0, x1, y1 = _bbox(room.polygon)
+    return (x1 - x0) * (y1 - y0)
+
+
+def _largest_habitable_is_living(plan) -> None:
+    """On every floor, the living/family hall is the largest habitable room — the
+    architect anchors the home on a dominant front hall, not a bedroom."""
+    by_floor: dict[int, list] = {}
+    for r in plan.rooms:
+        if r.type.value in _HABITABLE:
+            by_floor.setdefault(r.floor or 0, []).append(r)
+    for fl, rooms in by_floor.items():
+        livings = [r for r in rooms if r.type.value == "living"]
+        assert livings, f"floor {fl} has no living room"
+        biggest = max(rooms, key=_area)
+        assert biggest.type.value == "living", (
+            f"floor {fl}: largest habitable is {biggest.type.value} "
+            f"({_area(biggest):.1f} m2), not the living "
+            f"({max(_area(lv) for lv in livings):.1f} m2)"
+        )
+
+
+# A FRONT cardinal/sub-cardinal for the living — never the dead-centre Brahmasthan
+# and never the master's SW corner. The owner's R3 call: the hall is LARGE and at the
+# FRONT/ENTRANCE, but on a narrow deep plot it need not be the single largest room if
+# that would force it into the centre.
+_LIVING_FRONT_ZONES = {"E", "NE", "N", "NW", "SE", "W"}
+
+
+def _living_is_large_and_front(plan, *, floor_sqm: float) -> None:
+    """The R3 relaxed living invariant: on every floor the living is generously
+    sized (>= ``floor_sqm``) and sits at a compass FRONT zone — never the centre
+    (Brahmasthan) and never the SW (the master's corner). It need NOT be the single
+    largest habitable room (that strict rule shoved a big hall into the centre on
+    narrow plots and is the exact behaviour the owner asked to drop)."""
+    by_floor: dict[int, list] = {}
+    for r in plan.rooms:
+        if r.type.value in _HABITABLE:
+            by_floor.setdefault(r.floor or 0, []).append(r)
+    for fl, rooms in by_floor.items():
+        livings = [r for r in rooms if r.type.value == "living"]
+        assert livings, f"floor {fl} has no living room"
+        big = max(_area(lv) for lv in livings)
+        assert big >= floor_sqm, (
+            f"floor {fl}: living is only {big:.1f} m2 (< {floor_sqm:.1f} floor) — "
+            f"the hall must still read as a big living"
+        )
+        for lv in livings:
+            zone = lv.zone.value if lv.zone is not None else "?"
+            assert zone != "CENTER", f"floor {fl}: living sits in the Brahmasthan CENTER"
+            assert zone != "SW", f"floor {fl}: living sits in the SW (master's corner)"
+            assert zone in _LIVING_FRONT_ZONES, (
+                f"floor {fl}: living zone {zone} is not a front zone"
+            )
+
+
+def _kitchen_dining_adjacent_or_absent(plan) -> None:
+    """Every dining abuts a kitchen on its floor (or the floor has no dining/kitchen
+    to relate). Functional must — never weakened."""
+    by_floor: dict[int, list] = {}
+    for r in plan.rooms:
+        by_floor.setdefault(r.floor or 0, []).append(r)
+    for fl, rooms in by_floor.items():
+        kitchens = [r for r in rooms if r.type.value == "kitchen"]
+        dinings = [r for r in rooms if r.type.value == "dining"]
+        if not dinings or not kitchens:
+            continue
+        assert all(any(_share_edge(d, k) for k in kitchens) for d in dinings), (
+            f"floor {fl}: a dining does not abut the kitchen"
+        )
+
+
+def test_e_facing_2bhk_living_is_largest_habitable():
+    # A well-proportioned single-floor E-facing 2BHK: the front-anchored hall is the
+    # largest habitable room on the floor (it dominates the master + secondary).
+    plot = _plot("KA", facing="E", w=12.0, d=9.0)
+    plan, vastu, code, meta = generate_plan(2, plot)
+    assert meta["tier"] == "2BHK"
+    assert not meta.get("autoStorey")               # genuinely single-floor
+    assert {(r.floor or 0) for r in plan.rooms} == {0}
+    assert code.summary.fail_count == 0
+    _largest_habitable_is_living(plan)
+
+
+def test_e_facing_2bhk_30x40_living_large_and_front():
+    # The canonical 30x40 BBMP site as a single-floor 2BHK is DEEP and NARROW: the
+    # two ensuite bedroom blocks force a wide sleeping band. The owner's R3 call is
+    # that the hall is LARGE and at the FRONT (E/NE) — but it need NOT be the single
+    # largest habitable room when forcing that would shove it into the centre. So we
+    # lock the relaxed invariant: the living is generously sized AND front (never
+    # CENTER, never the master's SW), kitchen-dining stays adjacent, both bedrooms
+    # are kept, and the plan is code-clean. (Was: strict "living dominates master".)
+    plot = _plot("KA", facing="E", w=W30x40, d=D30x40)
+    plan, vastu, code, meta = generate_plan(2, plot)
+    assert meta["tier"] == "2BHK"
+    assert not meta.get("autoStorey")               # genuinely single-floor
+    assert {(r.floor or 0) for r in plan.rooms} == {0}
+    assert code.summary.fail_count == 0
+    beds = [r for r in plan.rooms if "bedroom" in r.type.value]
+    assert len(beds) == 2                            # both bedrooms kept (no drop)
+    _living_is_large_and_front(plan, floor_sqm=13.0)  # large + front (not CENTER/SW)
+    _kitchen_dining_adjacent_or_absent(plan)          # never weakened
+
+
+def test_e_facing_3bhk_14x16_living_is_largest_habitable():
+    # The canonical 14x16 single-floor 3BHK: the family hall is the largest habitable
+    # room on the floor, ahead of the master suite and the secondary bedrooms.
+    plot = _plot("KA", facing="E", w=14.0, d=16.0)
+    plan, vastu, code, meta = generate_plan(3, plot)
+    assert meta["tier"] == "3BHK"
+    assert not meta.get("autoStorey")
+    assert {(r.floor or 0) for r in plan.rooms} == {0}
+    assert code.summary.fail_count == 0
+    _largest_habitable_is_living(plan)
+
+
+def test_e_facing_roomy_bedrooms_meet_comfort_minimums():
+    # On a roomy plot the bedrooms read as proper rooms, not cells: every secondary
+    # bedroom is >= 12.5 m^2 and the master is >= 16 m^2 (the comfort minimums a
+    # practising architect holds when the plot can afford them).
+    plot = _plot("KA", facing="E", w=16.0, d=18.0)
+    plan, vastu, code, meta = generate_plan(3, plot)
+    assert meta["tier"] == "3BHK"
+    assert code.summary.fail_count == 0
+    masters = [r for r in plan.rooms if r.type.value == "master_bedroom"]
+    secondaries = [
+        r for r in plan.rooms if r.type.value in {"bedroom", "childrens_bedroom"}
+    ]
+    assert masters, "no master bedroom placed"
+    assert secondaries, "no secondary bedrooms placed"
+    for m in masters:
+        assert _area(m) >= 16.0 - 1e-6, f"master {m.id} is only {_area(m):.1f} m2"
+    for s in secondaries:
+        assert _area(s) >= 12.5 - 1e-6, (
+            f"secondary bedroom {s.id} is only {_area(s):.1f} m2"
+        )

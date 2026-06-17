@@ -1,8 +1,18 @@
 "use client";
 
 import * as React from "react";
+import { Suspense } from "react";
+import * as THREE from "three";
 import { Canvas } from "@react-three/fiber";
-import { OrbitControls, ContactShadows, Sky } from "@react-three/drei";
+import {
+  OrbitControls,
+  ContactShadows,
+  Sky,
+  Environment,
+  SoftShadows,
+  Bounds,
+  useBounds,
+} from "@react-three/drei";
 import type { Plan, Room } from "@gharplan/shared";
 import {
   bounds,
@@ -38,6 +48,76 @@ const GLASS_COL = "#9fc6d4"; // tinted glazing
 const DOOR_MAIN = "#6e4a2b"; // teak main door
 const DOOR_INT = "#c7b299"; // light internal door
 const TANK_COL = "#1f1f22"; // black Sintex tank
+const MARBLE_COL = "#ece5d8"; // polished living/dining marble
+const TEAK_COL = "#6e4a2b"; // warm teak joinery
+const SOFA_COL = "#7d8aa3"; // upholstered slate-blue
+const FABRIC_COL = "#cdbfa6"; // bed linen / soft furnishing
+const STEEL_COL = "#c7ccd2"; // appliances / steel
+const TILE_WET = "#d7dde3"; // glazed wet-room tile
+const GRASS_COL = "#7fae5a"; // lawn / planting
+const PATH_COL = "#cabfa6"; // paved approach
+
+// One-time low-power check: physical transmission + clearcoat is an expensive
+// per-fragment shader, so on machines with few logical cores (likely integrated
+// GPUs / phones) we drop to a cheap tinted-transparent glass. Computed once at
+// module load — no per-frame or per-mesh cost. Defaults to the rich look when the
+// hint is unavailable (SSR / unknown).
+const LOW_POWER =
+  typeof navigator !== "undefined" &&
+  typeof navigator.hardwareConcurrency === "number" &&
+  navigator.hardwareConcurrency <= 4;
+
+// ---- shared PBR materials (declared as render helpers so the look is consistent) ----
+// Tinted architectural glazing: low roughness + clearcoat read as real glass; a touch
+// of transmission lifts it when perf allows (kept modest — high transmission is costly).
+// On low-power devices we render a simple tinted transparent pane (transmission 0,
+// no clearcoat) which is visually close but far cheaper to shade.
+const GlassMat = () =>
+  LOW_POWER ? (
+    <meshPhysicalMaterial
+      color={GLASS_COL}
+      roughness={0.1}
+      metalness={0}
+      transmission={0}
+      transparent
+      opacity={0.45}
+      envMapIntensity={0.9}
+    />
+  ) : (
+    <meshPhysicalMaterial
+      color={GLASS_COL}
+      roughness={0.05}
+      metalness={0}
+      transmission={0.55}
+      thickness={0.05}
+      ior={1.45}
+      clearcoat={1}
+      clearcoatRoughness={0.06}
+      transparent
+      opacity={0.55}
+      envMapIntensity={1.1}
+    />
+  );
+// Anodised aluminium window/door frames.
+const FrameMat = () => (
+  <meshPhysicalMaterial color={FRAME_COL} metalness={0.7} roughness={0.35} envMapIntensity={0.9} />
+);
+// Polished marble for living/dining — low roughness with a subtle clearcoat sheen.
+const MarbleMat = ({ color = MARBLE_COL }: { color?: string }) => (
+  <meshPhysicalMaterial color={color} roughness={0.18} metalness={0} clearcoat={0.6} clearcoatRoughness={0.25} envMapIntensity={0.8} />
+);
+// Matte RCC for slabs / chajja / parapet.
+const ConcreteMat = ({ color = CONCRETE }: { color?: string }) => (
+  <meshStandardMaterial color={color} roughness={0.95} metalness={0} />
+);
+// Warm teak for doors and timber joinery.
+const TeakMat = ({ color = TEAK_COL }: { color?: string }) => (
+  <meshPhysicalMaterial color={color} roughness={0.45} metalness={0.04} clearcoat={0.3} clearcoatRoughness={0.4} envMapIntensity={0.5} />
+);
+// Glazed tile for wet rooms.
+const TileMat = ({ color = TILE_WET }: { color?: string }) => (
+  <meshPhysicalMaterial color={color} roughness={0.22} metalness={0} clearcoat={0.4} clearcoatRoughness={0.3} envMapIntensity={0.7} />
+);
 
 const WET = /toilet|bath|kitchen|utility|wash/;
 const VIRTUAL = new Set(["overhead_tank", "borewell", "brahmasthan"]);
@@ -54,7 +134,12 @@ function floorColor(type: string): string {
   if (type.includes("bedroom")) return "#cdb091";
   if (type === "pooja") return "#e8d6a8";
   if (type === "staircase") return "#c4cad2";
-  return "#ece5d8"; // living / dining / foyer — marble
+  return MARBLE_COL; // living / dining / foyer — marble
+}
+
+/** True for rooms that get a polished-marble finish (living/dining/foyer family). */
+function isMarbleFloor(type: string): boolean {
+  return type === "living" || type === "dining" || type === "foyer" || type === "entrance" || type === "passage";
 }
 
 function floorsOf(plan: Plan): number[] {
@@ -214,18 +299,18 @@ function Window3D({ part, W, D }: { part: GlassPart; W: number; D: number }) {
     <group>
       <mesh position={glass.pos}>
         <boxGeometry args={glass.size} />
-        <meshStandardMaterial color={GLASS_COL} roughness={0.08} metalness={0.2} transparent opacity={0.42} />
+        <GlassMat />
       </mesh>
       {bars.map((b, i) => (
         <mesh key={i} position={b.pos} castShadow>
           <boxGeometry args={b.size} />
-          <meshStandardMaterial color={FRAME_COL} roughness={0.6} metalness={0.3} />
+          <FrameMat />
         </mesh>
       ))}
       {chajja && (
         <mesh position={chajja.pos} castShadow receiveShadow>
           <boxGeometry args={chajja.size} />
-          <meshStandardMaterial color={CONCRETE} roughness={0.95} />
+          <ConcreteMat />
         </mesh>
       )}
     </group>
@@ -259,22 +344,21 @@ function Door3D({ part, W, D }: { part: DoorPart; W: number; D: number }) {
 
   // leaf pivot — translate to the hinge jamb, rotate, then offset by half-leaf
   const hingeOffset = part.horiz ? X(hingeS) - X(mid) : Z(hingeS) - Z(mid);
-  const leafColor = <meshStandardMaterial color={col} roughness={0.7} metalness={0.05} />;
 
   return (
     <group position={groupPos}>
       {/* frame */}
       <mesh position={[jamb(-width / 2)[0] - groupPos[0], cy, jamb(-width / 2)[2] - groupPos[2]]} castShadow>
         <boxGeometry args={jambSize} />
-        <meshStandardMaterial color={FRAME_COL} roughness={0.6} />
+        <FrameMat />
       </mesh>
       <mesh position={[jamb(width / 2)[0] - groupPos[0], cy, jamb(width / 2)[2] - groupPos[2]]} castShadow>
         <boxGeometry args={jambSize} />
-        <meshStandardMaterial color={FRAME_COL} roughness={0.6} />
+        <FrameMat />
       </mesh>
       <mesh position={[0, FLOOR_Y + leafH + F / 2, 0]} castShadow>
         <boxGeometry args={headSize} />
-        <meshStandardMaterial color={FRAME_COL} roughness={0.6} />
+        <FrameMat />
       </mesh>
       {/* leaf: hinge group at the jamb, leaf box pushed out by half its width */}
       <group
@@ -283,53 +367,167 @@ function Door3D({ part, W, D }: { part: DoorPart; W: number; D: number }) {
       >
         <mesh position={part.horiz ? [leafW / 2, cy, 0.02] : [0.02, cy, -leafW / 2]} castShadow receiveShadow>
           <boxGeometry args={part.horiz ? [leafW, leafH, 0.05] : [0.05, leafH, leafW]} />
-          {leafColor}
+          <TeakMat color={col} />
+        </mesh>
+        {/* slim handle reads the leaf as joinery, not a slab */}
+        <mesh
+          position={part.horiz ? [leafW - 0.12, cy, 0.06] : [0.06, cy, -leafW + 0.12]}
+          castShadow
+        >
+          <boxGeometry args={part.horiz ? [0.04, 0.22, 0.04] : [0.04, 0.22, 0.04]} />
+          <FrameMat />
         </mesh>
       </group>
     </group>
   );
 }
 
-function StairSteps({ room, W, D }: { room: Room; W: number; D: number }) {
-  const r = bounds(room.polygon);
-  const n = 8;
-  const run = (r.h * 0.8) / n;
-  const x = r.x + r.w / 2 - W / 2;
-  const z0 = D / 2 - (r.y + 0.1);
+const STEP_COL = "#cdd2da"; // light grey stone tread
+const STEP_NOSE = "#b9bec7"; // riser shade
+const RAIL_WOOD = "#7a5230"; // stained-wood handrail / newels
+
+/** A balustrade run: a top handrail on two posts, with thin vertical balusters
+ *  in between. `horiz=true` means the run extends along world-X. */
+function Balustrade({
+  cx, cz, len, y0, y1, horiz,
+}: { cx: number; cz: number; len: number; y0: number; y1: number; horiz: boolean }) {
+  const railY = y1; // handrail height at the top of this run
+  const postH = railY - y0;
+  const nBal = Math.max(2, Math.round(len / 0.16));
+  const railSize: [number, number, number] = horiz ? [len, 0.05, 0.05] : [0.05, 0.05, len];
   return (
     <group>
-      {Array.from({ length: n }).map((_, i) => (
-        <mesh key={i} position={[x, FLOOR_Y + (i + 0.5) * (WALL_H / n / 1.6), z0 - i * run]} castShadow receiveShadow>
-          <boxGeometry args={[Math.min(r.w * 0.7, 1.1), WALL_H / n / 1.6, run]} />
-          <meshStandardMaterial color="#b9bec7" roughness={0.9} />
-        </mesh>
-      ))}
+      {/* handrail */}
+      <mesh position={[cx, y0 + postH + 0.02, cz]} castShadow>
+        <boxGeometry args={railSize} />
+        <TeakMat color={RAIL_WOOD} />
+      </mesh>
+      {/* balusters */}
+      {Array.from({ length: nBal }).map((_, i) => {
+        const f = nBal === 1 ? 0.5 : i / (nBal - 1);
+        const px = horiz ? cx - len / 2 + f * len : cx;
+        const pz = horiz ? cz : cz - len / 2 + f * len;
+        return (
+          <mesh key={i} position={[px, y0 + postH / 2, pz]} castShadow>
+            <cylinderGeometry args={[0.012, 0.012, postH, 6]} />
+            <meshPhysicalMaterial color={STEEL_COL} metalness={0.7} roughness={0.35} />
+          </mesh>
+        );
+      })}
     </group>
   );
 }
 
-function Furniture3D({ room, W, D }: { room: Room; W: number; D: number }) {
+/** A realistic dog-leg (U-return) staircase: a first flight rising along +Y(plan),
+ *  a half-landing at the far end, a return flight climbing back to the upper floor,
+ *  plus newel posts and balustrades along both open sides. It rises exactly one
+ *  storey (FLOOR_TO_FLOOR) so it visually stitches this living level to the one above
+ *  through the slab void cut over the staircase footprint.
+ *  When `toRoof` is set (top-floor stair with no slab void above, just the terrace
+ *  + mumty), it instead lands flush on the roof walking surface (WALL_H + SLAB) so
+ *  the return flight doesn't punch up into the solid roof soffit. */
+function StairSteps({ room, W, D, toRoof = false }: { room: Room; W: number; D: number; toRoof?: boolean }) {
+  const r = bounds(room.polygon);
+  const X = (px: number) => px - W / 2;
+  const Z = (py: number) => D / 2 - py;
+
+  // climb to the next finished floor, or to the terrace surface on the top floor
+  const rise = toRoof ? WALL_H + SLAB : FLOOR_TO_FLOOR;
+  const half = rise / 2; // height at the landing
+  const nPer = 9; // treads per flight
+  const stepRise = half / nPer; // riser height
+  const inset = 0.12; // keep the stair off the room walls
+
+  // two parallel flights split the room width; landing spans the far (high-Y) end
+  const usableW = Math.max(r.w - 2 * inset, 0.9);
+  const flightW = Math.min((usableW - 0.06) / 2, 1.1); // 0.06 = gap between flights
+  const landingD = Math.min(r.h * 0.32, 1.2); // depth of the half-landing
+  const runDepth = Math.max(r.h - 2 * inset - landingD, nPer * 0.16);
+  const going = runDepth / nPer; // tread depth (run)
+
+  // flight centre-lines in plan-X; flight A (up) on the low-X half, B (return) high-X
+  const xA = r.x + inset + flightW / 2;
+  const xB = r.x + r.w - inset - flightW / 2;
+  const yLow = r.y + inset; // near edge (start)
+  const yLanding = r.y + r.h - inset - landingD; // where flight A tops out
+
+  const treadT = 0.05;
+  const tread = (cx: number, cy: number, cz: number) => (
+    <group>
+      <mesh position={[X(cx), cy, Z(cz)]} castShadow receiveShadow>
+        <boxGeometry args={[flightW, treadT, going + 0.03]} />
+        <MarbleMat color={STEP_COL} />
+      </mesh>
+      {/* riser face under the tread nose */}
+      <mesh position={[X(cx), cy - stepRise / 2, Z(cz) + going / 2]} castShadow>
+        <boxGeometry args={[flightW, stepRise, 0.03]} />
+        <ConcreteMat color={STEP_NOSE} />
+      </mesh>
+    </group>
+  );
+
+  return (
+    <group>
+      {/* flight A — climbs from the floor up to the landing, advancing +Y in plan */}
+      {Array.from({ length: nPer }).map((_, i) => {
+        const cy = FLOOR_Y + (i + 1) * stepRise - treadT / 2;
+        const cz = yLow + (i + 0.5) * going;
+        return <group key={`a${i}`}>{tread(xA, cy, cz)}</group>;
+      })}
+      {/* half-landing at far end, at mid-height, spanning both flights */}
+      <mesh
+        position={[X((xA + xB) / 2), FLOOR_Y + half - treadT / 2, Z(yLanding + landingD / 2)]}
+        castShadow
+        receiveShadow
+      >
+        <boxGeometry args={[xB - xA + flightW, treadT, landingD]} />
+        <MarbleMat color={STEP_COL} />
+      </mesh>
+      {/* flight B — returns from the landing up to the upper floor, advancing -Y */}
+      {Array.from({ length: nPer }).map((_, i) => {
+        const cy = FLOOR_Y + half + (i + 1) * stepRise - treadT / 2;
+        const cz = yLanding - (i + 0.5) * going;
+        return <group key={`b${i}`}>{tread(xB, cy, cz)}</group>;
+      })}
+      {/* central stringer wall between the two flights (the U-return spine) */}
+      <mesh
+        position={[X((xA + xB) / 2), FLOOR_Y + half / 2, Z((yLow + yLanding) / 2)]}
+        castShadow
+        receiveShadow
+      >
+        <boxGeometry args={[0.06, half, runDepth + landingD * 0.4]} />
+        <ConcreteMat color={STEP_NOSE} />
+      </mesh>
+      {/* newel posts at the foot and at the landing */}
+      {[
+        [xA, yLow, FLOOR_Y + 0.5],
+        [xB, yLow, FLOOR_Y + rise - 0.5],
+      ].map(([px, py, top], i) => (
+        <mesh key={`n${i}`} position={[X(px), (top + FLOOR_Y) / 2, Z(py)]} castShadow>
+          <boxGeometry args={[0.07, top - FLOOR_Y, 0.07]} />
+          <TeakMat color={RAIL_WOOD} />
+        </mesh>
+      ))}
+      {/* balustrade along the outer (room-wall) side of each flight, sloping up */}
+      <Balustrade cx={X(xA - flightW / 2)} cz={Z((yLow + yLanding) / 2)} len={runDepth} y0={FLOOR_Y + half / 2} y1={FLOOR_Y + half / 2 + 0.9} horiz={false} />
+      <Balustrade cx={X(xB + flightW / 2)} cz={Z((yLow + yLanding) / 2)} len={runDepth} y0={FLOOR_Y + half + half / 2} y1={FLOOR_Y + half + half / 2 + 0.9} horiz={false} />
+      {/* landing-edge balustrade facing the void on the inner side */}
+      <Balustrade cx={X((xA + xB) / 2)} cz={Z(yLanding)} len={xB - xA} y0={FLOOR_Y + half} y1={FLOOR_Y + half + 0.9} horiz={true} />
+    </group>
+  );
+}
+
+function Furniture3D({ room, W, D, isTopFloor = false }: { room: Room; W: number; D: number; isTopFloor?: boolean }) {
   const r = bounds(room.polygon);
   const cx = r.x + r.w / 2 - W / 2;
   const cz = D / 2 - (r.y + r.h / 2);
   const t = room.type;
 
-  if (t === "staircase") return <StairSteps room={room} W={W} D={D} />;
+  // a top-floor stair has no slab void above it (only the terrace + mumty), so it
+  // lands on the roof surface rather than rising into the solid roof soffit.
+  if (t === "staircase") return <StairSteps room={room} W={W} D={D} toRoof={isTopFloor} />;
 
-  if (t === "parking") {
-    return (
-      <group position={[cx, 0, cz]}>
-        <mesh position={[0, 0.18 + FLOOR_Y, 0]} castShadow>
-          <boxGeometry args={[Math.min(r.w * 0.7, 1.8), 0.35, Math.min(r.h * 0.7, 3.2)]} />
-          <meshStandardMaterial color="#64748b" roughness={0.8} />
-        </mesh>
-        <mesh position={[0, 0.42 + FLOOR_Y, 0]} castShadow>
-          <boxGeometry args={[Math.min(r.w * 0.58, 1.45), 0.22, Math.min(r.h * 0.42, 1.6)]} />
-          <meshStandardMaterial color="#94a3b8" roughness={0.8} />
-        </mesh>
-      </group>
-    );
-  }
+  if (t === "parking") return <Car cx={cx} cz={cz} along={r.h >= r.w} />;
   if (t === "garden" || t === "courtyard") {
     // trunk + spherical canopy reads as a real tree
     const rad = Math.min(r.w, r.h);
@@ -348,55 +546,270 @@ function Furniture3D({ room, W, D }: { room: Room; W: number; D: number }) {
     );
   }
 
-  if (t.includes("bedroom")) {
-    const bw = Math.min(r.w * 0.8, t === "master_bedroom" ? 1.8 : 1.5);
-    const bl = Math.min(r.h * 0.7, 2.0);
-    return (
-      <group position={[cx, 0, cz]}>
-        <mesh position={[0, 0.28 + FLOOR_Y, 0]} castShadow receiveShadow>
-          <boxGeometry args={[bw, 0.45, bl]} />
-          <meshStandardMaterial color="#b9c2d2" roughness={0.9} />
-        </mesh>
-        <mesh position={[0, 0.55 + FLOOR_Y, -bl / 2 + 0.18]} castShadow>
-          <boxGeometry args={[bw, 0.55, 0.12]} />
-          <meshStandardMaterial color="#8a6d4f" roughness={0.7} />
-        </mesh>
-      </group>
-    );
-  }
-  if (t === "living") {
-    return (
-      <mesh position={[cx, 0.25 + FLOOR_Y, cz]} castShadow receiveShadow>
-        <boxGeometry args={[Math.min(r.w * 0.7, 2.0), 0.5, 0.7]} />
-        <meshStandardMaterial color="#7f8aa0" roughness={0.95} />
-      </mesh>
-    );
-  }
-  if (t === "dining") {
-    return (
-      <mesh position={[cx, 0.37 + FLOOR_Y, cz]} castShadow receiveShadow>
-        <boxGeometry args={[Math.min(r.w * 0.55, 1.4), 0.05, Math.min(r.h * 0.45, 0.9)]} />
-        <meshStandardMaterial color="#9c7a55" roughness={0.6} />
-      </mesh>
-    );
-  }
-  if (t === "kitchen") {
-    return (
-      <mesh position={[cx, 0.45 + FLOOR_Y, r.y - D / 2 + 0.3]} castShadow receiveShadow>
-        <boxGeometry args={[r.w * 0.85, 0.85, 0.5]} />
-        <meshStandardMaterial color="#aeb4bd" roughness={0.5} />
-      </mesh>
-    );
-  }
-  if (t === "pooja") {
-    return (
-      <mesh position={[cx, 0.2 + FLOOR_Y, r.y + r.h - D / 2 - 0.3]} castShadow>
-        <boxGeometry args={[Math.min(r.w * 0.6, 0.9), 0.4, 0.4]} />
-        <meshStandardMaterial color="#caa15a" roughness={0.5} />
-      </mesh>
-    );
-  }
+  if (t.includes("bedroom")) return <BedroomSet r={r} W={W} D={D} master={t === "master_bedroom"} />;
+  if (t === "living") return <LivingSet r={r} W={W} D={D} />;
+  if (t === "dining") return <DiningSet r={r} W={W} D={D} />;
+  if (t === "kitchen") return <KitchenSet r={r} W={W} D={D} />;
+  if (t === "pooja") return <PoojaShrine r={r} W={W} D={D} />;
   return null;
+}
+
+// ---------- furniture sets (each composed of distinctly-materialled blocks) ----------
+
+/** Saloon car: body + cabin + four wheel cylinders + windscreen tint. */
+function Car({ cx, cz, along }: { cx: number; cz: number; along: boolean }) {
+  // along=true → car parked nose-to-tail along world-Z (the deeper plot axis)
+  const L = 3.9, Wd = 1.65; // car length / width
+  const sx = along ? Wd : L;
+  const sz = along ? L : Wd;
+  const wheelOff = (along ? L : Wd) / 2 - 0.55;
+  const wheelXZ: [number, number][] = along
+    ? [[sx / 2 - 0.06, wheelOff], [-sx / 2 + 0.06, wheelOff], [sx / 2 - 0.06, -wheelOff], [-sx / 2 + 0.06, -wheelOff]]
+    : [[wheelOff, sz / 2 - 0.06], [wheelOff, -sz / 2 + 0.06], [-wheelOff, sz / 2 - 0.06], [-wheelOff, -sz / 2 + 0.06]];
+  return (
+    <group position={[cx, FLOOR_Y, cz]}>
+      {/* lower body */}
+      <mesh position={[0, 0.45, 0]} castShadow receiveShadow>
+        <boxGeometry args={[sx, 0.5, sz]} />
+        <meshPhysicalMaterial color="#3b4a63" metalness={0.6} roughness={0.3} clearcoat={0.8} clearcoatRoughness={0.2} />
+      </mesh>
+      {/* cabin / greenhouse */}
+      <mesh position={[0, 0.86, 0]} castShadow>
+        <boxGeometry args={[sx * 0.78, 0.42, sz * 0.55]} />
+        <meshPhysicalMaterial color="#2a3346" metalness={0.4} roughness={0.2} transmission={0.3} transparent opacity={0.7} clearcoat={1} />
+      </mesh>
+      {wheelXZ.map(([px, pz], i) => (
+        <mesh key={i} position={[px, 0.26, pz]} rotation={[0, 0, Math.PI / 2]} castShadow>
+          <cylinderGeometry args={[0.28, 0.28, 0.18, 16]} />
+          <meshStandardMaterial color="#15171c" roughness={0.8} />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
+/** Bed (mattress + headboard + 2 pillows + 2 side tables) and a wardrobe box. */
+function BedroomSet({ r, W, D, master }: { r: Rect; W: number; D: number; master: boolean }) {
+  const X = (px: number) => px - W / 2;
+  const Z = (py: number) => D / 2 - py;
+  // clear room width (allow for wall thickness on both sides)
+  const clearW = r.w - 2 * WALL_T;
+  // a bedroom narrower than ~3.0 m clear can't sit a double with circulation,
+  // so show a single bed; otherwise a real double/queen (1.5–1.8 m), never the
+  // ~2.1 m a naive r.w*0.62 could yield on a wide room.
+  const single = clearW < 3.0;
+  const bw = single
+    ? Math.min(Math.max(clearW - 1.2, 0.9), 1.0) // single ~0.9–1.0 m
+    : Math.min(Math.max(clearW * 0.45, 1.5), master ? 1.8 : 1.6); // double/queen 1.5–1.8 m
+  const bl = Math.min(r.h * 0.7, single ? 1.9 : 2.05);
+  // bed centred on the room, headboard against the low-Y wall
+  const bx = r.x + r.w / 2;
+  const bz = r.y + bl / 2 + 0.25;
+  const pillowW = bw * 0.42;
+  return (
+    <group>
+      {/* base */}
+      <mesh position={[X(bx), FLOOR_Y + 0.18, Z(bz)]} castShadow receiveShadow>
+        <boxGeometry args={[bw + 0.12, 0.36, bl + 0.1]} />
+        <TeakMat color="#5c4730" />
+      </mesh>
+      {/* mattress */}
+      <mesh position={[X(bx), FLOOR_Y + 0.45, Z(bz)]} castShadow receiveShadow>
+        <boxGeometry args={[bw, 0.22, bl]} />
+        <meshStandardMaterial color={FABRIC_COL} roughness={0.85} />
+      </mesh>
+      {/* headboard against low-Y wall */}
+      <mesh position={[X(bx), FLOOR_Y + 0.62, Z(bz - bl / 2 - 0.06)]} castShadow>
+        <boxGeometry args={[bw + 0.2, 0.78, 0.1]} />
+        <TeakMat color="#5c4730" />
+      </mesh>
+      {/* two pillows */}
+      {[-1, 1].map((s) => (
+        <mesh key={s} position={[X(bx + s * pillowW * 0.6), FLOOR_Y + 0.58, Z(bz - bl / 2 + 0.28)]} castShadow>
+          <boxGeometry args={[pillowW, 0.1, 0.34]} />
+          <meshStandardMaterial color="#f3eee2" roughness={0.9} />
+        </mesh>
+      ))}
+      {/* side tables flanking the headboard — only the sides that fit inside the
+          room. A single bed in a tight room keeps just one nightstand. */}
+      {(single ? [-1] : [-1, 1]).map((s) => {
+        const tw = single ? 0.34 : 0.42;
+        const tx = bx + s * (bw / 2 + tw / 2 + 0.06);
+        // drop the table if its outer edge would cross the room wall
+        if (tx - tw / 2 < r.x + WALL_T || tx + tw / 2 > r.x + r.w - WALL_T) return null;
+        return (
+          <mesh key={s} position={[X(tx), FLOOR_Y + 0.26, Z(bz - bl / 2 + 0.2)]} castShadow receiveShadow>
+            <boxGeometry args={[tw, 0.5, 0.4]} />
+            <TeakMat color="#6e5337" />
+          </mesh>
+        );
+      })}
+      {/* wardrobe along the high-Y wall (clamped to the clear room width) */}
+      <mesh position={[X(r.x + r.w - 0.35), FLOOR_Y + 1.05, Z(r.y + r.h - 0.32)]} castShadow receiveShadow>
+        <boxGeometry args={[Math.min(clearW * 0.5, 1.4), 2.1, 0.55]} />
+        <TeakMat color="#7a5c3c" />
+      </mesh>
+    </group>
+  );
+}
+
+/** Living: an L-sofa (two arms) + coffee table + a low TV console. */
+function LivingSet({ r, W, D }: { r: Rect; W: number; D: number }) {
+  const X = (px: number) => px - W / 2;
+  const Z = (py: number) => D / 2 - py;
+  const cx = r.x + r.w / 2;
+  const cz = r.y + r.h / 2;
+  const armL = Math.min(r.w * 0.6, 2.2);
+  const armS = Math.min(r.h * 0.5, 1.7);
+  return (
+    <group>
+      {/* main sofa run (along X, back to low-Y) */}
+      <mesh position={[X(cx), FLOOR_Y + 0.22, Z(cz + 0.3)]} castShadow receiveShadow>
+        <boxGeometry args={[armL, 0.4, 0.8]} />
+        <meshStandardMaterial color={SOFA_COL} roughness={0.92} />
+      </mesh>
+      <mesh position={[X(cx), FLOOR_Y + 0.5, Z(cz + 0.62)]} castShadow>
+        <boxGeometry args={[armL, 0.5, 0.18]} />
+        <meshStandardMaterial color={SOFA_COL} roughness={0.92} />
+      </mesh>
+      {/* return arm (along Z) making the L */}
+      <mesh position={[X(cx - armL / 2 + 0.4), FLOOR_Y + 0.22, Z(cz - armS / 2 + 0.4)]} castShadow receiveShadow>
+        <boxGeometry args={[0.8, 0.4, armS]} />
+        <meshStandardMaterial color={SOFA_COL} roughness={0.92} />
+      </mesh>
+      {/* coffee table */}
+      <mesh position={[X(cx), FLOOR_Y + 0.2, Z(cz - 0.2)]} castShadow receiveShadow>
+        <boxGeometry args={[Math.min(armL * 0.45, 1.0), 0.08, 0.55]} />
+        <TeakMat color="#5c4730" />
+      </mesh>
+      {/* TV console against the high-Y wall + screen */}
+      <mesh position={[X(cx), FLOOR_Y + 0.22, Z(r.y + r.h - 0.28)]} castShadow receiveShadow>
+        <boxGeometry args={[Math.min(r.w * 0.55, 1.6), 0.44, 0.4]} />
+        <TeakMat color="#4f3c28" />
+      </mesh>
+      <mesh position={[X(cx), FLOOR_Y + 0.95, Z(r.y + r.h - 0.18)]} castShadow>
+        <boxGeometry args={[Math.min(r.w * 0.5, 1.4), 0.62, 0.05]} />
+        <meshStandardMaterial color="#141414" roughness={0.4} metalness={0.2} />
+      </mesh>
+    </group>
+  );
+}
+
+/** Dining: a table + 4 chair blocks around it. */
+function DiningSet({ r, W, D }: { r: Rect; W: number; D: number }) {
+  const X = (px: number) => px - W / 2;
+  const Z = (py: number) => D / 2 - py;
+  const cx = r.x + r.w / 2;
+  const cz = r.y + r.h / 2;
+  const tw = Math.min(r.w * 0.5, 1.3);
+  const td = Math.min(r.h * 0.42, 0.85);
+  const seats: [number, number][] = [
+    [0, td / 2 + 0.3], [0, -td / 2 - 0.3],
+    [tw / 2 + 0.28, 0], [-tw / 2 - 0.28, 0],
+  ];
+  return (
+    <group>
+      {/* table top + a central pedestal */}
+      <mesh position={[X(cx), FLOOR_Y + 0.74, Z(cz)]} castShadow receiveShadow>
+        <boxGeometry args={[tw, 0.06, td]} />
+        <TeakMat color="#6e5337" />
+      </mesh>
+      <mesh position={[X(cx), FLOOR_Y + 0.36, Z(cz)]} castShadow>
+        <boxGeometry args={[tw * 0.3, 0.72, td * 0.3]} />
+        <TeakMat color="#5c4730" />
+      </mesh>
+      {seats.map(([dx, dz], i) => (
+        <group key={i}>
+          <mesh position={[X(cx + dx), FLOOR_Y + 0.24, Z(cz + dz)]} castShadow receiveShadow>
+            <boxGeometry args={[0.42, 0.46, 0.42]} />
+            <meshStandardMaterial color={SOFA_COL} roughness={0.9} />
+          </mesh>
+          <mesh position={[X(cx + dx + (dz === 0 ? Math.sign(dx) * 0.2 : 0)), FLOOR_Y + 0.6, Z(cz + dz + (dz !== 0 ? Math.sign(dz) * 0.2 : 0))]} castShadow>
+            <boxGeometry args={[dz === 0 ? 0.06 : 0.42, 0.5, dz === 0 ? 0.42 : 0.06]} />
+            <meshStandardMaterial color={SOFA_COL} roughness={0.9} />
+          </mesh>
+        </group>
+      ))}
+    </group>
+  );
+}
+
+/** Kitchen: an L-counter (along two walls) + hob + sink + a strip of upper cabinets. */
+function KitchenSet({ r, W, D }: { r: Rect; W: number; D: number }) {
+  const X = (px: number) => px - W / 2;
+  const Z = (py: number) => D / 2 - py;
+  const cDepth = 0.6;
+  const cH = 0.85;
+  // base run along the low-Y wall, plus a return run along the low-X wall
+  const runX = r.w - 0.1;
+  const runZ = r.h - cDepth - 0.1;
+  return (
+    <group>
+      {/* base counter — run along low-Y wall */}
+      <mesh position={[X(r.x + r.w / 2), FLOOR_Y + cH / 2, Z(r.y + cDepth / 2 + 0.05)]} castShadow receiveShadow>
+        <boxGeometry args={[runX, cH, cDepth]} />
+        <meshPhysicalMaterial color="#b9bec7" roughness={0.4} metalness={0.05} clearcoat={0.4} />
+      </mesh>
+      {/* return run along low-X wall */}
+      <mesh position={[X(r.x + cDepth / 2 + 0.05), FLOOR_Y + cH / 2, Z(r.y + cDepth + runZ / 2 + 0.05)]} castShadow receiveShadow>
+        <boxGeometry args={[cDepth, cH, runZ]} />
+        <meshPhysicalMaterial color="#b9bec7" roughness={0.4} metalness={0.05} clearcoat={0.4} />
+      </mesh>
+      {/* stone counter-top strip */}
+      <mesh position={[X(r.x + r.w / 2), FLOOR_Y + cH + 0.02, Z(r.y + cDepth / 2 + 0.05)]} castShadow>
+        <boxGeometry args={[runX, 0.04, cDepth + 0.02]} />
+        <MarbleMat color="#3c4047" />
+      </mesh>
+      {/* hob (recessed dark) */}
+      <mesh position={[X(r.x + r.w * 0.35), FLOOR_Y + cH + 0.05, Z(r.y + cDepth / 2 + 0.05)]} castShadow>
+        <boxGeometry args={[0.55, 0.04, 0.45]} />
+        <meshStandardMaterial color="#1c1c1f" roughness={0.4} metalness={0.3} />
+      </mesh>
+      {/* sink (steel) */}
+      <mesh position={[X(r.x + r.w * 0.7), FLOOR_Y + cH + 0.03, Z(r.y + cDepth / 2 + 0.05)]} castShadow>
+        <boxGeometry args={[0.5, 0.08, 0.4]} />
+        <meshPhysicalMaterial color={STEEL_COL} metalness={0.8} roughness={0.25} />
+      </mesh>
+      {/* strip of upper cabinets above the low-Y wall */}
+      <mesh position={[X(r.x + r.w / 2), FLOOR_Y + 1.85, Z(r.y + 0.22)]} castShadow receiveShadow>
+        <boxGeometry args={[runX * 0.9, 0.6, 0.35]} />
+        <TeakMat color="#6e5337" />
+      </mesh>
+    </group>
+  );
+}
+
+/** Pooja shrine: a stepped wooden mandir with a small canopy/kalash. */
+function PoojaShrine({ r, W, D }: { r: Rect; W: number; D: number }) {
+  const X = (px: number) => px - W / 2;
+  const Z = (py: number) => D / 2 - py;
+  const cx = r.x + r.w / 2;
+  const bz = r.y + r.h - 0.35; // against the far wall
+  const bw = Math.min(r.w * 0.6, 0.9);
+  return (
+    <group>
+      {/* base cabinet */}
+      <mesh position={[X(cx), FLOOR_Y + 0.3, Z(bz)]} castShadow receiveShadow>
+        <boxGeometry args={[bw, 0.6, 0.4]} />
+        <TeakMat color="#5c4730" />
+      </mesh>
+      {/* shrine box */}
+      <mesh position={[X(cx), FLOOR_Y + 0.9, Z(bz)]} castShadow>
+        <boxGeometry args={[bw * 0.8, 0.6, 0.35]} />
+        <TeakMat color="#7a5c3c" />
+      </mesh>
+      {/* gilded canopy */}
+      <mesh position={[X(cx), FLOOR_Y + 1.28, Z(bz)]} castShadow>
+        <boxGeometry args={[bw * 0.9, 0.1, 0.42]} />
+        <meshPhysicalMaterial color="#caa15a" metalness={0.6} roughness={0.35} />
+      </mesh>
+      {/* kalash finial */}
+      <mesh position={[X(cx), FLOOR_Y + 1.42, Z(bz)]} castShadow>
+        <sphereGeometry args={[0.08, 12, 10]} />
+        <meshPhysicalMaterial color="#d8b45e" metalness={0.7} roughness={0.3} />
+      </mesh>
+    </group>
+  );
 }
 
 const RAIL_H = 0.95; // balcony balustrade height
@@ -453,6 +866,8 @@ function FloorGroup({
   const rooms = plan.rooms.filter((r) => !VIRTUAL.has(r.type) && (r.floor ?? 0) === floor);
   const fp = buildingFootprint(plan, floor);
   const exterior = floor === 0; // plinth + exterior render only on ground storey faces
+  const allFloors = floorsOf(plan);
+  const isTopFloor = floor === allFloors[allFloors.length - 1]; // no slab void above
   return (
     <group position={[0, floor * FLOOR_TO_FLOOR, 0]}>
       {rooms.map((room) => {
@@ -465,11 +880,19 @@ function FloorGroup({
         const eMap = exteriorEdges(r, fp);
         const hasExt = eMap.N || eMap.S || eMap.E || eMap.W;
         const wallCol = hasExt ? PLASTER_EXT : PLASTER_INT;
+        const fcol = floorColor(room.type);
+        const wet = WET.test(room.type);
         return (
           <group key={room.id}>
             <mesh position={[cx, FLOOR_Y, cz]} receiveShadow>
               <boxGeometry args={[r.w - 0.04, 0.05, r.h - 0.04]} />
-              <meshStandardMaterial color={floorColor(room.type)} roughness={0.85} />
+              {isMarbleFloor(room.type) ? (
+                <MarbleMat color={fcol} />
+              ) : wet ? (
+                <TileMat color={fcol} />
+              ) : (
+                <meshStandardMaterial color={fcol} roughness={0.85} />
+              )}
             </mesh>
             {walls.map((w, i) => (
               <mesh key={`w${i}`} position={w.pos} castShadow receiveShadow>
@@ -483,7 +906,7 @@ function FloorGroup({
             {doors.map((d, i) => (
               <Door3D key={`d${i}`} part={d} W={W} D={D} />
             ))}
-            <Furniture3D room={room} W={W} D={D} />
+            <Furniture3D room={room} W={W} D={D} isTopFloor={isTopFloor} />
             {room.type === "balcony" && <Railing room={room} W={W} D={D} />}
           </group>
         );
@@ -623,17 +1046,67 @@ function Slabs({ plan, W, D }: { plan: Plan; W: number; D: number }) {
 
   return (
     <>
-      {/* intermediate floor slabs */}
-      {floors.filter((f) => f > 0).map((f) => (
-        <mesh key={f} position={[cx, f * FLOOR_TO_FLOOR - SLAB / 2 + FLOOR_Y, cz]} receiveShadow castShadow>
-          <boxGeometry args={[fp.w + 0.3, SLAB, fp.h + 0.3]} />
-          <meshStandardMaterial color={concrete} roughness={0.95} />
-        </mesh>
-      ))}
+      {/* intermediate floor slabs — each cut with a stairwell void over the
+          staircase footprint of the floor BELOW, so the stair is visible rising
+          from the lower living up into the upper living. */}
+      {floors.filter((f) => f > 0).map((f) => {
+        const y = f * FLOOR_TO_FLOOR - SLAB / 2 + FLOOR_Y;
+        const slabW = fp.w + 0.3;
+        const slabH = fp.h + 0.3;
+        const sx0 = fp.x - 0.15; // slab extent in plan coords
+        const sy0 = fp.y - 0.15;
+        const sx1 = fp.x + fp.w + 0.15;
+        const sy1 = fp.y + fp.h + 0.15;
+        // staircase room on the floor below defines the hole
+        const below = plan.rooms.find(
+          (rm) => rm.type === "staircase" && (rm.floor ?? 0) === f - 1,
+        );
+        if (!below) {
+          return (
+            <mesh key={f} position={[cx, y, cz]} receiveShadow castShadow>
+              <boxGeometry args={[slabW, SLAB, slabH]} />
+              <ConcreteMat color={concrete} />
+            </mesh>
+          );
+        }
+        // void = staircase rect, trimmed slightly so the slab edge laps the wall
+        const vr = bounds(below.polygon);
+        const margin = 0.04;
+        const hx0 = Math.max(sx0, vr.x + margin);
+        const hy0 = Math.max(sy0, vr.y + margin);
+        const hx1 = Math.min(sx1, vr.x + vr.w - margin);
+        const hy1 = Math.min(sy1, vr.y + vr.h - margin);
+        // frame the hole with 4 strips: S (low-y), N (high-y) span full width;
+        // W and E fill the remaining sides between them.
+        const strips: Box[] = [];
+        const pushStrip = (px0: number, px1: number, py0: number, py1: number) => {
+          const w = px1 - px0;
+          const h = py1 - py0;
+          if (w <= 0.02 || h <= 0.02) return;
+          strips.push({
+            pos: [(px0 + px1) / 2 - W / 2, y, D / 2 - (py0 + py1) / 2],
+            size: [w, SLAB, h],
+          });
+        };
+        pushStrip(sx0, sx1, sy0, hy0); // south strip (full width)
+        pushStrip(sx0, sx1, hy1, sy1); // north strip (full width)
+        pushStrip(sx0, hx0, hy0, hy1); // west strip (between)
+        pushStrip(hx1, sx1, hy0, hy1); // east strip (between)
+        return (
+          <group key={f}>
+            {strips.map((s, i) => (
+              <mesh key={i} position={s.pos} receiveShadow castShadow>
+                <boxGeometry args={s.size} />
+                <ConcreteMat color={concrete} />
+              </mesh>
+            ))}
+          </group>
+        );
+      })}
       {/* roof slab */}
       <mesh position={[cx, roofY, cz]} receiveShadow castShadow>
         <boxGeometry args={[fp.w + 0.4, SLAB, fp.h + 0.4]} />
-        <meshStandardMaterial color={concrete} roughness={0.95} />
+        <ConcreteMat color={concrete} />
       </mesh>
       {/* parapet ring */}
       {([
@@ -717,6 +1190,132 @@ function CompoundWall({ W, D }: { W: number; D: number }) {
   );
 }
 
+/** Trunk + layered canopy spheres — reads as a small ornamental tree. */
+function Tree({ x, z, scale = 1 }: { x: number; z: number; scale?: number }) {
+  const trunkH = 0.9 * scale;
+  const rad = 0.7 * scale;
+  return (
+    <group position={[x, 0, z]}>
+      <mesh position={[0, trunkH / 2, 0]} castShadow>
+        <cylinderGeometry args={[0.08 * scale, 0.12 * scale, trunkH, 8]} />
+        <meshStandardMaterial color="#6b4f2a" roughness={0.95} />
+      </mesh>
+      <mesh position={[0, trunkH + rad * 0.7, 0]} castShadow receiveShadow>
+        <sphereGeometry args={[rad, 14, 12]} />
+        <meshStandardMaterial color="#4d7c2f" roughness={0.95} />
+      </mesh>
+      <mesh position={[rad * 0.4, trunkH + rad * 1.2, 0]} castShadow>
+        <sphereGeometry args={[rad * 0.7, 12, 10]} />
+        <meshStandardMaterial color="#5b8f38" roughness={0.95} />
+      </mesh>
+    </group>
+  );
+}
+
+/** Site/landscaping: a paved approach path from the gate to the entrance, lawn
+ *  inside the compound, low planting along the wall, and a few corner trees.
+ *  Everything is procedural so it always renders offline. */
+function SiteLandscape({ plan, W, D }: { plan: Plan; W: number; D: number }) {
+  const fp = footprint(plan.rooms);
+  const hx = W / 2;
+  const hz = D / 2;
+  // lawn fills the plot inside the compound, just above the yard slab
+  // approach path: a paved strip from the East gate toward the building front
+  const fpEast = fp ? fp.x + fp.w : W * 0.7; // building's East face (plan-x)
+  const pathPlanX0 = fpEast; // from building face
+  const pathPlanX1 = W; // to the East boundary (gate)
+  const pathCx = (pathPlanX0 + pathPlanX1) / 2 - hx;
+  const pathLen = Math.max(pathPlanX1 - pathPlanX0, 0.5);
+
+  // Greenery scaled to plot area so it isn't out of proportion on small plots:
+  //  < 110 m²  → 1–2 small trees
+  //  110–300 m² → 3–4 medium trees
+  //  > 300 m²   → a few larger trees
+  const area = W * D;
+  const treeCfg =
+    area < 110
+      ? { count: Math.min(2, Math.max(1, Math.round(area / 70))), scale: 0.7 }
+      : area <= 300
+        ? { count: area < 200 ? 3 : 4, scale: 1.0 }
+        : { count: 5, scale: 1.35 };
+  // candidate spots along the back/side strips, away from the front approach;
+  // take only as many as the band calls for.
+  const treeSpots: [number, number][] = [
+    [-hx + 0.9, -hz + 1.0],
+    [-hx + 0.9, hz - 1.0],
+    [hx - 1.1, -hz + 1.1],
+    [-hx + 0.9, 0],
+    [hx - 1.1, hz - 1.1],
+  ];
+  const trees = treeSpots.slice(0, treeCfg.count);
+
+  // shrubs scale with the back-wall length (one roughly every ~1.8 m), capped.
+  const nShrub = Math.max(2, Math.min(7, Math.round((D - 0.8) / 1.8)));
+  const plantZs = Array.from({ length: nShrub }).map(
+    (_, i) => -hz + 0.4 + ((i + 0.5) * (D - 0.8)) / nShrub,
+  );
+
+  return (
+    <group>
+      {/* lawn */}
+      <mesh position={[0, 0.0, 0]} receiveShadow>
+        <boxGeometry args={[W - 0.1, 0.04, D - 0.1]} />
+        <meshStandardMaterial color={GRASS_COL} roughness={1} />
+      </mesh>
+      {/* paved approach path to the entrance */}
+      <mesh position={[pathCx, 0.03, 0]} receiveShadow>
+        <boxGeometry args={[pathLen, 0.06, Math.min(D * 0.22, 2.0)]} />
+        <meshPhysicalMaterial color={PATH_COL} roughness={0.7} metalness={0} clearcoat={0.2} />
+      </mesh>
+      {/* trees scaled + counted to the plot area */}
+      {trees.map(([tx, tz], i) => (
+        <Tree key={i} x={tx} z={tz} scale={treeCfg.scale * (i % 2 ? 0.9 : 1)} />
+      ))}
+      {/* low shrubs along the West wall */}
+      {plantZs.map((z, i) => (
+        <mesh key={i} position={[-hx + 0.4, 0.22, z]} castShadow receiveShadow>
+          <sphereGeometry args={[0.26, 10, 8]} />
+          <meshStandardMaterial color="#5b8f38" roughness={1} />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
+/** Swallows render/loader errors from a child subtree so an unreachable CDN asset
+ *  (e.g. the HDRI when offline) can never crash the whole canvas — it just renders
+ *  the fallback (here: nothing, leaving the baseline lights in charge). */
+class SafeBoundary extends React.Component<
+  { children: React.ReactNode; fallback?: React.ReactNode },
+  { failed: boolean }
+> {
+  constructor(props: { children: React.ReactNode; fallback?: React.ReactNode }) {
+    super(props);
+    this.state = { failed: false };
+  }
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  componentDidCatch() {
+    /* asset failed (offline / blocked) — silently fall back */
+  }
+  render() {
+    if (this.state.failed) return <>{this.props.fallback ?? null}</>;
+    return <>{this.props.children}</>;
+  }
+}
+
+/** Fits the camera to the whole scene once, then yields control to OrbitControls. */
+function AutoFrame({ children }: { children: React.ReactNode }) {
+  const api = useBounds();
+  React.useEffect(() => {
+    // wait a frame so children have mounted/measured, then fit + clip
+    const id = requestAnimationFrame(() => api.refresh().clip().fit());
+    return () => cancelAnimationFrame(id);
+  }, [api]);
+  return <>{children}</>;
+}
+
 function Scene({ plan }: { plan: Plan }) {
   const W = plan.plot.widthM;
   const D = plan.plot.depthM;
@@ -727,17 +1326,33 @@ function Scene({ plan }: { plan: Plan }) {
     return e?.id ?? null;
   }, [plan]);
 
+  const span = Math.max(W, D);
   return (
     <>
-      {/* procedural sky (no network assets) for a believable horizon + sun glow */}
+      {/* perceptually-soft contact shadows from the directional sun */}
+      <SoftShadows size={26} samples={12} focus={0.8} />
+
+      {/* procedural sky (no network assets) for a believable horizon + sun glow.
+          Kept alongside the HDRI so the scene still reads if the CDN is offline. */}
       <Sky distance={450000} sunPosition={[W * 0.6, 30, D * 0.5]} turbidity={6} rayleigh={1.2} mieCoefficient={0.006} mieDirectionalG={0.85} />
 
-      <hemisphereLight args={["#fdf6e8", "#b8bdc8", 0.6]} />
-      <ambientLight intensity={0.3} />
+      {/* image-based lighting for soft fill + real reflections in glass/marble/metal.
+          Loaded from drei's CDN HDRI; if it fails or is offline, the hemisphere +
+          directional + sky lights below still light the scene fully. background={false}
+          keeps the procedural Sky as the visible backdrop. */}
+      <SafeBoundary fallback={null}>
+        <Suspense fallback={null}>
+          <Environment preset="apartment" background={false} environmentIntensity={0.55} resolution={256} />
+        </Suspense>
+      </SafeBoundary>
+
+      {/* baseline lights — these alone are enough; the HDRI only refines them */}
+      <hemisphereLight args={["#fdf6e8", "#b8bdc8", 0.45]} />
+      <ambientLight intensity={0.18} />
       <directionalLight
         position={[W * 0.6, 18, D * 0.5]}
-        intensity={2.0}
-        color="#fff4e0"
+        intensity={1.7}
+        color="#fff2da"
         castShadow
         shadow-mapSize-width={2048}
         shadow-mapSize-height={2048}
@@ -748,22 +1363,29 @@ function Scene({ plan }: { plan: Plan }) {
         shadow-camera-near={0.5}
         shadow-camera-far={80}
         shadow-bias={-0.0004}
+        shadow-normalBias={0.02}
       />
 
-      {/* plot slab (ground / yard) */}
-      <mesh position={[0, -0.02, 0]} receiveShadow>
+      {/* earth slab under the lawn (kept thin; lawn sits just above it) */}
+      <mesh position={[0, -0.05, 0]} receiveShadow>
         <boxGeometry args={[W + 0.3, 0.12, D + 0.3]} />
-        <meshStandardMaterial color="#c9c3b4" roughness={1} />
+        <meshStandardMaterial color="#b7a98f" roughness={1} />
       </mesh>
+      <SiteLandscape plan={plan} W={W} D={D} />
 
-      {floors.map((f) => (
-        <FloorGroup key={f} plan={plan} floor={f} W={W} D={D} openings={openings} entranceId={entranceId} />
-      ))}
-      <Slabs plan={plan} W={W} D={D} />
-      <EntrancePorch plan={plan} W={W} D={D} />
-      <CompoundWall W={W} D={D} />
+      {/* auto-fit the building + site on first mount, then hand off to OrbitControls */}
+      <Bounds clip margin={1.2}>
+        <AutoFrame>
+          {floors.map((f) => (
+            <FloorGroup key={f} plan={plan} floor={f} W={W} D={D} openings={openings} entranceId={entranceId} />
+          ))}
+          <Slabs plan={plan} W={W} D={D} />
+          <EntrancePorch plan={plan} W={W} D={D} />
+          <CompoundWall W={W} D={D} />
+        </AutoFrame>
+      </Bounds>
 
-      <ContactShadows position={[0, 0.02, 0]} scale={Math.max(W, D) * 1.6} blur={2.2} opacity={0.4} far={6} />
+      <ContactShadows position={[0, 0.04, 0]} scale={span * 1.6} blur={2.4} opacity={0.45} far={8} resolution={1024} color="#3b352c" />
       <OrbitControls
         makeDefault
         enablePan
@@ -788,6 +1410,7 @@ export function FloorPlan3D({ plan, className }: { plan: Plan; className?: strin
         shadows
         dpr={[1, 1.8]}
         camera={{ position: [W * 0.85, dist * 1.0 + h, D * 1.2 + h * 0.4], fov: 38, near: 0.1, far: 240 }}
+        gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.15 }}
         style={{ background: "linear-gradient(180deg,#cfe0f2 0%,#e8edf3 100%)" }}
       >
         <Scene plan={plan} />

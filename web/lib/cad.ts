@@ -63,9 +63,15 @@ export function structuralRooms(plan: Plan, floor?: number): Room[] {
 }
 
 /** Bounding box of the built mass (all floors) — the building's outer wall extents. */
-export function buildingFootprint(plan: Plan): Rect {
-  const rooms = structuralRooms(plan);
-  if (!rooms.length) return { x: 0, y: 0, w: plan.plot.widthM, h: plan.plot.depthM };
+export function buildingFootprint(plan: Plan, floor?: number): Rect {
+  // Per FLOOR when given: a G+1's floors are packed independently, so an exterior
+  // wall must be judged against that floor's own outline, not the union of floors.
+  const rooms = structuralRooms(plan, floor);
+  if (!rooms.length) {
+    return floor === undefined
+      ? { x: 0, y: 0, w: plan.plot.widthM, h: plan.plot.depthM }
+      : buildingFootprint(plan);
+  }
   const pts: Point[] = rooms.flatMap((r) => r.polygon);
   return bounds(pts);
 }
@@ -120,6 +126,21 @@ function edgeMid(e: Edge, r: Rect): [number, number] {
   }
 }
 
+/** Centre of the i-th of n openings spread evenly along edge e (margins at ends). */
+function edgePos(e: Edge, r: Rect, i: number, n: number): [number, number] {
+  const t = (i + 1) / (n + 1);
+  switch (e) {
+    case "N":
+      return [r.x + r.w * t, r.y + r.h];
+    case "S":
+      return [r.x + r.w * t, r.y];
+    case "E":
+      return [r.x + r.w, r.y + r.h * t];
+    case "W":
+      return [r.x, r.y + r.h * t];
+  }
+}
+
 /**
  * The Plan model stores openings per-room without a wall position, so we infer a
  * sensible placement for visualization: doors open onto the interior edge nearest
@@ -130,14 +151,22 @@ export function placeOpenings(plan: Plan): PlacedOpening[] {
   const W = plan.plot.widthM;
   const D = plan.plot.depthM;
   const core: [number, number] = [W / 2, D / 2];
-  const fp = buildingFootprint(plan);
+  const fpByFloor = new Map<number, Rect>();
+  const footprintFor = (f: number): Rect => {
+    let fp = fpByFloor.get(f);
+    if (!fp) {
+      fp = buildingFootprint(plan, f);
+      fpByFloor.set(f, fp);
+    }
+    return fp;
+  };
   const out: PlacedOpening[] = [];
 
   for (const room of plan.rooms) {
     if (VIRTUAL.has(room.type) || SITE_OPENINGS.has(room.type)) continue;
     const r = bounds(room.polygon);
     if (r.w < 0.6 || r.h < 0.6) continue;
-    const ext = exteriorEdges(r, fp);
+    const ext = exteriorEdges(r, footprintFor(room.floor ?? 0));
     const edges: Edge[] = ["N", "S", "E", "W"];
 
     // door: interior edge closest to the plot core
@@ -152,13 +181,34 @@ export function placeOpenings(plan: Plan): PlacedOpening[] {
       out.push({ roomId: room.id, kind: "door", edge: doorEdge, cx, cy, len: dW });
     }
 
-    // window: first available exterior edge, N > E > W > S
-    const winEdge = (["N", "E", "W", "S"] as Edge[]).find((e) => ext[e]);
-    if (winEdge) {
-      const wW = Math.min(openingWidth(plan, room.id, "window", 1.2), edgeLen(winEdge, r) - 0.5);
+    // windows: one per ACTUAL plan window for this room, spread across the room's
+    // exterior walls so a cross-ventilated corner room shows a window on each face
+    // (preferring N > E > W > S). Falls back to a single inferred window for plans
+    // authored without an explicit window list.
+    const winEdges = (["N", "E", "W", "S"] as Edge[]).filter((e) => ext[e]);
+    const roomWindows = plan.windows.filter((w) => w.roomId === room.id);
+    if (winEdges.length && roomWindows.length) {
+      const assign = roomWindows.map((_, k) => winEdges[k % winEdges.length]);
+      const countByEdge: Partial<Record<Edge, number>> = {};
+      assign.forEach((e) => (countByEdge[e] = (countByEdge[e] ?? 0) + 1));
+      const seenByEdge: Partial<Record<Edge, number>> = {};
+      roomWindows.forEach((w, k) => {
+        const e = assign[k];
+        const n = countByEdge[e] ?? 1;
+        const i = (seenByEdge[e] = (seenByEdge[e] ?? 0));
+        seenByEdge[e] = i + 1;
+        const wW = Math.min(w.widthM ?? 1.2, edgeLen(e, r) / n - 0.4);
+        if (wW > 0.4) {
+          const [cx, cy] = edgePos(e, r, i, n);
+          out.push({ roomId: room.id, kind: "window", edge: e, cx, cy, len: wW });
+        }
+      });
+    } else if (winEdges.length) {
+      const e = winEdges[0];
+      const wW = Math.min(openingWidth(plan, room.id, "window", 1.2), edgeLen(e, r) - 0.5);
       if (wW > 0.4) {
-        const [cx, cy] = edgeMid(winEdge, r);
-        out.push({ roomId: room.id, kind: "window", edge: winEdge, cx, cy, len: wW });
+        const [cx, cy] = edgeMid(e, r);
+        out.push({ roomId: room.id, kind: "window", edge: e, cx, cy, len: wW });
       }
     }
   }

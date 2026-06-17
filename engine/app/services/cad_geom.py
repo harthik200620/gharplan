@@ -112,6 +112,18 @@ def edge_mid(e: str, r: Rect) -> tuple[float, float]:
     return (r.x, r.y + r.h / 2)  # W
 
 
+def edge_pos(e: str, r: Rect, i: int, n: int) -> tuple[float, float]:
+    """Centre of the i-th of n openings spread evenly along edge e (end margins)."""
+    t = (i + 1) / (n + 1)
+    if e == "N":
+        return (r.x + r.w * t, r.y + r.h)
+    if e == "S":
+        return (r.x + r.w * t, r.y)
+    if e == "E":
+        return (r.x + r.w, r.y + r.h * t)
+    return (r.x, r.y + r.h * t)  # W
+
+
 def _opening_width(plan: Plan, room_id: str, kind: str, fallback: float) -> float:
     pool = plan.doors if kind == "door" else plan.windows
     o: Optional[Opening] = next((p for p in pool if p.room_id == room_id), None)
@@ -127,7 +139,15 @@ def place_openings(plan: Plan) -> list[PlacedOpening]:
     w = plan.plot.width_m
     d = plan.plot.depth_m
     core = (w / 2, d / 2)
-    fp = building_footprint(plan)
+    fp_by_floor: dict[int, Rect] = {}
+
+    def footprint_for(f: int) -> Rect:
+        fp = fp_by_floor.get(f)
+        if fp is None:
+            fp = building_footprint(plan, f)
+            fp_by_floor[f] = fp
+        return fp
+
     out: list[PlacedOpening] = []
 
     for room in plan.rooms:
@@ -137,7 +157,7 @@ def place_openings(plan: Plan) -> list[PlacedOpening]:
         r = bounds(room.polygon)
         if r.w < 0.6 or r.h < 0.6:
             continue
-        ext = exterior_edges(r, fp)
+        ext = exterior_edges(r, footprint_for(room.floor or 0))
         edges: list[str] = ["N", "S", "E", "W"]
 
         # door: interior edge closest to the plot core
@@ -149,13 +169,33 @@ def place_openings(plan: Plan) -> list[PlacedOpening]:
             cx, cy = edge_mid(door_edge, r)
             out.append(PlacedOpening(room.id, "door", door_edge, cx, cy, d_w))  # type: ignore[arg-type]
 
-        # window: first available exterior edge, N > E > W > S
-        win_edge = next((e for e in ("N", "E", "W", "S") if ext[e]), None)
-        if win_edge:
-            w_w = min(_opening_width(plan, room.id, "window", 1.2), _edge_len(win_edge, r) - 0.5)
+        # windows: one per ACTUAL plan window for this room, spread across the
+        # room's exterior walls so a cross-ventilated corner room shows a window on
+        # each face (preferring N > E > W > S). Falls back to a single inferred
+        # window for plans authored without an explicit window list.
+        win_edges = [e for e in ("N", "E", "W", "S") if ext[e]]
+        room_windows = [w for w in plan.windows if w.room_id == room.id]
+        if win_edges and room_windows:
+            assign = [win_edges[k % len(win_edges)] for k in range(len(room_windows))]
+            count_by_edge: dict[str, int] = {}
+            for e in assign:
+                count_by_edge[e] = count_by_edge.get(e, 0) + 1
+            seen_by_edge: dict[str, int] = {}
+            for k, win in enumerate(room_windows):
+                e = assign[k]
+                n = count_by_edge[e]
+                i = seen_by_edge.get(e, 0)
+                seen_by_edge[e] = i + 1
+                w_w = min(win.width_m, _edge_len(e, r) / n - 0.4)
+                if w_w > 0.4:
+                    cx, cy = edge_pos(e, r, i, n)
+                    out.append(PlacedOpening(room.id, "window", e, cx, cy, w_w))  # type: ignore[arg-type]
+        elif win_edges:
+            e = win_edges[0]
+            w_w = min(_opening_width(plan, room.id, "window", 1.2), _edge_len(e, r) - 0.5)
             if w_w > 0.4:
-                cx, cy = edge_mid(win_edge, r)
-                out.append(PlacedOpening(room.id, "window", win_edge, cx, cy, w_w))  # type: ignore[arg-type]
+                cx, cy = edge_mid(e, r)
+                out.append(PlacedOpening(room.id, "window", e, cx, cy, w_w))  # type: ignore[arg-type]
     return out
 
 
@@ -183,11 +223,15 @@ def floors_of(plan: Plan) -> list[int]:
     return sorted({(r.floor or 0) for r in plan.rooms})
 
 
-def building_footprint(plan: Plan) -> Rect:
-    """Bounding box of the built mass (all floors) - the elevation's overall width."""
-    rooms = structural_rooms(plan)
+def building_footprint(plan: Plan, floor: Optional[int] = None) -> Rect:
+    """Bounding box of the built mass. With ``floor`` given, only that floor's
+    rooms — a G+1's floors are packed independently, so an exterior wall must be
+    judged against that floor's own outline, not the union of floors. Without it,
+    the whole built mass (the elevation's overall width)."""
+    rooms = structural_rooms(plan, floor)
     if not rooms:
-        return Rect(0.0, 0.0, plan.plot.width_m, plan.plot.depth_m)
+        return (Rect(0.0, 0.0, plan.plot.width_m, plan.plot.depth_m)
+                if floor is None else building_footprint(plan))
     pts = [p for r in rooms for p in r.polygon]
     return bounds(pts)
 

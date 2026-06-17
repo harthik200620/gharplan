@@ -1,6 +1,7 @@
 {
   "version": "1.0",
-  "note": "INDICATIVE NBC 2016 / state DCR placeholders. TODO(human): verify EVERY number against the latest state DCR / municipal bylaws (KA: BBMP/KMC, MH: DCPR/UDCPR, TG: GO Ms / GHMC) before relying on a code result.",
+  "note": "Researched, source-cited DEFAULT values (see docs/region-research.md for the per-state sources, confidence and caveats). These are NOT a sanctioned plan and NOT legal advice. verify:true on every state — confirm against the live state DCR / municipal bye-laws for the SPECIFIC plot (KA: BBMP/GBA RMP-2015 + Nov-2025 amendment; TG: GHMC/HMDA Telangana Building Rules 2012 via TS-bPASS; AP: AP Building Rules 2017 G.O.Ms.119 + TUDA/TMC) before relying on a code result. Exact FAR/coverage/setbacks/height depend on the zone, plot dimensions, abutting road width and current notified tables.",
+  "sourcesDoc": "docs/region-research.md",
   "roomClassification": {
     "habitableRoomTypes": ["living", "master_bedroom", "bedroom", "childrens_bedroom", "study"],
     "ventilationRoomTypes": ["living", "dining", "master_bedroom", "bedroom", "childrens_bedroom", "study", "kitchen", "toilet", "bathroom"],
@@ -15,6 +16,8 @@
   "states": {
     "KA": {
       "label": "Karnataka",
+      "verify": true,
+      "note": "Bengaluru — BBMP/GBA under RMP-2015 zoning (amended Nov-2025). Working defaults for a ~150-300 sqm plot on a road <12 m up to 11.5-12 m height. RMP-2015 fixes setbacks as % of site dimensions (front ~12%, rear/side ~8%) which yields ~1.5 m front / ~1.0 m rear+side on a small plot; the Nov-2025 amendment RELAXES these for plots <=150 sqm (0.9 front / 0.7 rear / 0.7 one side, second side may be nil). Two regimes are both in circulation — confirm the sanctioned table with BBMP/GBA. Sources + confidence in docs/region-research.md.",
       "minHabitableRoomSqm": 9.5,
       "minRoomDimM": 2.4,
       "minCeilingHeightM": 2.75,
@@ -22,9 +25,10 @@
       "minBathroomSqm": 1.8,
       "minWCSqm": 1.1,
       "minStairWidthM": 1.0,
-      "ventilationOpenableRatio": 0.125,
+      "ventilationOpenableRatio": 0.1,
       "maxGroundCoveragePct": 65,
       "FAR": 1.75,
+      "maxHeightM": 12,
       "parkingPerDwelling": 1,
       "setbacks": [
         { "maxPlotAreaSqm": 150, "frontM": 1.5, "rearM": 1.0, "sideM": 0.6 },
@@ -35,6 +39,8 @@
     },
     "MH": {
       "label": "Maharashtra",
+      "verify": true,
+      "note": "Reference only — NOT a supported generation state (the generator serves KA/TG/AP). DCPR/UDCPR working defaults; verify against the current sanctioned DCPR table for the specific plot.",
       "minHabitableRoomSqm": 9.5,
       "minRoomDimM": 2.4,
       "minCeilingHeightM": 2.75,
@@ -42,9 +48,10 @@
       "minBathroomSqm": 1.8,
       "minWCSqm": 1.1,
       "minStairWidthM": 1.0,
-      "ventilationOpenableRatio": 0.125,
+      "ventilationOpenableRatio": 0.1,
       "maxGroundCoveragePct": 60,
       "FAR": 1.1,
+      "maxHeightM": 15,
       "parkingPerDwelling": 1,
       "setbacks": [
         { "maxPlotAreaSqm": 150, "frontM": 1.5, "rearM": 1.0, "sideM": 0.6 },
@@ -55,6 +62,8 @@
     },
     "TG": {
       "label": "Telangana",
+      "verify": true,
+      "note": "Hyderabad — GHMC/HMDA under Telangana Building Rules 2012 (G.O. Ms. 168) via TS-bPASS. The rules govern buildability through setbacks + height, not a fixed FAR/coverage cap for individual houses; FAR 1.5 and coverage 55% are practitioner working defaults for a <12 m road. Setback bands: 101-200 sqm -> front 1.5 / side+rear 1.0; 201-300 sqm -> front 2.0 / side+rear 1.5; front increases with road width. Plots <~50 sqm (and self-certified up to 75 sq yd G+1) need effectively no setbacks. Max height ~10 m on a <9 m road, 15 m on 9-12 m. Sources + confidence in docs/region-research.md.",
       "minHabitableRoomSqm": 9.5,
       "minRoomDimM": 2.4,
       "minCeilingHeightM": 2.75,
@@ -62,20 +71,22 @@
       "minBathroomSqm": 1.8,
       "minWCSqm": 1.1,
       "minStairWidthM": 1.0,
-      "ventilationOpenableRatio": 0.125,
-      "maxGroundCoveragePct": 65,
-      "FAR": 2.0,
+      "ventilationOpenableRatio": 0.1,
+      "maxGroundCoveragePct": 55,
+      "FAR": 1.5,
+      "maxHeightM": 10,
       "parkingPerDwelling": 1,
       "setbacks": [
-        { "maxPlotAreaSqm": 150, "frontM": 1.5, "rearM": 1.0, "sideM": 0.5 },
-        { "maxPlotAreaSqm": 300, "frontM": 2.5, "rearM": 2.0, "sideM": 1.0 },
-        { "maxPlotAreaSqm": 500, "frontM": 4.0, "rearM": 3.0, "sideM": 2.0 },
+        { "maxPlotAreaSqm": 100, "frontM": 1.5, "rearM": 1.0, "sideM": 1.0 },
+        { "maxPlotAreaSqm": 200, "frontM": 1.5, "rearM": 1.0, "sideM": 1.0 },
+        { "maxPlotAreaSqm": 300, "frontM": 2.0, "rearM": 1.5, "sideM": 1.5 },
+        { "maxPlotAreaSqm": 500, "frontM": 3.0, "rearM": 2.0, "sideM": 2.0 },
         { "maxPlotAreaSqm": null, "frontM": 6.0, "rearM": 4.5, "sideM": 3.0 }
       ]
     },
     "AP": {
       "label": "Andhra Pradesh",
-      "note": "INDICATIVE values modelled on AP Building Rules 2017 (G.O. Ms No. 119, dt. 28-03-2017) for a small (~150-300 sqm) residential plot abutting a road < 12 m (Tirupati / TUDA jurisdiction). Setbacks from the AP-2017 plot-area open-space table (Table 17); room minimums per the AP-2017 minimum-dimension schedule (habitable single room 9.5 m2 / 2.4 m, kitchen 5.0 m2 / 1.8 m, bath 1.8 m2, WC 1.1 m2, ceiling 2.75 m, stair 1.0 m); FAR ~1.5 and coverage 65% per TUDA small-plot residential bands (FAR shown 1.40-1.60). TODO(human): VERIFY every number against the current AP-2017 rules + TUDA Master Plan 2040 / GHMC-equivalent local bylaw before relying on a code result.",
+      "note": "Tirupati (TMC/TUDA) under the statewide AP Building Rules 2017 (G.O. Ms. No. 119, dt. 28-03-2017, Table-17 setbacks / Table-5 room minimums), read directly from the official G.O. PDF. The rules express the buildable envelope through setback + permissible-height bands rather than a fixed FAR/coverage for small non-high-rise plots; FAR ~1.75 and coverage ~60% are derived practitioner estimates. Setbacks (100-300 sqm, road <12 m): front 1.5-2.0 m, sides/rear 0.5-2.0 m rising with height; a 1 m frontage green strip is mandatory; stilt parking floor is excluded from height. Max height ~10 m for G+2 without a 12 m road. Sources + confidence in docs/region-research.md.",
       "verify": true,
       "minHabitableRoomSqm": 9.5,
       "minRoomDimM": 2.4,
@@ -84,9 +95,10 @@
       "minBathroomSqm": 1.8,
       "minWCSqm": 1.1,
       "minStairWidthM": 1.0,
-      "ventilationOpenableRatio": 0.125,
+      "ventilationOpenableRatio": 0.1,
       "maxGroundCoveragePct": 65,
-      "FAR": 1.5,
+      "FAR": 1.75,
+      "maxHeightM": 10,
       "parkingPerDwelling": 1,
       "setbacks": [
         { "maxPlotAreaSqm": 100, "frontM": 1.5, "rearM": 0.5, "sideM": 0.5 },

@@ -2,6 +2,19 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Standalone /3d-preview route: make the FloorPlan3D wrapper, the r3f container
+   and the <canvas> fill the viewport (the canvas otherwise stays 300x150). */
+.r3d-fill,
+.r3d-fill > div {
+  width: 100%;
+  height: 100%;
+}
+.r3d-fill canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+}
+
 /* ============================================================================
    GharPlan design system — premium modern SaaS
    Indigo-violet brand · saffron Vastu accent · ink sidebar · full dark mode

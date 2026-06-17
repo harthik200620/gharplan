@@ -20,10 +20,7 @@ export default function ThreeDPreviewPage() {
     <main style={{ position: "fixed", inset: 0, background: "#e8edf3" }}>
       {/* Make the FloorPlan3D wrapper + its r3f container + the <canvas> fill the
           viewport (standalone, the canvas otherwise stays at its 300×150 default). */}
-      <style>{`
-        .r3d-fill, .r3d-fill > div { width: 100%; height: 100%; }
-        .r3d-fill canvas { display: block; width: 100% !important; height: 100% !important; }
-      `}</style>
+      {/* canvas-fill CSS lives in globals.css (.r3d-fill) — no SSR <style>, no hydration mismatch */}
       <div
         style={{
           position: "absolute",

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, Save } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Save } from "lucide-react";
 import { toast } from "sonner";
 import type { Plan } from "@gharplan/shared";
 import { Button } from "@/components/ui/button";
@@ -87,9 +87,9 @@ export function Wizard({
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-4">
         <input
-          className="border-0 bg-transparent text-2xl font-bold text-primary outline-none"
+          className="min-w-0 flex-1 rounded-lg border border-transparent bg-transparent px-2 py-1 font-display text-2xl font-bold tracking-tight outline-none transition-colors hover:border-border focus:border-primary focus:bg-card"
           value={plan.project.name}
           onChange={(e) => useWizard.getState().setProjectField({ name: e.target.value })}
         />
@@ -99,21 +99,36 @@ export function Wizard({
       </div>
 
       {/* stepper */}
-      <ol className="flex flex-wrap gap-1 rounded-lg border bg-card p-1">
-        {STEPS.map((label, i) => (
-          <li key={label} className="flex-1">
-            <button
-              onClick={() => setStep(i)}
-              className={cn(
-                "w-full rounded-md px-3 py-2 text-sm font-medium transition-colors",
-                i === step ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-secondary",
-              )}
-            >
-              <span className="mr-1.5 opacity-70">{i + 1}</span>
-              {label}
-            </button>
-          </li>
-        ))}
+      <ol className="flex flex-wrap items-center gap-x-2 gap-y-2 rounded-2xl border bg-card p-2 shadow-soft">
+        {STEPS.map((label, i) => {
+          const active = i === step;
+          const complete = i < step;
+          return (
+            <li key={label} className="flex flex-1 items-center gap-2">
+              <button
+                onClick={() => setStep(i)}
+                className={cn(
+                  "group flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-sm font-medium transition-all",
+                  active && "bg-brand-gradient text-white shadow-soft",
+                  !active && complete && "text-foreground hover:bg-muted",
+                  !active && !complete && "text-muted-foreground hover:bg-muted",
+                )}
+              >
+                <span
+                  className={cn(
+                    "grid h-6 w-6 shrink-0 place-items-center rounded-full text-xs font-semibold tabular-nums transition-colors",
+                    active && "bg-white/20 text-white",
+                    !active && complete && "bg-success/15 text-success",
+                    !active && !complete && "bg-muted text-muted-foreground group-hover:bg-secondary",
+                  )}
+                >
+                  {complete ? <Check className="h-3.5 w-3.5" /> : i + 1}
+                </span>
+                <span className="truncate">{label}</span>
+              </button>
+            </li>
+          );
+        })}
       </ol>
 
       <div className="min-h-[420px]">{steps[step]}</div>
@@ -122,7 +137,7 @@ export function Wizard({
         <Button variant="ghost" disabled={step === 0} onClick={() => setStep((s) => s - 1)}>
           <ChevronLeft className="h-4 w-4" /> Back
         </Button>
-        <Button disabled={step === STEPS.length - 1} onClick={() => setStep((s) => s + 1)}>
+        <Button variant="brand" disabled={step === STEPS.length - 1} onClick={() => setStep((s) => s + 1)}>
           Next <ChevronRight className="h-4 w-4" />
         </Button>
       </div>

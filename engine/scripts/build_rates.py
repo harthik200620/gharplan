@@ -25,6 +25,7 @@ CITY_MULTIPLIER = {
     "Bengaluru": 1.00,
     "Hyderabad": 0.95,
     "Pune": 1.03,
+    "Tirupati": 0.90,  # tier-2 temple city (AP); lower labour/material vs metro
 }
 
 # Base spec (Bengaluru). (code, description, unit, material, labour, gst%, hsn, tier)

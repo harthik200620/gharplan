@@ -28,7 +28,9 @@ TEMPLATES_DIR = FIXTURES_DIR / "templates"
 BRAHMASTHAN_STRATEGY = os.getenv("GHARPLAN_BRAHMASTHAN", "grid_3x3")
 
 # Feature flags
-FEATURE_GENERATOR = os.getenv("FEATURE_GENERATOR", "false").lower() in {"1", "true", "yes"}
+# The deterministic floor-plan generator is GA and ON by default; the flag is
+# retained only as a kill switch (set FEATURE_GENERATOR=false to disable).
+FEATURE_GENERATOR = os.getenv("FEATURE_GENERATOR", "true").lower() in {"1", "true", "yes"}
 
 # CORS
 CORS_ORIGINS = [

@@ -13,13 +13,15 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const profile = await getOrCreateProfile(supabase, user.id, user.email ?? "");
 
   return (
-    <div className="min-h-screen bg-secondary/30">
+    <div className="min-h-screen bg-muted/30">
       <AppNav
         studioName={profile.studio_name}
         credits={profile.credits}
         subscribed={hasActiveSubscription(profile)}
       />
-      <main className="mx-auto max-w-6xl px-4 py-6">{children}</main>
+      <main className="lg:pl-64">
+        <div className="mx-auto max-w-6xl animate-fade-up px-4 py-8 sm:px-6 lg:px-8">{children}</div>
+      </main>
     </div>
   );
 }

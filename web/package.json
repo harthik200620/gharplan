@@ -16,6 +16,8 @@
     "@radix-ui/react-select": "^2.1.1",
     "@radix-ui/react-slot": "^1.1.0",
     "@radix-ui/react-tabs": "^1.1.0",
+    "@react-three/drei": "^9.122.0",
+    "@react-three/fiber": "^8.18.0",
     "@supabase/ssr": "^0.5.1",
     "@supabase/supabase-js": "^2.45.4",
     "class-variance-authority": "^0.7.0",
@@ -27,6 +29,7 @@
     "react-dom": "^18.3.1",
     "sonner": "^1.5.0",
     "tailwind-merge": "^2.5.2",
+    "three": "^0.169.0",
     "zustand": "^4.5.5"
   },
   "devDependencies": {

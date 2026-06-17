@@ -4,6 +4,8 @@ import type {
   BoqReport,
   BoqRequest,
   CodeReport,
+  GenerateOptionsResponse,
+  GenerateRequest,
   GenerateResponse,
   Plan,
   ValidateResponse,
@@ -45,6 +47,9 @@ export const engine = {
   vastu: (plan: Plan, signal?: AbortSignal) => post<VastuReport>("/vastu/check", plan, signal),
   code: (plan: Plan, signal?: AbortSignal) => post<CodeReport>("/code/check", plan, signal),
   boq: (req: BoqRequest, signal?: AbortSignal) => post<BoqReport>("/boq/generate", req, signal),
-  generate: (plot: Plan["plot"], brief?: string) => post<GenerateResponse>("/plan/generate", { plot, brief }),
+  generate: (req: GenerateRequest, signal?: AbortSignal) =>
+    post<GenerateResponse>("/plan/generate", req, signal),
+  generateOptions: (req: GenerateRequest, signal?: AbortSignal) =>
+    post<GenerateOptionsResponse>("/plan/options", req, signal),
   engineUrl: ENGINE_URL,
 };

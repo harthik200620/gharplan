@@ -35,7 +35,7 @@
     "utility": 2,
     "default": 0
   },
-  "excludeRoomTypes": ["brahmasthan", "borewell", "overhead_tank"],
+  "excludeRoomTypes": ["brahmasthan", "borewell", "overhead_tank", "parking", "sitout", "courtyard", "garden", "service_shaft", "future_expansion"],
   "items": [
     {
       "key": "cement_plaster",

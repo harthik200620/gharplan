@@ -72,8 +72,21 @@ def check_code(plan: Plan, rules: CodeRules) -> CodeReport:
     floors = plan.plot.floors
     real_rooms = [r for r in plan.rooms if r.type.value not in virtual]
 
-    footprint = geometry.union_area([r.polygon for r in real_rooms])
-    built_up = footprint * floors
+    # Floor-aware: ground coverage uses the GROUND (floor 0) footprint; built-up /
+    # FAR sum each generated floor. Backward-compatible — a plan whose rooms are
+    # all on one floor keeps the legacy ``footprint * plot.floors``.
+    floors_present = sorted({int(getattr(r, "floor", 0) or 0) for r in real_rooms})
+    ground_rooms = [r for r in real_rooms if int(getattr(r, "floor", 0) or 0) == 0] or real_rooms
+    footprint = geometry.union_area([r.polygon for r in ground_rooms])
+    if len(floors_present) > 1:
+        built_up = sum(
+            geometry.union_area(
+                [r.polygon for r in real_rooms if int(getattr(r, "floor", 0) or 0) == fl]
+            )
+            for fl in floors_present
+        )
+    else:
+        built_up = footprint * floors
     coverage_pct = (footprint / plot_area * 100.0) if plot_area else 0.0
     far_used = (built_up / plot_area) if plot_area else 0.0
 

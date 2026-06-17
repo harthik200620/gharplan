@@ -10,10 +10,10 @@ export default async function BillingPage() {
   const profile = await getOrCreateProfile(supabase, user!.id, user!.email ?? "");
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-bold text-primary">Billing</h1>
-        <p className="text-sm text-muted-foreground">Credits unlock exports. Subscribe for volume.</p>
+        <h1 className="font-display text-2xl font-bold tracking-tight">Billing</h1>
+        <p className="mt-1 text-sm text-muted-foreground">Credits unlock exports. Subscribe for volume.</p>
       </div>
       <BillingClient
         credits={profile.credits}

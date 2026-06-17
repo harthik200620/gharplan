@@ -4,7 +4,8 @@
       "enum": [
         "Bengaluru",
         "Hyderabad",
-        "Pune"
+        "Pune",
+        "Tirupati"
       ],
       "title": "City",
       "type": "string"
@@ -249,6 +250,13 @@
           "exclusiveMinimum": 0,
           "title": "Ceilingheightm",
           "type": "number"
+        },
+        "floor": {
+          "default": 0,
+          "description": "0 = ground floor, 1 = first, …",
+          "minimum": 0,
+          "title": "Floor",
+          "type": "integer"
         }
       },
       "required": [
@@ -288,7 +296,8 @@
       "enum": [
         "KA",
         "MH",
-        "TG"
+        "TG",
+        "AP"
       ],
       "title": "StateCode",
       "type": "string"

@@ -24,14 +24,19 @@ export type RoomType =
   | "utility"
   | "balcony"
   | "parking"
+  | "sitout"
+  | "courtyard"
+  | "garden"
+  | "service_shaft"
+  | "future_expansion"
   | "overhead_tank"
   | "borewell"
   | "brahmasthan";
 
 export type Compass = "N" | "NE" | "E" | "SE" | "S" | "SW" | "W" | "NW" | "CENTER";
 export type Facing = "N" | "NE" | "E" | "SE" | "S" | "SW" | "W" | "NW";
-export type StateCode = "KA" | "MH" | "TG";
-export type City = "Bengaluru" | "Hyderabad" | "Pune";
+export type StateCode = "KA" | "MH" | "TG" | "AP";
+export type City = "Bengaluru" | "Hyderabad" | "Pune" | "Tirupati";
 export type FinishTier = "economy" | "standard" | "premium";
 
 /** A 2D point [x, y] in metres. */
@@ -75,6 +80,8 @@ export interface Room {
   centroid?: Point | null;
   zone?: Compass | null;
   ceilingHeightM: number;
+  /** 0 = ground floor, 1 = first floor, … */
+  floor?: number;
 }
 
 export interface Plan {
@@ -89,4 +96,24 @@ export interface Plan {
 export interface ValidateResponse {
   plan: Plan;
   warnings: string[];
+}
+
+/** A natural-language / structured brief for AI plan generation. */
+export interface GenerateRequest {
+  /** Number of bedrooms (1–4 supported). */
+  bhk: number;
+  plotWidthM: number;
+  plotDepthM: number;
+  facing: Facing;
+  state: StateCode;
+  city: City;
+  floors: number;
+  /** Prioritise Vastu compliance when packing rooms. */
+  vastuPriority: boolean;
+  /** Drives default finish assumptions in the estimate. */
+  budgetTier: FinishTier;
+  projectName?: string;
+  clientName?: string;
+  /** Optional free-text wishes ("home office", "pooja room", "parking"). */
+  notes?: string;
 }

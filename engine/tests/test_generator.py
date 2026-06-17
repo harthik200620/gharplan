@@ -56,25 +56,101 @@ def test_scale_uniform_same_aspect_preserves_zones():
     assert zones["pooja"] == "NE"
 
 
-def test_endpoint_disabled_by_default(monkeypatch):
+def _brief(bhk=2, w=9.144, d=12.192, facing="E", state="KA", city="Bengaluru", floors=1):
+    return {
+        "bhk": bhk,
+        "plotWidthM": w,
+        "plotDepthM": d,
+        "facing": facing,
+        "state": state,
+        "city": city,
+        "floors": floors,
+        "vastuPriority": True,
+    }
+
+
+def test_endpoint_kill_switch_returns_501(monkeypatch):
+    # The generator is GA/on by default; the flag is only a kill switch.
     monkeypatch.setattr(gen.config, "FEATURE_GENERATOR", False)
-    r = client.post("/plan/generate", json={"plot": _plot().model_dump(by_alias=True)})
+    r = client.post("/plan/generate", json=_brief())
     assert r.status_code == 501
     assert r.json()["detail"]["status"] == "disabled"
 
 
-def test_endpoint_enabled_east(monkeypatch):
-    monkeypatch.setattr(gen.config, "FEATURE_GENERATOR", True)
-    r = client.post("/plan/generate", json={"plot": _plot().model_dump(by_alias=True)})
+def test_endpoint_generates_for_brief():
+    # On by default — no monkeypatch needed.
+    r = client.post("/plan/generate", json=_brief(bhk=2))
     assert r.status_code == 200
     body = r.json()
-    assert body["templateId"] == "30x40_E"
-    assert body["vastu"]["grade"] == "Excellent"
-    assert len(body["plan"]["rooms"]) == 10
+    assert "areaSqm" in body["plan"]["rooms"][0]  # camelCase on the wire
+    assert body["code"]["summary"]["failCount"] == 0
+    assert body["vastu"]["score"] >= 70
+    assert "vastuScore" in body["meta"]
 
 
-def test_endpoint_non_east_coming_soon(monkeypatch):
-    monkeypatch.setattr(gen.config, "FEATURE_GENERATOR", True)
-    r = client.post("/plan/generate", json={"plot": _plot(facing="N").model_dump(by_alias=True)})
-    assert r.status_code == 501
-    assert r.json()["detail"]["status"] == "coming_soon"
+def test_endpoint_works_for_any_facing():
+    # The generator (unlike the old single-template stub) handles every facing.
+    r = client.post("/plan/generate", json=_brief(facing="N"))
+    assert r.status_code == 200
+    assert r.json()["code"]["summary"]["failCount"] == 0
+
+
+def test_endpoint_unsupported_state_422():
+    r = client.post("/plan/generate", json=_brief(state="MH"))
+    assert r.status_code == 422
+    assert r.json()["detail"]["status"] == "unsupported_state"
+
+
+def test_endpoint_bad_bhk_422():
+    r = client.post("/plan/generate", json=_brief(bhk=5))
+    assert r.status_code == 422
+
+
+def test_endpoint_meta_right_sizing_camelcase():
+    # The right-sizing surface is returned on meta in camelCase.
+    r = client.post("/plan/generate", json=_brief(bhk=2))
+    assert r.status_code == 200
+    meta = r.json()["meta"]
+    for k in ("tier", "requestedBhk", "downscaled", "note"):
+        assert k in meta
+    assert meta["tier"] in {"STUDIO", "1BHK", "2BHK", "3BHK", "4BHK"}
+    assert meta["requestedBhk"] == 2
+    assert isinstance(meta["downscaled"], bool)
+
+
+def test_endpoint_downscales_bhk4_on_30x40():
+    # bhk is still validated 1..4, but the generator may return a smaller tier when
+    # that is all the plot can hold; meta.downscaled flags it.
+    r = client.post("/plan/generate", json=_brief(bhk=4))
+    assert r.status_code == 200
+    body = r.json()
+    meta = body["meta"]
+    assert meta["requestedBhk"] == 4
+    assert meta["downscaled"] is True
+    assert meta["tier"] in {"2BHK", "3BHK"}
+    assert body["code"]["summary"]["failCount"] == 0
+
+
+def test_endpoint_attached_baths_in_2bhk():
+    # A 2BHK plan has an attached toilet per bedroom plus a common toilet.
+    r = client.post("/plan/generate", json=_brief(bhk=2))
+    assert r.status_code == 200
+    rooms = r.json()["plan"]["rooms"]
+    bedrooms = [rm for rm in rooms if "bedroom" in rm["type"]]
+    toilets = [rm for rm in rooms if rm["type"] == "toilet"]
+    # one ensuite per bedroom + one common
+    assert len(toilets) == len(bedrooms) + 1
+    assert any(t["id"] == "toilet_common" for t in toilets)
+    for bed in bedrooms:
+        assert any(t["id"] == f"toilet_{bed['id']}" for t in toilets)
+
+
+def test_endpoint_tiny_plot_studio():
+    # A tiny plot returns a Studio (no separate bedrooms), still code-clean.
+    r = client.post("/plan/generate", json=_brief(bhk=2, w=6.0, d=7.5))
+    assert r.status_code == 200
+    body = r.json()
+    assert body["meta"]["tier"] == "STUDIO"
+    assert body["code"]["summary"]["failCount"] == 0
+    rooms = body["plan"]["rooms"]
+    assert not [rm for rm in rooms if "bedroom" in rm["type"]]

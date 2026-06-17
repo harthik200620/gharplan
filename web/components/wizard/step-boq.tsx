@@ -8,6 +8,7 @@ import type { BoqReport, ExtraLine, FinishTier } from "@gharplan/shared";
 import { FINISH_TIERS, ROOM_LABELS } from "@gharplan/shared";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import { Disclaimer } from "@/components/disclaimer";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,7 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { engine } from "@/lib/engine";
 import { useWizard } from "@/lib/store";
-import { inr2 } from "@/lib/utils";
+import { cn, inr2 } from "@/lib/utils";
 
 type Override = { qty?: number; materialRate?: number; labourRate?: number };
 
@@ -99,7 +100,7 @@ export function StepBoq({ projectId, canExport }: { projectId?: string; canExpor
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border bg-card p-3 shadow-soft">
         <div className="flex items-center gap-2">
           <Label>Finish tier</Label>
           <Select value={tier} onValueChange={(v) => setTier(v as FinishTier)}>
@@ -132,26 +133,33 @@ export function StepBoq({ projectId, canExport }: { projectId?: string; canExpor
       </div>
 
       {/* false ceiling toggles */}
-      <div className="rounded-lg border bg-card p-3">
-        <Label className="text-xs">False ceiling (POP/gypsum) — toggle per room</Label>
-        <div className="mt-2 flex flex-wrap gap-2">
-          {plan.rooms.map((r) => {
-            const on = fcRooms.includes(r.id);
-            return (
-              <button
-                key={r.id}
-                onClick={() => setFcRooms((f) => (on ? f.filter((x) => x !== r.id) : [...f, r.id]))}
-                className={`rounded-full border px-3 py-1 text-xs ${on ? "border-primary bg-primary text-primary-foreground" : "bg-background"}`}
-              >
-                {ROOM_LABELS[r.type]}
-              </button>
-            );
-          })}
-        </div>
-      </div>
+      <Card>
+        <CardContent className="p-4">
+          <Label className="text-xs">False ceiling (POP/gypsum) — toggle per room</Label>
+          <div className="mt-2.5 flex flex-wrap gap-2">
+            {plan.rooms.map((r) => {
+              const on = fcRooms.includes(r.id);
+              return (
+                <button
+                  key={r.id}
+                  onClick={() => setFcRooms((f) => (on ? f.filter((x) => x !== r.id) : [...f, r.id]))}
+                  className={cn(
+                    "rounded-full border px-3 py-1 text-xs font-medium transition-all",
+                    on
+                      ? "border-transparent bg-brand-gradient text-white shadow-soft"
+                      : "border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground",
+                  )}
+                >
+                  {ROOM_LABELS[r.type]}
+                </button>
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
 
       {/* editable table */}
-      <div className="rounded-lg border bg-card">
+      <div className="overflow-hidden rounded-2xl border bg-card shadow-soft">
         <Table>
           <TableHeader>
             <TableRow>
@@ -185,11 +193,11 @@ export function StepBoq({ projectId, canExport }: { projectId?: string; canExpor
                 <TableCell className="w-24">
                   <Cell value={overrides[ln.id]?.labourRate ?? ln.labourRate} onChange={(v) => setOverride(ln.id, { labourRate: v })} />
                 </TableCell>
-                <TableCell className="text-right text-xs">{inr2(ln.amount)}</TableCell>
-                <TableCell className="text-right text-xs text-muted-foreground">{inr2(ln.gstAmount)}</TableCell>
-                <TableCell className="text-right text-xs font-medium">{inr2(ln.total)}</TableCell>
+                <TableCell className="text-right font-mono text-xs tabular-nums">{inr2(ln.amount)}</TableCell>
+                <TableCell className="text-right font-mono text-xs tabular-nums text-muted-foreground">{inr2(ln.gstAmount)}</TableCell>
+                <TableCell className="text-right font-mono text-xs font-medium tabular-nums">{inr2(ln.total)}</TableCell>
                 <TableCell>
-                  <Button variant="ghost" size="icon" onClick={() => setRemoved((r) => [...r, ln.id])}>
+                  <Button variant="ghost" size="icon-sm" onClick={() => setRemoved((r) => [...r, ln.id])}>
                     <Trash2 className="h-3.5 w-3.5 text-destructive" />
                   </Button>
                 </TableCell>
@@ -203,13 +211,17 @@ export function StepBoq({ projectId, canExport }: { projectId?: string; canExpor
 
       {/* totals */}
       {boq && (
-        <div className="flex flex-col items-end gap-1 rounded-lg border bg-card p-4 text-sm">
-          <Row label="Subtotal" value={inr2(boq.summary.subtotal)} />
-          <Row label={`CGST + SGST`} value={`${inr2(boq.summary.cgstTotal)} + ${inr2(boq.summary.sgstTotal)}`} />
-          <Row label="Total GST" value={inr2(boq.summary.gstTotal)} />
-          <div className="mt-1 flex w-64 justify-between border-t pt-1 text-base font-bold text-primary">
-            <span>Grand Total</span>
-            <span>{inr2(boq.summary.grandTotal)}</span>
+        <div className="flex justify-end">
+          <div className="w-full max-w-xs space-y-1.5 rounded-2xl border bg-card p-4 text-sm shadow-soft sm:w-72">
+            <Row label="Subtotal" value={inr2(boq.summary.subtotal)} />
+            <Row label="CGST + SGST" value={`${inr2(boq.summary.cgstTotal)} + ${inr2(boq.summary.sgstTotal)}`} />
+            <Row label="Total GST" value={inr2(boq.summary.gstTotal)} />
+            <div className="mt-2 flex items-baseline justify-between border-t pt-2.5">
+              <span className="text-sm font-medium text-muted-foreground">Grand Total</span>
+              <span className="font-display text-xl font-bold tabular-nums text-primary">
+                {inr2(boq.summary.grandTotal)}
+              </span>
+            </div>
           </div>
         </div>
       )}
@@ -225,16 +237,16 @@ function Cell({ value, onChange }: { value: number; onChange: (v: number) => voi
       step="0.01"
       value={value}
       onChange={(e) => onChange(+e.target.value)}
-      className="h-8 px-1.5 text-right text-xs"
+      className="h-8 px-1.5 text-right font-mono text-xs tabular-nums"
     />
   );
 }
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex w-64 justify-between text-muted-foreground">
+    <div className="flex justify-between text-muted-foreground">
       <span>{label}</span>
-      <span>{value}</span>
+      <span className="font-mono tabular-nums text-foreground">{value}</span>
     </div>
   );
 }
@@ -246,16 +258,17 @@ function AddCustomLine({ onAdd }: { onAdd: (l: ExtraLine) => void }) {
   const [mat, setMat] = useState(0);
   const [lab, setLab] = useState(0);
   return (
-    <div className="flex flex-wrap items-end gap-2 rounded-lg border bg-card p-3">
+    <div className="flex flex-wrap items-end gap-2 rounded-2xl border bg-card p-3 shadow-soft">
       <div className="grow space-y-1">
         <Label className="text-xs">Add custom line (e.g. modular kitchen)</Label>
         <Input value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="Description" className="h-8" />
       </div>
       <Input value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="unit" className="h-8 w-16" />
-      <Input type="number" value={qty} onChange={(e) => setQty(+e.target.value)} placeholder="qty" className="h-8 w-20" />
-      <Input type="number" value={mat} onChange={(e) => setMat(+e.target.value)} placeholder="material" className="h-8 w-24" />
-      <Input type="number" value={lab} onChange={(e) => setLab(+e.target.value)} placeholder="labour" className="h-8 w-24" />
+      <Input type="number" value={qty} onChange={(e) => setQty(+e.target.value)} placeholder="qty" className="h-8 w-20 font-mono tabular-nums" />
+      <Input type="number" value={mat} onChange={(e) => setMat(+e.target.value)} placeholder="material" className="h-8 w-24 font-mono tabular-nums" />
+      <Input type="number" value={lab} onChange={(e) => setLab(+e.target.value)} placeholder="labour" className="h-8 w-24 font-mono tabular-nums" />
       <Button
+        variant="brand"
         size="sm"
         disabled={!desc}
         onClick={() => {

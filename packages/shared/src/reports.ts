@@ -80,11 +80,54 @@ export interface Branding {
   terms: string;
 }
 
+export interface GenerateMeta {
+  vastuScore: number;
+  vastuGrade: string;
+  codeFails: number;
+  tier?: string;
+  requestedBhk?: number;
+  downscaled?: boolean;
+  note?: string;
+  footprintSqm?: number;
+  siteZoneCount?: number;
+  siteZoneTypes?: string[];
+  siteOpenAreaSqm?: number;
+  plotUsePct?: number;
+  droppedRooms?: string[];
+  attempts?: number;
+  strategy?: string;
+  floorsGenerated?: number;
+  coverageRatio?: number;
+  /** Design-variant identity (set on options from /plan/options). */
+  variantId?: string;
+  variantName?: string;
+  variantTagline?: string;
+  courtyard?: boolean;
+  openKitchen?: boolean;
+}
+
 export interface GenerateResponse {
-  templateId: string;
   plan: Plan;
   vastu: VastuReport;
   code: CodeReport;
-  warnings: string[];
-  note: string;
+  meta?: GenerateMeta;
+  warnings?: string[];
+  note?: string;
+  templateId?: string;
+}
+
+/** One design scheme in a five-option set (POST /plan/options). */
+export interface GeneratedOption {
+  variantId: string;
+  variantName: string;
+  variantTagline: string;
+  plan: Plan;
+  vastu: VastuReport;
+  code: CodeReport;
+  meta: GenerateMeta;
+}
+
+export interface GenerateOptionsResponse {
+  options: GeneratedOption[];
+  count: number;
 }

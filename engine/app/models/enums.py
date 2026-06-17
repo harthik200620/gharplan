@@ -22,6 +22,11 @@ class RoomType(str, Enum):
     utility = "utility"
     balcony = "balcony"
     parking = "parking"
+    sitout = "sitout"
+    courtyard = "courtyard"
+    garden = "garden"
+    service_shaft = "service_shaft"
+    future_expansion = "future_expansion"
     overhead_tank = "overhead_tank"
     borewell = "borewell"
     brahmasthan = "brahmasthan"  # virtual center marker
@@ -54,12 +59,14 @@ class StateCode(str, Enum):
     KA = "KA"  # Karnataka
     MH = "MH"  # Maharashtra
     TG = "TG"  # Telangana
+    AP = "AP"  # Andhra Pradesh
 
 
 class City(str, Enum):
     Bengaluru = "Bengaluru"
     Hyderabad = "Hyderabad"
     Pune = "Pune"
+    Tirupati = "Tirupati"
 
 
 class FinishTier(str, Enum):
@@ -86,6 +93,11 @@ ROOM_LABELS: dict[str, str] = {
     "utility": "Utility",
     "balcony": "Balcony",
     "parking": "Parking",
+    "sitout": "Sit-out",
+    "courtyard": "Courtyard",
+    "garden": "Garden",
+    "service_shaft": "Service Shaft",
+    "future_expansion": "Future Expansion",
     "overhead_tank": "Overhead Tank",
     "borewell": "Borewell",
     "brahmasthan": "Brahmasthan",

@@ -54,6 +54,7 @@ class Room(CamelModel):
     centroid: Optional[Point] = None
     zone: Optional[Compass] = None
     ceiling_height_m: float = Field(default=3.0, gt=0)
+    floor: int = Field(default=0, ge=0, description="0 = ground floor, 1 = first, …")
 
     @field_validator("polygon")
     @classmethod

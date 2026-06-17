@@ -1,8 +1,9 @@
-import { createServerClient } from "@supabase/ssr";
+import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 
-const PUBLIC_PATHS = ["/login", "/auth", "/_next", "/favicon", "/legal", "/demo"];
+const PUBLIC_PATHS = ["/login", "/auth", "/_next", "/favicon", "/legal", "/demo", "/studio"];
+type SupabaseCookie = { name: string; value: string; options: CookieOptions };
 
 export async function middleware(request: NextRequest) {
   // Demo mode (no Supabase configured): skip auth entirely.
@@ -18,7 +19,7 @@ export async function middleware(request: NextRequest) {
         getAll() {
           return request.cookies.getAll();
         },
-        setAll(cookiesToSet) {
+        setAll(cookiesToSet: SupabaseCookie[]) {
           cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
           response = NextResponse.next({ request });
           cookiesToSet.forEach(({ name, value, options }) => response.cookies.set(name, value, options));

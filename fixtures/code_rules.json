@@ -5,7 +5,7 @@
     "habitableRoomTypes": ["living", "master_bedroom", "bedroom", "childrens_bedroom", "study"],
     "ventilationRoomTypes": ["living", "dining", "master_bedroom", "bedroom", "childrens_bedroom", "study", "kitchen", "toilet", "bathroom"],
     "wetRoomTypes": ["toilet", "bathroom", "utility"],
-    "virtualRoomTypes": ["brahmasthan", "borewell", "overhead_tank"],
+    "virtualRoomTypes": ["brahmasthan", "borewell", "overhead_tank", "parking", "sitout", "courtyard", "garden", "service_shaft", "future_expansion", "balcony"],
     "minAreaByRoomType": {
       "kitchen": 5.0,
       "toilet": 1.1,
@@ -70,6 +70,29 @@
         { "maxPlotAreaSqm": 150, "frontM": 1.5, "rearM": 1.0, "sideM": 0.5 },
         { "maxPlotAreaSqm": 300, "frontM": 2.5, "rearM": 2.0, "sideM": 1.0 },
         { "maxPlotAreaSqm": 500, "frontM": 4.0, "rearM": 3.0, "sideM": 2.0 },
+        { "maxPlotAreaSqm": null, "frontM": 6.0, "rearM": 4.5, "sideM": 3.0 }
+      ]
+    },
+    "AP": {
+      "label": "Andhra Pradesh",
+      "note": "INDICATIVE values modelled on AP Building Rules 2017 (G.O. Ms No. 119, dt. 28-03-2017) for a small (~150-300 sqm) residential plot abutting a road < 12 m (Tirupati / TUDA jurisdiction). Setbacks from the AP-2017 plot-area open-space table (Table 17); room minimums per the AP-2017 minimum-dimension schedule (habitable single room 9.5 m2 / 2.4 m, kitchen 5.0 m2 / 1.8 m, bath 1.8 m2, WC 1.1 m2, ceiling 2.75 m, stair 1.0 m); FAR ~1.5 and coverage 65% per TUDA small-plot residential bands (FAR shown 1.40-1.60). TODO(human): VERIFY every number against the current AP-2017 rules + TUDA Master Plan 2040 / GHMC-equivalent local bylaw before relying on a code result.",
+      "verify": true,
+      "minHabitableRoomSqm": 9.5,
+      "minRoomDimM": 2.4,
+      "minCeilingHeightM": 2.75,
+      "minKitchenSqm": 5.0,
+      "minBathroomSqm": 1.8,
+      "minWCSqm": 1.1,
+      "minStairWidthM": 1.0,
+      "ventilationOpenableRatio": 0.125,
+      "maxGroundCoveragePct": 65,
+      "FAR": 1.5,
+      "parkingPerDwelling": 1,
+      "setbacks": [
+        { "maxPlotAreaSqm": 100, "frontM": 1.5, "rearM": 0.5, "sideM": 0.5 },
+        { "maxPlotAreaSqm": 200, "frontM": 1.5, "rearM": 1.0, "sideM": 1.0 },
+        { "maxPlotAreaSqm": 300, "frontM": 2.0, "rearM": 1.5, "sideM": 1.0 },
+        { "maxPlotAreaSqm": 500, "frontM": 3.0, "rearM": 2.0, "sideM": 2.0 },
         { "maxPlotAreaSqm": null, "frontM": 6.0, "rearM": 4.5, "sideM": 3.0 }
       ]
     }

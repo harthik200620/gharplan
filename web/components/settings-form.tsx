@@ -46,21 +46,33 @@ export function SettingsForm({ profile }: { profile: Profile }) {
 
   return (
     <Card className="max-w-2xl">
-      <CardHeader>
+      <CardHeader className="border-b">
         <CardTitle>Studio branding</CardTitle>
         <p className="text-sm text-muted-foreground">Shown on the client proposal (PDF) and BOQ exports.</p>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-5 pt-6">
         <div className="flex items-center gap-4">
           {f.logo_data_url ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={f.logo_data_url} alt="logo" className="h-16 w-16 rounded border object-contain" />
+            <img
+              src={f.logo_data_url}
+              alt="logo"
+              className="h-16 w-16 rounded-xl border bg-card object-contain p-1 shadow-soft"
+            />
           ) : (
-            <div className="flex h-16 w-16 items-center justify-center rounded border text-xs text-muted-foreground">No logo</div>
+            <div className="grid h-16 w-16 place-items-center rounded-xl border border-dashed bg-muted/40 text-[11px] text-muted-foreground">
+              No logo
+            </div>
           )}
-          <div>
+          <div className="flex-1">
             <Label htmlFor="logo">Logo (PNG/JPG, &lt;300 KB)</Label>
-            <Input id="logo" type="file" accept="image/*" onChange={onLogo} className="mt-1" />
+            <Input
+              id="logo"
+              type="file"
+              accept="image/*"
+              onChange={onLogo}
+              className="mt-1.5 cursor-pointer file:mr-3 file:rounded-md file:border-0 file:bg-secondary file:px-3 file:py-1 file:text-sm file:font-medium file:text-secondary-foreground hover:file:bg-secondary/70"
+            />
           </div>
         </div>
 
@@ -69,7 +81,7 @@ export function SettingsForm({ profile }: { profile: Profile }) {
         </Field>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="GSTIN">
-            <Input value={f.gstin} onChange={(e) => up({ gstin: e.target.value })} />
+            <Input value={f.gstin} onChange={(e) => up({ gstin: e.target.value })} className="font-mono" />
           </Field>
           <Field label="Phone">
             <Input value={f.phone} onChange={(e) => up({ phone: e.target.value })} />
@@ -86,15 +98,17 @@ export function SettingsForm({ profile }: { profile: Profile }) {
         </Field>
         <Field label="Terms & Conditions (proposal footer)">
           <textarea
-            className="min-h-24 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+            className="min-h-24 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             value={f.terms}
             onChange={(e) => up({ terms: e.target.value })}
           />
         </Field>
 
-        <Button onClick={save} disabled={saving}>
-          {saving ? "Saving…" : "Save branding"}
-        </Button>
+        <div className="flex justify-end border-t pt-5">
+          <Button variant="brand" onClick={save} disabled={saving}>
+            {saving ? "Saving…" : "Save branding"}
+          </Button>
+        </div>
       </CardContent>
     </Card>
   );

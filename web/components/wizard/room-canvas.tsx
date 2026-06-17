@@ -99,13 +99,13 @@ export function RoomCanvas({
       ref={svgRef}
       viewBox={`${-MARGIN} ${-MARGIN} ${W + 2 * MARGIN} ${D + 2 * MARGIN}`}
       className="touch-none select-none"
-      style={{ width: "100%", height: "auto", background: "#FbFcFe", borderRadius: 8 }}
+      style={{ width: "100%", height: "auto", background: "transparent", borderRadius: 12 }}
       onPointerDown={() => onSelect(null)}
       onPointerMove={onMove}
       onPointerUp={end}
       onPointerCancel={end}
     >
-      <rect x={0} y={0} width={W} height={D} fill="#ffffff" stroke="#334155" strokeWidth={0.05} />
+      <rect x={0} y={0} width={W} height={D} fill="#ffffff" stroke="#1e293b" strokeWidth={0.05} rx={0.05} />
       {Array.from({ length: Math.floor(W) + 1 }, (_, i) => (
         <line key={`v${i}`} x1={i} y1={0} x2={i} y2={D} stroke="#EEF2F7" strokeWidth={0.015} />
       ))}
@@ -132,8 +132,8 @@ export function RoomCanvas({
               width={x1 - x0}
               height={y1 - y0}
               fill={ZONE_FILL[room.zone ?? "CENTER"] ?? "#f1f5f9"}
-              stroke={sel ? "#1F3A5F" : "#94a3b8"}
-              strokeWidth={sel ? 0.07 : 0.03}
+              stroke={sel ? "#4F46E5" : "#94a3b8"}
+              strokeWidth={sel ? 0.08 : 0.03}
               style={{ cursor: "move" }}
               onPointerDown={(e) => startMove(e, room.id)}
             />
@@ -153,7 +153,8 @@ export function RoomCanvas({
                   y={toY(hy) - 0.16}
                   width={0.32}
                   height={0.32}
-                  fill="#1F3A5F"
+                  fill="#4F46E5"
+                  rx={0.06}
                   style={{ cursor: "nwse-resize" }}
                   onPointerDown={(e) => startResize(e, room.id, i)}
                 />

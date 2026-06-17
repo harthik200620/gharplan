@@ -37,6 +37,7 @@ class PlacedOpening:
     cy: float
     length: float  # clear width, metres
     hinge: Optional[Literal["lo", "hi"]] = None  # door leaf pivot jamb (plan swing)
+    main: bool = False  # the single main entrance door (drawn prominently)
 
 
 class LEVELS:
@@ -193,6 +194,19 @@ def _edge_abuts_wet(room: Room, r: Rect, e: str, plan: Plan) -> bool:
     return False
 
 
+def _facing_edge(facing) -> str:
+    """Street-facing building edge for a plot facing direction (where the main
+    entrance opens). Diagonals fold to their dominant cardinal."""
+    f = str(getattr(facing, "value", facing) or "E").upper()
+    if "E" in f:
+        return "E"
+    if "W" in f:
+        return "W"
+    if "N" in f:
+        return "N"
+    return "S"
+
+
 def place_openings(plan: Plan) -> list[PlacedOpening]:
     """Infer a sensible door/window placement per room for visualization.
 
@@ -290,6 +304,40 @@ def place_openings(plan: Plan) -> list[PlacedOpening]:
             if w_w > 0.4:
                 cx, cy = edge_mid(e, r)
                 out.append(PlacedOpening(room.id, "window", e, cx, cy, w_w))  # type: ignore[arg-type]
+
+    # --- main entrance --- one prominent front door on the street-facing wall of
+    # the ground-floor entry room (an `entrance` room if present, else the front
+    # social room reaching the street edge).
+    street = _facing_edge(getattr(plan.plot, "facing", "E"))
+    fp0 = footprint_for(0)
+    entry_rank = {"entrance": 0, "living": 1, "dining": 2, "kitchen": 3}
+    front = [
+        r
+        for r in plan.rooms
+        if (r.floor or 0) == 0
+        and r.type.value not in VIRTUAL
+        and r.type.value not in SITE_OPENINGS
+        and exterior_edges(bounds(r.polygon), fp0)[street]
+    ]
+    if front:
+        front.sort(
+            key=lambda r: (
+                entry_rank.get(r.type.value, 9),
+                -(bounds(r.polygon).w * bounds(r.polygon).h),
+            )
+        )
+        entry = front[0]
+        er = bounds(entry.polygon)
+        m_w = min(1.2, _edge_len(street, er) - 0.4)
+        if m_w > 0.6:
+            t = 0.66  # off-centre so the front door clears a centred window
+            if street in ("N", "S"):
+                cx = er.x + er.w * t
+                cy = er.y + er.h if street == "N" else er.y
+            else:
+                cx = er.x + er.w if street == "E" else er.x
+                cy = er.y + er.h * t
+            out.append(PlacedOpening(entry.id, "door", street, cx, cy, m_w, None, True))  # type: ignore[arg-type]
     return out
 
 

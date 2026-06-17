@@ -1946,6 +1946,36 @@ def _score_candidate(plan: Plan) -> tuple[Plan, object, object]:
     return plan, vastu, code
 
 
+def _rects_share_edge(
+    a: PlacedRoom, b: PlacedRoom, tol: float = 0.12, min_run: float = 0.5
+) -> bool:
+    """True if rectangles a and b abut along a shared wall (with real overlap)."""
+    y_ov = min(a.y1, b.y1) - max(a.y0, b.y0)
+    x_ov = min(a.x1, b.x1) - max(a.x0, b.x0)
+    if y_ov > min_run and (abs(a.x1 - b.x0) < tol or abs(b.x1 - a.x0) < tol):
+        return True
+    if x_ov > min_run and (abs(a.y1 - b.y0) < tol or abs(b.y1 - a.y0) < tol):
+        return True
+    return False
+
+
+def _kitchen_dining_adjacent(placed: list[PlacedRoom]) -> bool:
+    """A 10-yr architect always abuts the dining to the kitchen (you serve from one
+    to the other). True if every dining shares a wall with a kitchen on its floor —
+    or the plan has no dining/kitchen to relate."""
+    by_floor: dict[int, list[PlacedRoom]] = {}
+    for p in placed:
+        by_floor.setdefault(p.floor, []).append(p)
+    for rooms in by_floor.values():
+        kitchens = [p for p in rooms if p.type.value == "kitchen"]
+        dinings = [p for p in rooms if p.type.value == "dining"]
+        if not dinings or not kitchens:
+            continue
+        if not all(any(_rects_share_edge(d, k) for k in kitchens) for d in dinings):
+            return False
+    return True
+
+
 # Band-proportion variants the optimiser sweeps (West, Centre, East fractions).
 # Spread from balanced to West-heavy: a wider West band lets a tight 3BHK fit all
 # three bedrooms; a narrower East band pushes the SE/NE corner rooms (kitchen,
@@ -1983,6 +2013,12 @@ def _build_swap_sets(program: list[ProgramRoom]) -> list[Optional[dict[str, int]
         swaps.append({**base, sec[0]: 2})
         if len(sec) >= 2:
             swaps.append({**base, sec[0]: 2, sec[1]: 2})
+    # Dining belongs against the kitchen on the East working side; optionally push
+    # the pooja West so the East band fits kitchen + dining + living together.
+    if "dining" in have:
+        swaps.append({**base, "dining": 2})
+        if "pooja" in have:
+            swaps.append({**base, "dining": 2, "pooja": 0})
     return swaps
 
 
@@ -2135,7 +2171,8 @@ def _layout_floor(
             all_dropped = result.dropped + cov_dropped
             ess_drop = sum(1 for d in all_dropped if prio.get(d, 0) >= ESS)
             plan, vastu, code = _score_candidate(_build_plan(list(result.placed), plot, env, "floor"))
-            key = (ess_drop, code.summary.fail_count, -round(vastu.score), len(all_dropped))
+            kd_bad = 0 if _kitchen_dining_adjacent(result.placed) else 1
+            key = (ess_drop, code.summary.fail_count, kd_bad, -round(vastu.score), len(all_dropped))
             if best is None or key < best[0]:
                 best = (key, list(result.placed), all_dropped)
     if best is None:
@@ -2377,6 +2414,8 @@ def generate_plan(
     # slot for the bedrooms — helps 3BHK meet habitable minimums.
     if "dining" in have:
         swap_sets.append({"dining": 2})
+        if "pooja" in have:
+            swap_sets.append({"dining": 2, "pooja": 0})
     # swap: utility into the centre service spine (frees a West slot).
     if "utility" in have:
         swap_sets.append({"utility": 1})
@@ -2467,11 +2506,14 @@ def generate_plan(
             # is rounded so a marginal score gain never justifies dropping a room,
             # but a real gain (e.g. kitchen reaching its ideal SE) does.
             cov = getattr(code.metrics, "ground_coverage_pct", 0.0) or 0.0
+            # dining must abut the kitchen (functional must, just under code safety).
+            kd_bad = 0 if _kitchen_dining_adjacent(result.placed) else 1
             if variant is not None and variant.prefer_area:
                 # value plan: prefer denser / fewer-drops, then Vastu
                 key = (
                     essential_dropped(all_dropped),
                     code.summary.fail_count,
+                    kd_bad,
                     len(all_dropped),
                     -round(cov),
                     -round(vastu.score),
@@ -2480,6 +2522,7 @@ def generate_plan(
                 key = (
                     essential_dropped(all_dropped),
                     code.summary.fail_count,
+                    kd_bad,
                     -round(vastu.score),
                     len(all_dropped),
                 )

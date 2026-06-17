@@ -113,6 +113,8 @@ export type PlacedOpening = {
   len: number;
   /** which jamb the door leaf pivots on for the plan swing. Windows ignore it. */
   hinge?: "lo" | "hi";
+  /** the single main entrance door — drawn prominently and labelled. */
+  main?: boolean;
 };
 
 function edgeMid(e: Edge, r: Rect): [number, number] {
@@ -188,6 +190,16 @@ function edgeAbutsWet(room: Room, r: Rect, e: Edge, plan: Plan): boolean {
     if (e === "W" && Math.abs(b.x + b.w - r.x) < tol && span(r.y, r.y + r.h, b.y, b.y + b.h) > 0.4) return true;
   }
   return false;
+}
+
+/** The street-facing building edge for a plot facing direction (the side the main
+ *  entrance opens onto). Diagonals fold to their dominant cardinal. */
+function facingEdge(facing: string): Edge {
+  const f = (facing || "E").toUpperCase();
+  if (f.includes("E")) return "E";
+  if (f.includes("W")) return "W";
+  if (f.includes("N")) return "N";
+  return "S";
 }
 
 /**
@@ -290,6 +302,39 @@ export function placeOpenings(plan: Plan): PlacedOpening[] {
         const [cx, cy] = edgeMid(e, r);
         out.push({ roomId: room.id, kind: "window", edge: e, cx, cy, len: wW });
       }
+    }
+  }
+
+  // --- main entrance ---
+  // One prominent front door on the street-facing wall of the ground-floor entry
+  // room: an `entrance` room if present, else the front-most social room (living,
+  // then dining/kitchen) that actually reaches the street edge.
+  const street = facingEdge(plan.plot.facing);
+  const fp0 = footprintFor(0);
+  const entryRank: Record<string, number> = { entrance: 0, living: 1, dining: 2, kitchen: 3 };
+  const frontRooms = plan.rooms.filter(
+    (r) =>
+      (r.floor ?? 0) === 0 &&
+      !VIRTUAL.has(r.type) &&
+      !SITE_OPENINGS.has(r.type) &&
+      exteriorEdges(bounds(r.polygon), fp0)[street],
+  );
+  if (frontRooms.length) {
+    const entry = frontRooms.slice().sort((a, b) => {
+      const d = (entryRank[a.type] ?? 9) - (entryRank[b.type] ?? 9);
+      if (d !== 0) return d;
+      const A = bounds(a.polygon);
+      const B = bounds(b.polygon);
+      return B.w * B.h - A.w * A.h;
+    })[0];
+    const er = bounds(entry.polygon);
+    const mW = Math.min(1.2, edgeLen(street, er) - 0.4);
+    if (mW > 0.6) {
+      const t = 0.66; // off-centre so the front door clears a centred window
+      const horiz = street === "N" || street === "S";
+      const cx = horiz ? er.x + er.w * t : street === "E" ? er.x + er.w : er.x;
+      const cy = horiz ? (street === "N" ? er.y + er.h : er.y) : er.y + er.h * t;
+      out.push({ roomId: entry.id, kind: "door", edge: street, cx, cy, len: mW, main: true });
     }
   }
   return out;

@@ -11,6 +11,7 @@ import {
   STATUS_CAD,
   ZONE_CAD,
   type Edge,
+  type PlacedOpening,
   type Rect,
 } from "@/lib/cad";
 import { cn } from "@/lib/utils";
@@ -400,7 +401,7 @@ function DimLine({
   );
 }
 
-function Opening({ o, sy }: { o: { kind: "door" | "window"; edge: Edge; cx: number; cy: number; len: number }; sy: (y: number) => number }) {
+function Opening({ o, sy }: { o: PlacedOpening; sy: (y: number) => number }) {
   const half = o.len / 2;
   const along: [number, number] = o.edge === "N" || o.edge === "S" ? [1, 0] : [0, 1];
   const inward: [number, number] =
@@ -437,19 +438,48 @@ function Opening({ o, sy }: { o: { kind: "door" | "window"; edge: Edge; cx: numb
     const a = a0 + (da * i) / steps;
     pts.push(`${hingePt[0] + Math.cos(a) * o.len},${sy(hingePt[1] + Math.sin(a) * o.len)}`);
   }
+  const main = o.main;
   return (
     <g>
-      <line x1={j1[0]} y1={sy(j1[1])} x2={j2[0]} y2={sy(j2[1])} stroke="#ffffff" strokeWidth={W_EXT + 1.5} vectorEffect="non-scaling-stroke" />
-      <polyline points={pts.join(" ")} fill="none" stroke="#94a3b8" strokeWidth={W_DIM} vectorEffect="non-scaling-stroke" />
+      <line x1={j1[0]} y1={sy(j1[1])} x2={j2[0]} y2={sy(j2[1])} stroke="#ffffff" strokeWidth={main ? W_EXT + 3 : W_EXT + 1.5} vectorEffect="non-scaling-stroke" />
+      <polyline points={pts.join(" ")} fill="none" stroke={main ? "#fb923c" : "#94a3b8"} strokeWidth={main ? W_OPEN : W_DIM} vectorEffect="non-scaling-stroke" />
       <line
         x1={hingePt[0]}
         y1={sy(hingePt[1])}
         x2={leafEnd[0]}
         y2={sy(leafEnd[1])}
-        stroke="#475569"
-        strokeWidth={W_OPEN}
+        stroke={main ? "#ea580c" : "#475569"}
+        strokeWidth={main ? W_OPEN + 1 : W_OPEN}
         vectorEffect="non-scaling-stroke"
       />
+      {main && <MainEntryTag o={o} sy={sy} />}
+    </g>
+  );
+}
+
+/** Saffron arrow + "ENTRY" tag marking the main entrance, drawn outside the front
+ *  door pointing into the house. */
+function MainEntryTag({ o, sy }: { o: PlacedOpening; sy: (y: number) => number }) {
+  const inward: [number, number] =
+    o.edge === "N" ? [0, -1] : o.edge === "S" ? [0, 1] : o.edge === "E" ? [-1, 0] : [1, 0];
+  const out: [number, number] = [-inward[0], -inward[1]];
+  const shaftX = o.cx + out[0] * 1.0;
+  const shaftY = o.cy + out[1] * 1.0;
+  const tipX = o.cx + inward[0] * 0.05;
+  const tipY = o.cy + inward[1] * 0.05;
+  const ah = 0.24;
+  const perp: [number, number] = [inward[1], -inward[0]];
+  const h1: [number, number] = [tipX - inward[0] * ah + perp[0] * ah * 0.6, tipY - inward[1] * ah + perp[1] * ah * 0.6];
+  const h2: [number, number] = [tipX - inward[0] * ah - perp[0] * ah * 0.6, tipY - inward[1] * ah - perp[1] * ah * 0.6];
+  const lx = o.cx + out[0] * 1.5;
+  const ly = o.cy + out[1] * 1.5;
+  return (
+    <g pointerEvents="none">
+      <line x1={shaftX} y1={sy(shaftY)} x2={tipX} y2={sy(tipY)} stroke="#ea580c" strokeWidth={W_OPEN} vectorEffect="non-scaling-stroke" />
+      <polygon points={`${tipX},${sy(tipY)} ${h1[0]},${sy(h1[1])} ${h2[0]},${sy(h2[1])}`} fill="#ea580c" />
+      <text x={lx} y={sy(ly)} textAnchor="middle" dominantBaseline="middle" fontSize={0.32} fontWeight={800} fill="#ea580c" fontFamily="var(--font-sora), sans-serif">
+        ENTRY
+      </text>
     </g>
   );
 }

@@ -111,6 +111,8 @@ export type PlacedOpening = {
   cy: number;
   /** clear width of the opening, in metres */
   len: number;
+  /** which jamb the door leaf pivots on for the plan swing. Windows ignore it. */
+  hinge?: "lo" | "hi";
 };
 
 function edgeMid(e: Edge, r: Rect): [number, number] {
@@ -141,6 +143,53 @@ function edgePos(e: Edge, r: Rect, i: number, n: number): [number, number] {
   }
 }
 
+/** If `room` is an attached bath (id "toilet_<p>" / "bath_<p>"), find the wall it
+ *  SHARES with its parent bedroom `<p>` on the same floor and return the bath edge
+ *  facing the bedroom + the midpoint of the shared span — so the ensuite door
+ *  opens from the bedroom into the bath, never off the corridor. null otherwise. */
+function ensuiteSharedEdge(
+  room: Room,
+  r: Rect,
+  plan: Plan,
+): { edge: Edge; mid: [number, number] } | null {
+  const m = /^(?:toilet|bath)_(.+)$/.exec(room.id);
+  if (!m) return null;
+  const parent = plan.rooms.find((p) => p.id === m[1] && (p.floor ?? 0) === (room.floor ?? 0));
+  if (!parent) return null;
+  const p = bounds(parent.polygon);
+  const tol = 0.08;
+  const xOv = Math.min(r.x + r.w, p.x + p.w) - Math.max(r.x, p.x);
+  const yOv = Math.min(r.y + r.h, p.y + p.h) - Math.max(r.y, p.y);
+  const yc = (Math.max(r.y, p.y) + Math.min(r.y + r.h, p.y + p.h)) / 2;
+  const xc = (Math.max(r.x, p.x) + Math.min(r.x + r.w, p.x + p.w)) / 2;
+  if (Math.abs(r.x + r.w - p.x) < tol && yOv > 0.6) return { edge: "E", mid: [r.x + r.w, yc] };
+  if (Math.abs(r.x - (p.x + p.w)) < tol && yOv > 0.6) return { edge: "W", mid: [r.x, yc] };
+  if (Math.abs(r.y + r.h - p.y) < tol && xOv > 0.6) return { edge: "N", mid: [xc, r.y + r.h] };
+  if (Math.abs(r.y - (p.y + p.h)) < tol && xOv > 0.6) return { edge: "S", mid: [xc, r.y] };
+  return null;
+}
+
+function span(a0: number, a1: number, b0: number, b1: number): number {
+  return Math.min(a1, b1) - Math.max(a0, b0);
+}
+
+const WET_NEIGHBOUR = /toilet|bath/;
+/** Does wall `e` of room `r` back onto a toilet/bath on the same floor? You never
+ *  enter a room through a WC, so an entry door avoids such an edge. */
+function edgeAbutsWet(room: Room, r: Rect, e: Edge, plan: Plan): boolean {
+  const tol = 0.12;
+  const floor = room.floor ?? 0;
+  for (const nb of plan.rooms) {
+    if (nb.id === room.id || (nb.floor ?? 0) !== floor || !WET_NEIGHBOUR.test(nb.type)) continue;
+    const b = bounds(nb.polygon);
+    if (e === "N" && Math.abs(b.y - (r.y + r.h)) < tol && span(r.x, r.x + r.w, b.x, b.x + b.w) > 0.4) return true;
+    if (e === "S" && Math.abs(b.y + b.h - r.y) < tol && span(r.x, r.x + r.w, b.x, b.x + b.w) > 0.4) return true;
+    if (e === "E" && Math.abs(b.x - (r.x + r.w)) < tol && span(r.y, r.y + r.h, b.y, b.y + b.h) > 0.4) return true;
+    if (e === "W" && Math.abs(b.x + b.w - r.x) < tol && span(r.y, r.y + r.h, b.y, b.y + b.h) > 0.4) return true;
+  }
+  return false;
+}
+
 /**
  * The Plan model stores openings per-room without a wall position, so we infer a
  * sensible placement for visualization: doors open onto the interior edge nearest
@@ -169,16 +218,47 @@ export function placeOpenings(plan: Plan): PlacedOpening[] {
     const ext = exteriorEdges(r, footprintFor(room.floor ?? 0));
     const edges: Edge[] = ["N", "S", "E", "W"];
 
-    // door: interior edge closest to the plot core
-    const interior = edges.filter((e) => !ext[e]);
-    const doorPool = interior.length ? interior : edges;
-    const doorEdge = doorPool
-      .slice()
-      .sort((a, b) => dist(edgeMid(a, r), core) - dist(edgeMid(b, r), core))[0];
+    // --- door ---
+    // An attached bath hinges off the wall it SHARES with its bedroom and opens
+    // INTO the bath — a true ensuite. Every other room's door sits on the interior
+    // wall nearest the circulation core, hinged at the corner nearest that core so
+    // the leaf folds flat against a wall instead of sweeping the middle of the room.
+    const shared = ensuiteSharedEdge(room, r, plan);
+    let doorEdge: Edge;
+    let doorCenter: [number, number];
+    let hinge: "lo" | "hi" = "lo";
+    if (shared) {
+      doorEdge = shared.edge;
+      doorCenter = shared.mid;
+    } else {
+      const interior = edges.filter((e) => !ext[e]);
+      const doorPool = interior.length ? interior : edges;
+      // nearest the circulation core, but never opening through a toilet/bath wall.
+      const score = (e: Edge) =>
+        dist(edgeMid(e, r), core) + (edgeAbutsWet(room, r, e, plan) ? 100 : 0);
+      doorEdge = doorPool.slice().sort((a, b) => score(a) - score(b))[0];
+      doorCenter = edgeMid(doorEdge, r);
+    }
     const dW = Math.min(openingWidth(plan, room.id, "door", 0.9), edgeLen(doorEdge, r) - 0.3);
     if (dW > 0.4) {
-      const [cx, cy] = edgeMid(doorEdge, r);
-      out.push({ roomId: room.id, kind: "door", edge: doorEdge, cx, cy, len: dW });
+      let [cx, cy] = doorCenter;
+      if (!shared) {
+        // hinge at the wall end nearer the core; sit the jamb a margin off the corner.
+        const horiz = doorEdge === "N" || doorEdge === "S";
+        const lo: [number, number] = horiz ? [r.x, doorCenter[1]] : [doorCenter[0], r.y];
+        const hi: [number, number] = horiz ? [r.x + r.w, doorCenter[1]] : [doorCenter[0], r.y + r.h];
+        const margin = dW / 2 + 0.12;
+        if (dist(lo, core) <= dist(hi, core)) {
+          hinge = "lo";
+          if (horiz) cx = r.x + margin;
+          else cy = r.y + margin;
+        } else {
+          hinge = "hi";
+          if (horiz) cx = r.x + r.w - margin;
+          else cy = r.y + r.h - margin;
+        }
+      }
+      out.push({ roomId: room.id, kind: "door", edge: doorEdge, cx, cy, len: dW, hinge });
     }
 
     // windows: one per ACTUAL plan window for this room, spread across the room's

@@ -133,15 +133,15 @@ def test_endpoint_bhk4_on_30x40_goes_g1():
 
 
 def test_endpoint_attached_baths_in_2bhk():
-    # A 2BHK plan has an attached toilet per bedroom plus a common toilet.
+    # Owner brief: a 2BHK has one attached bath per bedroom and NO common toilet.
     r = client.post("/plan/generate", json=_brief(bhk=2))
     assert r.status_code == 200
     rooms = r.json()["plan"]["rooms"]
     bedrooms = [rm for rm in rooms if "bedroom" in rm["type"]]
     toilets = [rm for rm in rooms if rm["type"] == "toilet"]
-    # one ensuite per bedroom + one common
-    assert len(toilets) == len(bedrooms) + 1
-    assert any(t["id"] == "toilet_common" for t in toilets)
+    # one ensuite per bedroom, nothing else
+    assert len(toilets) == len(bedrooms)
+    assert not any(t["id"] in ("toilet_common", "u_toilet_common") for t in toilets)
     for bed in bedrooms:
         assert any(t["id"] == f"toilet_{bed['id']}" for t in toilets)
 

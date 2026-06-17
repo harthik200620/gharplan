@@ -18,11 +18,30 @@ import { cn } from "@/lib/utils";
 
 // Pixel-based drawing in the elevation/section house style: compute a px-per-metre
 // scale (S) and multiply world coords by it. No vector-effect; strokes are real px.
-const S = 34; // px per metre
+const S = 46; // px per metre
 const PAD = 30; // px margin around the plot
 const ROOM_FILL = "#fafafa";
 
 type Layer = "plumbing" | "electrical";
+
+// Every on-drawing label gets a white halo so it stays legible over pipes,
+// conduits, glyphs and room fills. paintOrder="stroke" paints the (white) stroke
+// first, then the fill on top, giving a clean knockout outline.
+function HaloText({
+  halo = 2.8,
+  ...props
+}: React.SVGProps<SVGTextElement> & { halo?: number }) {
+  return (
+    <text
+      {...props}
+      paintOrder="stroke"
+      stroke="#ffffff"
+      strokeWidth={halo}
+      strokeLinejoin="round"
+      strokeLinecap="round"
+    />
+  );
+}
 
 export function MepPlan({ plan, floor }: { plan: Plan; floor?: number }) {
   const [layer, setLayer] = React.useState<Layer>("plumbing");
@@ -74,31 +93,20 @@ export function MepPlan({ plan, floor }: { plan: Plan; floor?: number }) {
         >
           <Defs />
 
-          {/* room outlines + faint labels (shared base) */}
+          {/* room outlines (shared base) */}
           {model.rooms.map((room) => {
             const r = bounds(room.polygon);
             return (
-              <g key={room.id}>
-                <rect
-                  x={X(r.x)}
-                  y={Y(r.y + r.h)}
-                  width={r.w * S}
-                  height={r.h * S}
-                  fill={ROOM_FILL}
-                  stroke={INK}
-                  strokeWidth={1.2}
-                />
-                <text
-                  x={X(r.x + r.w / 2)}
-                  y={Y(r.y + r.h / 2)}
-                  textAnchor="middle"
-                  fontSize={10}
-                  fill="#94a3b8"
-                  fontFamily="var(--font-sora), sans-serif"
-                >
-                  {ROOM_LABELS[room.type]}
-                </text>
-              </g>
+              <rect
+                key={room.id}
+                x={X(r.x)}
+                y={Y(r.y + r.h)}
+                width={r.w * S}
+                height={r.h * S}
+                fill={ROOM_FILL}
+                stroke={INK}
+                strokeWidth={1.2}
+              />
             );
           })}
 
@@ -107,6 +115,26 @@ export function MepPlan({ plan, floor }: { plan: Plan; floor?: number }) {
           ) : (
             <ElectricalLayer model={model} X={X} Y={Y} />
           )}
+
+          {/* room name tags, tucked into the top-left corner so they don't sit
+              under fixtures / pipe labels. Drawn last → on top, with halo. */}
+          {model.rooms.map((room) => {
+            const r = bounds(room.polygon);
+            return (
+              <HaloText
+                key={`lbl-${room.id}`}
+                x={X(r.x) + 5}
+                y={Y(r.y + r.h) + 13}
+                textAnchor="start"
+                fontSize={9}
+                fill="#94a3b8"
+                fontFamily="var(--font-sora), sans-serif"
+                halo={2.6}
+              >
+                {ROOM_LABELS[room.type]}
+              </HaloText>
+            );
+          })}
         </svg>
 
         <div className="border-t bg-muted/30 px-3 py-2">
@@ -173,16 +201,16 @@ function NodeGlyph({ node, X, Y }: { node: MepNode; X: Proj; Y: Proj }) {
   return (
     <g>
       {square ? (
-        <rect x={cx - 12} y={cy - 9} width={24} height={18} rx={2} fill="#fff" stroke={st.color} strokeWidth={1.8} />
+        <rect x={cx - 14} y={cy - 11} width={28} height={22} rx={2} fill="#fff" stroke={st.color} strokeWidth={1.8} />
       ) : (
-        <circle cx={cx} cy={cy} r={10} fill="#fff" stroke={st.color} strokeWidth={1.8} />
+        <circle cx={cx} cy={cy} r={12} fill="#fff" stroke={st.color} strokeWidth={1.8} />
       )}
-      <text x={cx} y={cy + 2.6} textAnchor="middle" fontSize={7} fontWeight={800} fill={st.color} stroke="none">
+      <HaloText x={cx} y={cy + 3.3} textAnchor="middle" fontSize={9.5} fontWeight={800} fill={st.color} halo={2.4}>
         {st.sym}
-      </text>
-      <text x={cx} y={cy + 20} textAnchor="middle" fontSize={7.5} fill="#475569" stroke="none">
+      </HaloText>
+      <HaloText x={cx} y={cy + 26} textAnchor="middle" fontSize={9} fill="#334155" halo={2.8}>
         {node.label}
-      </text>
+      </HaloText>
     </g>
   );
 }
@@ -246,16 +274,16 @@ function PlumbingLayer({ model, X, Y }: { model: MepModel; X: Proj; Y: Proj }) {
             stroke={INK}
             strokeWidth={1.2}
           />
-          <text
+          <HaloText
             x={X(model.shaft.x + model.shaft.w / 2)}
-            y={Y(model.shaft.y + model.shaft.h) - 3}
+            y={Y(model.shaft.y + model.shaft.h) - 4}
             textAnchor="middle"
-            fontSize={8.5}
+            fontSize={9}
             fontWeight={700}
             fill="#334155"
           >
             SHAFT
-          </text>
+          </HaloText>
         </g>
       )}
 
@@ -266,17 +294,41 @@ function PlumbingLayer({ model, X, Y }: { model: MepModel; X: Proj; Y: Proj }) {
 
       {/* whole-house plant: OHT, sump + pump, inspection chamber, septic, rain pit */}
       <ServiceNodes nodes={model.nodes} X={X} Y={Y} kinds={PLUMB_NODES} />
+
+      {/* pipe size/slope labels last → always on top of lines & glyphs, with halo */}
+      {dedupePipeLabels(model.pipes).map((p) => (
+        <PipeLabel key={`lbl-${p.id}`} run={p} X={X} Y={Y} />
+      ))}
     </g>
   );
+}
+
+// Drop labels on very short stubs and collapse runs of identical labels that sit
+// near each other, so the drawing isn't peppered with repeated "∅32" tags.
+function dedupePipeLabels(pipes: PipeRun[]): PipeRun[] {
+  const seen: { text: string; x: number; y: number }[] = [];
+  const out: PipeRun[] = [];
+  for (const p of pipes) {
+    if (!p.label) continue;
+    const a = p.points[0];
+    const b = p.points[p.points.length - 1];
+    const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    if (len < 0.8) continue; // too short to carry a legible label
+    const mx = (a[0] + b[0]) / 2;
+    const my = (a[1] + b[1]) / 2;
+    const text = `${p.label}${p.slope ? ` ${p.slope}` : ""}`;
+    const dup = seen.some((s) => s.text === text && Math.hypot(s.x - mx, s.y - my) < 1.4);
+    if (dup) continue;
+    seen.push({ text, x: mx, y: my });
+    out.push(p);
+  }
+  return out;
 }
 
 function Pipe({ run, X, Y }: { run: PipeRun; X: Proj; Y: Proj }) {
   const st = SERVICE_STYLE[run.service];
   const pts = run.points.map((p) => `${X(p[0])},${Y(p[1])}`).join(" ");
-  // mid-segment point for the size/slope label
-  const a = run.points[0];
   const b = run.points[run.points.length - 1];
-  const mid: [number, number] = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
 
   return (
     <g>
@@ -292,20 +344,41 @@ function Pipe({ run, X, Y }: { run: PipeRun; X: Proj; Y: Proj }) {
       />
       {/* slope arrow toward the shaft (last point) for drains */}
       {run.slope && <SlopeArrow from={run.points[run.points.length - 2]} to={b} X={X} Y={Y} color={st.color} />}
-      {run.label && (
-        <text
-          x={X(mid[0])}
-          y={Y(mid[1]) - 2}
-          textAnchor="middle"
-          fontSize={7.5}
-          fill={st.color}
-          fontFamily="var(--font-mono), monospace"
-        >
-          {run.label}
-          {run.slope ? ` ${run.slope}` : ""}
-        </text>
-      )}
     </g>
+  );
+}
+
+function PipeLabel({ run, X, Y }: { run: PipeRun; X: Proj; Y: Proj }) {
+  const st = SERVICE_STYLE[run.service];
+  const a = run.points[0];
+  const b = run.points[run.points.length - 1];
+  // pixel-space midpoint + a small perpendicular offset so the tag sits just off
+  // the pipe centreline rather than straddling it.
+  const ax = X(a[0]);
+  const ay = Y(a[1]);
+  const bx = X(b[0]);
+  const by = Y(b[1]);
+  const mx = (ax + bx) / 2;
+  const my = (ay + by) / 2;
+  const ang = Math.atan2(by - ay, bx - ax);
+  const nx = -Math.sin(ang);
+  const ny = Math.cos(ang);
+  const off = 8;
+  return (
+    <HaloText
+      x={mx + nx * off}
+      y={my + ny * off}
+      textAnchor="middle"
+      dominantBaseline="middle"
+      fontSize={10}
+      fontWeight={700}
+      fill={st.color}
+      fontFamily="var(--font-mono), monospace"
+      halo={3}
+    >
+      {run.label}
+      {run.slope ? ` ${run.slope}` : ""}
+    </HaloText>
   );
 }
 
@@ -377,9 +450,9 @@ function FixtureGlyph({ fx, X, Y }: { fx: Fixture; X: Proj; Y: Proj }) {
         <g stroke={stroke} strokeWidth={sw} fill={fill}>
           <rect x={cx - 8} y={cy - 8} width={16} height={16} rx={2} />
           <circle cx={cx} cy={cy} r={5} />
-          <text x={cx} y={cy + 16} textAnchor="middle" fontSize={6.5} fill={stroke} stroke="none">
+          <HaloText x={cx} y={cy + 17} textAnchor="middle" fontSize={8} fontWeight={700} fill={stroke}>
             WM
-          </text>
+          </HaloText>
         </g>
       );
   }
@@ -449,10 +522,10 @@ function ElecGlyph({ pt, X, Y }: { pt: ElecPoint; X: Proj; Y: Proj }) {
   const stroke = "#1f2937";
   const sw = 1.1;
   const base = { stroke, strokeWidth: sw, fill: "#ffffff" };
-  const lbl = (t: string, dy = 3.2, size = 6.5) => (
-    <text x={cx} y={cy + dy} textAnchor="middle" fontSize={size} fontWeight={700} fill={stroke} stroke="none">
+  const lbl = (t: string, dy = 3.2, size = 8) => (
+    <HaloText x={cx} y={cy + dy} textAnchor="middle" fontSize={size} fontWeight={700} fill={stroke} halo={2.6}>
       {t}
-    </text>
+    </HaloText>
   );
   switch (pt.kind) {
     case "light": // circle with a cross ⊕
@@ -479,9 +552,9 @@ function ElecGlyph({ pt, X, Y }: { pt: ElecPoint; X: Proj; Y: Proj }) {
       return (
         <g>
           <path d={`M ${cx - 6} ${cy + 3} a 6 6 0 0 1 12 0 Z`} {...base} />
-          <text x={cx} y={cy} textAnchor="middle" fontSize={5.5} fontWeight={700} fill={stroke}>
+          <HaloText x={cx} y={cy} textAnchor="middle" fontSize={8} fontWeight={700} fill={stroke} halo={2.4}>
             {pt.kind === "socket6a" ? "6A" : "16A"}
-          </text>
+          </HaloText>
         </g>
       );
     case "switchboard": // small rect
@@ -490,41 +563,41 @@ function ElecGlyph({ pt, X, Y }: { pt: ElecPoint; X: Proj; Y: Proj }) {
       return (
         <g {...base}>
           <rect x={cx - 7} y={cy - 3} width={14} height={6} rx={1} />
-          {lbl("AC", 8.5, 6)}
+          {lbl("AC", 10, 8)}
         </g>
       );
     case "db": // hatched box "DB"
       return (
         <g>
-          <rect x={cx - 8} y={cy - 6} width={16} height={12} fill="url(#mep-db-hatch)" stroke="#92400e" strokeWidth={1.3} />
-          <text x={cx} y={cy + 3} textAnchor="middle" fontSize={7} fontWeight={800} fill="#92400e" stroke="none">
+          <rect x={cx - 9} y={cy - 7} width={18} height={14} fill="url(#mep-db-hatch)" stroke="#92400e" strokeWidth={1.3} />
+          <HaloText x={cx} y={cy + 3.2} textAnchor="middle" fontSize={9} fontWeight={800} fill="#92400e" halo={2.6}>
             DB
-          </text>
+          </HaloText>
         </g>
       );
     case "exhaust":
       return (
         <g {...base}>
-          <circle cx={cx} cy={cy} r={5.5} />
-          <text x={cx} y={cy + 2.2} textAnchor="middle" fontSize={5.5} fontWeight={700} fill={stroke} stroke="none">
+          <circle cx={cx} cy={cy} r={6} />
+          <HaloText x={cx} y={cy + 2.8} textAnchor="middle" fontSize={8} fontWeight={700} fill={stroke} halo={2.4}>
             EF
-          </text>
+          </HaloText>
         </g>
       );
     case "geyser":
       return (
         <g {...base}>
-          <circle cx={cx} cy={cy} r={5.5} />
-          <text x={cx} y={cy + 2.2} textAnchor="middle" fontSize={5.5} fontWeight={700} fill={stroke} stroke="none">
+          <circle cx={cx} cy={cy} r={6} />
+          <HaloText x={cx} y={cy + 2.8} textAnchor="middle" fontSize={8} fontWeight={700} fill={stroke} halo={2.4}>
             GS
-          </text>
+          </HaloText>
         </g>
       );
     case "bell":
       return (
         <g {...base}>
-          <circle cx={cx} cy={cy} r={4.5} />
-          {lbl("B", 2.2, 6)}
+          <circle cx={cx} cy={cy} r={5} />
+          {lbl("B", 2.8, 8)}
         </g>
       );
   }

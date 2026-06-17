@@ -491,7 +491,7 @@ def _tier_program_spec(tier: str, slack: float = 1e9, variant: Optional["Variant
         "tier": tier,
         "bedrooms": bedrooms,
         "attached_baths": attached,
-        "common_toilet": attached,             # powder/common WC from 2BHK
+        "common_toilet": False,                # owner brief: ensuite baths only — no standalone common WC
         "dedicated_pooja": tier in ("3BHK", "4BHK") and slack >= 10.0,  # else a niche
         "pooja": tier != "STUDIO",             # niche-sized room otherwise
         "utility": False,    # dropped per owner — no utility room; space goes to living/kitchen
@@ -517,7 +517,8 @@ def _tier_program_spec(tier: str, slack: float = 1e9, variant: Optional["Variant
             spec["pooja"] = False
             spec["dedicated_pooja"] = False
         if variant.guest_first:
-            spec["common_toilet"] = attached or tier != "STUDIO"
+            # Owner brief: no common WC even for the guest-first variant — the
+            # entry-adjacent ensuite bedroom's attached bath serves ground guests.
             spec["entrance"] = tier in ("2BHK", "3BHK", "4BHK") and slack >= 12.0
     return spec
 
@@ -2027,8 +2028,13 @@ def _ground_program(
                                 z("dining"), 7, min_area_floor=9.0))
     if pooja_mode != "none":
         prog.append(ProgramRoom("pooja", RoomType.pooja, max(_COMFORT["pooja_room"], 1.8), z("pooja"), 5))
-    prog.append(ProgramRoom("toilet_common", RoomType.toilet, max(_COMFORT["common_toilet"], min_toilet * 1.6),
-                            z("toilet"), 7))
+    # Owner brief: NO standalone common WC — every toilet is an attached bath on a
+    # bedroom. The ensuite guest/parents bedroom (3BHK+) sits by the entry and
+    # serves ground-floor guests. Only fall back to a common WC when this floor has
+    # no bedroom at all (e.g. a manually forced 2BHK G+1).
+    if int(guest_bedrooms) <= 0:
+        prog.append(ProgramRoom("toilet_common", RoomType.toilet, max(_COMFORT["common_toilet"], min_toilet * 1.6),
+                                z("toilet"), 7))
     prog.append(ProgramRoom("stair", RoomType.staircase, max(0.05 * env_area, 3.4), z("staircase"), 6))
     prog.append(ProgramRoom("entrance", RoomType.entrance, max(_COMFORT["entrance"], 2.2), z("entrance"), 4))
     if variant and variant.sitout:
@@ -2077,10 +2083,8 @@ def _upper_program(tier, env_w, env_d, min_habitable, min_toilet, vastu, variant
                         attach_bath=True, bath_min_sqm=bath_min,
                         bedroom_min_sqm=sec_bed_min, bath_id=f"toilet_{rid}")
         )
-    prog.append(
-        ProgramRoom("u_toilet_common", RoomType.toilet, max(_COMFORT["common_toilet"], min_toilet * 1.6),
-                    z("toilet"), 6)
-    )
+    # Owner brief: no common WC upstairs either — the master and every bedroom are
+    # ensuite, and the upper family living uses the nearest bedroom's attached bath.
     prog.append(
         ProgramRoom("u_stair", RoomType.staircase, max(0.05 * env_area, 3.4), z("staircase"), 6)
     )

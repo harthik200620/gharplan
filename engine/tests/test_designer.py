@@ -4,7 +4,7 @@ Covers the realistic-Indian-home rework:
   * RIGHT-SIZING — the buildable footprint picks the largest sensible tier
     (Studio / 1BHK / 2BHK / 3BHK / 4BHK); a too-large requested bhk DOWNSCALES.
   * ATTACHED BATHROOMS — every bedroom in a 2BHK+ gets its OWN toilet sharing an
-    edge, PLUS a common/powder toilet near the living.
+    edge, and NO standalone common toilet (owner brief: ensuite baths only).
   * Geometry stays valid (axis-aligned, non-overlapping, inside the envelope),
     Vastu stays sound (key rooms in their sectors, baths never NE), code-clean.
 
@@ -274,7 +274,7 @@ def test_meta_right_sizing_fields():
 
 
 # --------------------------------------------------------------------------- #
-# ATTACHED BATHROOMS — every bedroom has its own ensuite + a common toilet
+# ATTACHED BATHROOMS — every bedroom has its own ensuite, NO common toilet
 # --------------------------------------------------------------------------- #
 def _ensuite_check(plan, *, expect_bedrooms: int) -> None:
     bedrooms = [r for r in plan.rooms if "bedroom" in r.type.value]
@@ -282,38 +282,37 @@ def _ensuite_check(plan, *, expect_bedrooms: int) -> None:
     assert len(bedrooms) == expect_bedrooms, (
         f"expected {expect_bedrooms} bedrooms, got {len(bedrooms)}"
     )
-    # a common/powder toilet (id 'toilet_common') near the living exists
-    common = [t for t in toilets if t.id == "toilet_common"]
-    assert len(common) == 1, "missing the common/powder toilet"
-    ensuites = [t for t in toilets if t.id != "toilet_common"]
-    # one attached bath per bedroom, each SHARING AN EDGE with its bedroom
-    assert len(ensuites) == expect_bedrooms, (
-        f"expected {expect_bedrooms} attached baths, got {len(ensuites)}"
+    # Owner brief: NO standalone common/powder WC — every toilet is an attached
+    # bath sharing an edge with its bedroom (id 'toilet_<bedroom>').
+    assert not [t for t in toilets if t.id in ("toilet_common", "u_toilet_common")], (
+        "a standalone common toilet was generated — owner brief is ensuite-only"
+    )
+    # exactly one attached bath per bedroom — and nothing else
+    assert len(toilets) == expect_bedrooms, (
+        f"expected {expect_bedrooms} attached baths (one per bedroom), got {len(toilets)}"
     )
     for bed in bedrooms:
-        own = [t for t in ensuites if t.id == f"toilet_{bed.id}"]
+        own = [t for t in toilets if t.id == f"toilet_{bed.id}"]
         assert len(own) == 1, f"bedroom {bed.id} has no dedicated attached bath"
         assert _share_edge(bed, own[0]), (
             f"attached bath {own[0].id} does not share an edge with bedroom {bed.id}"
         )
-    # total toilet count: one per bedroom + one common
-    assert len(toilets) == expect_bedrooms + 1
     # attached baths are never in the NE (the cardinal Vastu rule), prefer W/NW/S
-    for t in ensuites:
+    for t in toilets:
         assert t.zone.value != "NE", f"attached bath {t.id} fell in the NE"
 
 
-def test_2bhk_attached_baths_and_common_toilet():
-    # 30x40 KA at bhk=2 -> a genuine 2BHK: 2 ensuite bedrooms + 1 common toilet.
+def test_2bhk_attached_baths_ensuite_only():
+    # 30x40 KA at bhk=2 -> a genuine 2BHK: 2 ensuite bedrooms, NO common toilet.
     plan, vastu, code, meta = generate_plan(2, _plot("KA"))
     assert meta["tier"] == "2BHK"
     _ensuite_check(plan, expect_bedrooms=2)
     assert code.summary.fail_count == 0
 
 
-def test_3bhk_attached_baths_and_common_toilet():
+def test_3bhk_attached_baths_ensuite_only():
     # A plot that genuinely fits a 3BHK (~122 m2 footprint): 3 ensuite bedrooms
-    # each with its OWN adjacent toilet, PLUS a common toilet (4 toilets total).
+    # each with its OWN adjacent toilet and NO common toilet (3 toilets total).
     plot = _plot("KA", w=14.0, d=16.0)
     assert _effective_tier(plot, 3) == "3BHK"
     plan, vastu, code, meta = generate_plan(3, plot)
@@ -325,7 +324,7 @@ def test_3bhk_attached_baths_and_common_toilet():
 
 
 def test_baths_on_w_nw_side_not_ne():
-    # All attached baths (and the common toilet) sit on the W/NW/S side, never NE.
+    # All attached baths sit on the W/NW/S side, never NE.
     plan, _, _, _ = generate_plan(3, _plot("KA", w=14.0, d=16.0))
     toilets = [r for r in plan.rooms if r.type.value == "toilet"]
     for t in toilets:

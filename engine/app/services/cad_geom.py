@@ -36,6 +36,7 @@ class PlacedOpening:
     cx: float  # centre point of the opening, metres
     cy: float
     length: float  # clear width, metres
+    hinge: Optional[Literal["lo", "hi"]] = None  # door leaf pivot jamb (plan swing)
 
 
 class LEVELS:
@@ -130,6 +131,68 @@ def _opening_width(plan: Plan, room_id: str, kind: str, fallback: float) -> floa
     return o.width_m if o else fallback
 
 
+_ENSUITE_RE = re.compile(r"^(?:toilet|bath)_(.+)$")
+
+
+def _ensuite_shared_edge(
+    room: Room, r: Rect, plan: Plan
+) -> Optional[tuple[str, tuple[float, float]]]:
+    """If `room` is an attached bath (id 'toilet_<p>' / 'bath_<p>'), return the bath
+    edge that touches its parent bedroom `<p>` on the same floor + the shared-span
+    midpoint, so the ensuite door opens FROM the bedroom into the bath. None else."""
+    m = _ENSUITE_RE.match(room.id)
+    if not m:
+        return None
+    parent = next(
+        (p for p in plan.rooms if p.id == m.group(1) and (p.floor or 0) == (room.floor or 0)),
+        None,
+    )
+    if parent is None:
+        return None
+    p = bounds(parent.polygon)
+    tol = 0.08
+    x_ov = min(r.x + r.w, p.x + p.w) - max(r.x, p.x)
+    y_ov = min(r.y + r.h, p.y + p.h) - max(r.y, p.y)
+    yc = (max(r.y, p.y) + min(r.y + r.h, p.y + p.h)) / 2
+    xc = (max(r.x, p.x) + min(r.x + r.w, p.x + p.w)) / 2
+    if abs(r.x + r.w - p.x) < tol and y_ov > 0.6:
+        return ("E", (r.x + r.w, yc))
+    if abs(r.x - (p.x + p.w)) < tol and y_ov > 0.6:
+        return ("W", (r.x, yc))
+    if abs(r.y + r.h - p.y) < tol and x_ov > 0.6:
+        return ("N", (xc, r.y + r.h))
+    if abs(r.y - (p.y + p.h)) < tol and x_ov > 0.6:
+        return ("S", (xc, r.y))
+    return None
+
+
+def _span(a0: float, a1: float, b0: float, b1: float) -> float:
+    return min(a1, b1) - max(a0, b0)
+
+
+_WET_NB = re.compile(r"toilet|bath")
+
+
+def _edge_abuts_wet(room: Room, r: Rect, e: str, plan: Plan) -> bool:
+    """Does wall `e` of room `r` back onto a toilet/bath on the same floor? You
+    never enter a room through a WC, so an entry door avoids such an edge."""
+    tol = 0.12
+    floor = room.floor or 0
+    for nb in plan.rooms:
+        if nb.id == room.id or (nb.floor or 0) != floor or not _WET_NB.search(nb.type.value):
+            continue
+        b = bounds(nb.polygon)
+        if e == "N" and abs(b.y - (r.y + r.h)) < tol and _span(r.x, r.x + r.w, b.x, b.x + b.w) > 0.4:
+            return True
+        if e == "S" and abs(b.y + b.h - r.y) < tol and _span(r.x, r.x + r.w, b.x, b.x + b.w) > 0.4:
+            return True
+        if e == "E" and abs(b.x - (r.x + r.w)) < tol and _span(r.y, r.y + r.h, b.y, b.y + b.h) > 0.4:
+            return True
+        if e == "W" and abs(b.x + b.w - r.x) < tol and _span(r.y, r.y + r.h, b.y, b.y + b.h) > 0.4:
+            return True
+    return False
+
+
 def place_openings(plan: Plan) -> list[PlacedOpening]:
     """Infer a sensible door/window placement per room for visualization.
 
@@ -160,14 +223,45 @@ def place_openings(plan: Plan) -> list[PlacedOpening]:
         ext = exterior_edges(r, footprint_for(room.floor or 0))
         edges: list[str] = ["N", "S", "E", "W"]
 
-        # door: interior edge closest to the plot core
-        interior = [e for e in edges if not ext[e]]
-        door_pool = interior if interior else edges
-        door_edge = min(door_pool, key=lambda e: _dist(edge_mid(e, r), core))
+        # --- door ---
+        # An attached bath hinges off the wall it SHARES with its bedroom and opens
+        # INTO the bath (a true ensuite); every other room's door sits on the
+        # interior wall nearest the circulation core, hinged at the corner nearest
+        # that core so the leaf folds flat against a wall instead of sweeping the room.
+        shared = _ensuite_shared_edge(room, r, plan)
+        hinge = "lo"
+        if shared is not None:
+            door_edge, (cx, cy) = shared
+        else:
+            interior = [e for e in edges if not ext[e]]
+            door_pool = interior if interior else edges
+            # nearest the circulation core, but never opening through a toilet/bath wall.
+            door_edge = min(
+                door_pool,
+                key=lambda e: _dist(edge_mid(e, r), core)
+                + (100.0 if _edge_abuts_wet(room, r, e, plan) else 0.0),
+            )
+            cx, cy = edge_mid(door_edge, r)
         d_w = min(_opening_width(plan, room.id, "door", 0.9), _edge_len(door_edge, r) - 0.3)
         if d_w > 0.4:
-            cx, cy = edge_mid(door_edge, r)
-            out.append(PlacedOpening(room.id, "door", door_edge, cx, cy, d_w))  # type: ignore[arg-type]
+            if shared is None:
+                horiz = door_edge in ("N", "S")
+                lo = (r.x, cy) if horiz else (cx, r.y)
+                hi = (r.x + r.w, cy) if horiz else (cx, r.y + r.h)
+                margin = d_w / 2 + 0.12
+                if _dist(lo, core) <= _dist(hi, core):
+                    hinge = "lo"
+                    if horiz:
+                        cx = r.x + margin
+                    else:
+                        cy = r.y + margin
+                else:
+                    hinge = "hi"
+                    if horiz:
+                        cx = r.x + r.w - margin
+                    else:
+                        cy = r.y + r.h - margin
+            out.append(PlacedOpening(room.id, "door", door_edge, cx, cy, d_w, hinge))  # type: ignore[arg-type]
 
         # windows: one per ACTUAL plan window for this room, spread across the
         # room's exterior walls so a cross-ventilated corner room shows a window on

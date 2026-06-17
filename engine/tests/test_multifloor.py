@@ -58,5 +58,8 @@ def test_each_upper_bedroom_has_attached_bath():
     upper = [r for r in plan.rooms if r.floor == 1]
     bedrooms = [r for r in upper if "bedroom" in r.type.value]
     toilets = [r for r in upper if r.type.value == "toilet"]
-    # one attached bath per bedroom + a common toilet
-    assert len(toilets) >= len(bedrooms)
+    # owner brief: one attached bath per bedroom and NO common toilet upstairs
+    assert not any(t.id == "u_toilet_common" for t in toilets)
+    assert len(toilets) == len(bedrooms)
+    for bed in bedrooms:
+        assert any(t.id == f"toilet_{bed.id}" for t in toilets)

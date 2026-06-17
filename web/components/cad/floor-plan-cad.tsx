@@ -422,10 +422,12 @@ function Opening({ o, sy }: { o: { kind: "door" | "window"; edge: Edge; cx: numb
     );
   }
 
-  // door: leaf + swing arc (sampled polyline → flip-safe)
-  const leafEnd: [number, number] = [j1[0] + inward[0] * o.len, j1[1] + inward[1] * o.len];
-  const a0 = Math.atan2(j2[1] - j1[1], j2[0] - j1[0]);
-  const a1 = Math.atan2(leafEnd[1] - j1[1], leafEnd[0] - j1[0]);
+  // door: leaf + swing arc pivoting at the hinge jamb (sampled polyline → flip-safe)
+  const hingePt = o.hinge === "hi" ? j2 : j1;
+  const otherPt = o.hinge === "hi" ? j1 : j2;
+  const leafEnd: [number, number] = [hingePt[0] + inward[0] * o.len, hingePt[1] + inward[1] * o.len];
+  const a0 = Math.atan2(otherPt[1] - hingePt[1], otherPt[0] - hingePt[0]);
+  const a1 = Math.atan2(leafEnd[1] - hingePt[1], leafEnd[0] - hingePt[0]);
   let da = a1 - a0;
   while (da > Math.PI) da -= 2 * Math.PI;
   while (da < -Math.PI) da += 2 * Math.PI;
@@ -433,15 +435,15 @@ function Opening({ o, sy }: { o: { kind: "door" | "window"; edge: Edge; cx: numb
   const pts: string[] = [];
   for (let i = 0; i <= steps; i++) {
     const a = a0 + (da * i) / steps;
-    pts.push(`${j1[0] + Math.cos(a) * o.len},${sy(j1[1] + Math.sin(a) * o.len)}`);
+    pts.push(`${hingePt[0] + Math.cos(a) * o.len},${sy(hingePt[1] + Math.sin(a) * o.len)}`);
   }
   return (
     <g>
       <line x1={j1[0]} y1={sy(j1[1])} x2={j2[0]} y2={sy(j2[1])} stroke="#ffffff" strokeWidth={W_EXT + 1.5} vectorEffect="non-scaling-stroke" />
       <polyline points={pts.join(" ")} fill="none" stroke="#94a3b8" strokeWidth={W_DIM} vectorEffect="non-scaling-stroke" />
       <line
-        x1={j1[0]}
-        y1={sy(j1[1])}
+        x1={hingePt[0]}
+        y1={sy(hingePt[1])}
         x2={leafEnd[0]}
         y2={sy(leafEnd[1])}
         stroke="#475569"

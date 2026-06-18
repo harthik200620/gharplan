@@ -648,151 +648,120 @@ def build_pdf(
     boq: BoqReport,
     branding: Branding | None = None,
 ) -> bytes:
+    from app.services.design_narrative_service import get_design_narrative
     branding = branding or Branding()
     styles = getSampleStyleSheet()
     h1 = ParagraphStyle("h1", parent=styles["Title"], textColor=BRAND, fontSize=22, spaceAfter=4)
     h2 = ParagraphStyle("h2", parent=styles["Heading2"], textColor=BRAND, spaceBefore=10)
+    h3 = ParagraphStyle("h3", parent=styles["Heading3"], textColor=INK, spaceBefore=6, spaceAfter=4)
     small = ParagraphStyle("small", parent=styles["Normal"], fontSize=8, textColor=colors.HexColor("#666666"))
     cap = ParagraphStyle("cap", parent=styles["Normal"], fontSize=7, textColor=colors.HexColor("#888888"), alignment=TA_CENTER)
+    body = ParagraphStyle("body", parent=styles["Normal"], fontSize=10, textColor=INK, spaceAfter=8, leading=14)
+    bullet = ParagraphStyle("bullet", parent=styles["Normal"], fontSize=10, textColor=INK, spaceAfter=4, leading=14, leftIndent=15, bulletIndent=5)
 
     story: list = []
     floors = floors_of(plan)
     front = front_face(plan)
+    bhk = len([r for r in plan.rooms if r.type.value == "Bedroom"])
 
-    # --- cover header ---
+    # 1. COVER PAGE
+    story.append(Spacer(1, 4 * cm))
     if branding.logo_data_url:
         buf = _decode_logo(branding.logo_data_url)
         if buf:
             try:
-                story.append(Image(buf, width=3 * cm, height=3 * cm, kind="proportional"))
+                story.append(Image(buf, width=5 * cm, height=5 * cm, kind="proportional"))
             except Exception:
                 pass
-    story.append(Paragraph(branding.studio_name, h1))
-    contact = " · ".join(x for x in [branding.address, branding.phone, branding.email, branding.website] if x)
-    if contact:
-        story.append(Paragraph(contact, small))
-    if branding.gstin:
-        story.append(Paragraph(f"GSTIN: {branding.gstin}", small))
-    story.append(Spacer(1, 8))
-
-    story.append(Paragraph("Design &amp; Cost Proposal", h2))
+    story.append(Spacer(1, 2 * cm))
+    story.append(Paragraph("Architectural Design Proposal", h1))
+    story.append(Paragraph("Preliminary Concept", h2))
+    story.append(Spacer(1, 2 * cm))
+    
     meta = [
-        ["Project", plan.project.name],
-        ["Client", plan.project.client_name or "-"],
-        ["Plot", f"{plan.plot.width_m:g} x {plan.plot.depth_m:g} m ({plan.plot.facing.value}-facing), {plan.plot.city.value}"],
-        ["Storeys", "G" + (f"+{len(floors) - 1}" if len(floors) > 1 else "")],
-        ["Date", datetime.now().strftime("%d %b %Y")],
+        ["Project:", plan.project.name],
+        ["Client:", plan.project.client_name or "-"],
+        ["Location:", f"{plan.plot.city.value}, {plan.plot.state.value}"],
+        ["Date:", datetime.now().strftime("%d %b %Y")],
     ]
     t = Table(meta, colWidths=[3 * cm, 13 * cm])
-    t.setStyle(
-        TableStyle(
-            [
-                ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
-                ("TEXTCOLOR", (0, 0), (0, -1), BRAND),
-                ("FONTSIZE", (0, 0), (-1, -1), 9),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-            ]
-        )
-    )
+    t.setStyle(TableStyle([
+        ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
+        ("TEXTCOLOR", (0, 0), (0, -1), BRAND),
+        ("FONTSIZE", (0, 0), (-1, -1), 12),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+    ]))
     story.append(t)
-
-    # --- floor plan(s) ---
-    for f in floors:
-        label = sched.floor_name(f) if len(floors) > 1 else "Floor Plan"
-        story.append(Paragraph(label, h2))
-        story.append(PlanFlowable(plan, floor=f if len(floors) > 1 else None))
-        story.append(Spacer(1, 2))
-    story.append(Paragraph("Rooms shaded by Vastu zone. Dimensions metres. Openings shown as wall breaks.", cap))
-
-    # --- elevations ---
+    story.append(Spacer(1, 2 * cm))
+    story.append(Paragraph(branding.studio_name, h2))
+    contact = " · ".join(x for x in [branding.address, branding.phone, branding.email, branding.website] if x)
+    if contact:
+        story.append(Paragraph(contact, body))
     story.append(PageBreak())
-    story.append(Paragraph("Elevations", h2))
-    faces = [("N", "E"), ("S", "W")]
-    grid_rows = []
-    for a, b in faces:
-        grid_rows.append([ElevationFlowable(plan, a, front), ElevationFlowable(plan, b, front)])
-    cap_rows = [
-        [Paragraph(f"{n} Elevation", cap) for n in ("North", "East")],
-        [Paragraph(f"{n} Elevation", cap) for n in ("South", "West")],
+
+    # 2. EXECUTIVE SUMMARY
+    story.append(Paragraph("Executive Summary", h1))
+    story.append(Spacer(1, 12))
+    
+    story.append(Paragraph("Plot Details", h3))
+    plot_summary = [
+        ["Dimensions", f"{plan.plot.width_m:g} x {plan.plot.depth_m:g} m"],
+        ["Area", f"{plan.plot.area_sqm:g} sq.m"],
+        ["Facing", f"{plan.plot.facing.value}-facing"],
+        ["Location", f"{plan.plot.city.value}, {plan.plot.state.value}"],
     ]
-    et = Table(
-        [
-            [grid_rows[0][0], grid_rows[0][1]],
-            [cap_rows[0][0], cap_rows[0][1]],
-            [grid_rows[1][0], grid_rows[1][1]],
-            [cap_rows[1][0], cap_rows[1][1]],
-        ],
-        colWidths=[8.2 * cm, 8.2 * cm],
-    )
-    et.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"), ("ALIGN", (0, 0), (-1, -1), "CENTER"), ("TOPPADDING", (0, 0), (-1, -1), 2), ("BOTTOMPADDING", (0, 0), (-1, -1), 2)]))
-    story.append(et)
-    story.append(Paragraph(f"Projected from the plan; levels per NBC-2016 practice (lintel +2.100, floor-to-floor {LEVELS.FLOOR_TO_FLOOR:.1f} m). {front}-facing front.", cap))
-
-    # --- section ---
+    story.append(_table(plot_summary, [5 * cm, 10 * cm], header=False))
+    story.append(Spacer(1, 12))
+    
+    story.append(Paragraph("Project Brief", h3))
+    brief_summary = [
+        ["Proposed Config", f"{bhk} BHK"],
+        ["Number of Floors", "G" + (f"+{len(floors) - 1}" if len(floors) > 1 else "")],
+        ["Selected Finish Tier", boq.finish_tier.value.title()],
+    ]
+    story.append(_table(brief_summary, [5 * cm, 10 * cm], header=False))
+    story.append(Spacer(1, 12))
+    
+    narrative = get_design_narrative(plan.variant_id or "vastu", {"width": plan.plot.width_m}, "Composite", bhk)
+    story.append(Paragraph("Design Concept Snapshot", h3))
+    story.append(Paragraph(f"<b>{narrative['concept_title']}</b> — {narrative['concept_statement']}", body))
     story.append(PageBreak())
-    story.append(Paragraph("Section A–A (through staircase)", h2))
-    story.append(SectionFlowable(plan))
-    story.append(Paragraph("Cut taken through the stair/wet core. Poché = cut walls &amp; slabs; foundation depth indicative.", cap))
 
-    # --- MEP services ---
+    # 3. DESIGN CONCEPT
+    story.append(Paragraph("Design Concept", h1))
+    story.append(Paragraph(narrative['concept_title'], h2))
+    story.append(Spacer(1, 12))
+    
+    story.append(Paragraph(narrative['concept_statement'], body))
+    story.append(Paragraph(f"<b>Inspired by:</b> {narrative['precedent']}", body))
+    story.append(Spacer(1, 12))
+    
+    story.append(Paragraph("Design Highlights", h3))
+    for p in narrative['design_principles']:
+        story.append(Paragraph(f"• {p}", bullet))
+    
+    story.append(Spacer(1, 12))
+    story.append(Paragraph("Design Philosophy", h3))
+    story.append(Paragraph(f"<b>Spatial Organization:</b> {narrative['spatial_organization']}", body))
+    story.append(Paragraph(f"<b>Material Palette:</b> {narrative['material_palette']}", body))
+    
+    # insert plan here so it's not lost
+    story.append(Spacer(1, 12))
+    story.append(Paragraph("Floor Plan", h3))
+    for f in floors:
+        story.append(PlanFlowable(plan, floor=f if len(floors) > 1 else None))
+        story.append(Spacer(1, 6))
     story.append(PageBreak())
-    story.append(Paragraph("Services — Plumbing", h2))
-    story.append(MepFlowable(plan, floors[0] if len(floors) > 1 else None, "plumbing"))
-    story.append(Spacer(1, 4))
-    story.append(Paragraph("Services — Electrical", h2))
-    story.append(MepFlowable(plan, floors[0] if len(floors) > 1 else None, "electrical"))
-    story.append(Spacer(1, 4))
-    story.append(_mep_legend(plan, floors[0] if len(floors) > 1 else None, small))
 
-    mep = build_mep_model(plan, floors[0] if len(floors) > 1 else None)
-    if mep.clashes:
-        story.append(Paragraph(f"Coordination clashes ({mep.summary['errors']} errors · {mep.summary['warns']} warnings)", h2))
-        crows = [["Severity", "Rule", "Issue"]]
-        for cl in mep.clashes:
-            crows.append([cl.severity.upper(), cl.rule_id, cl.message])
-        ct = _table(crows, [2.2 * cm, 3.4 * cm, 10.9 * cm], header_bg=colors.HexColor("#E69500"))
-        cstyle = []
-        for i, cl in enumerate(mep.clashes, start=1):
-            cstyle.append(("TEXTCOLOR", (0, i), (0, i), STATUS_COLOR["fail"] if cl.severity == "error" else STATUS_COLOR["warn"]))
-        ct.setStyle(TableStyle(cstyle))
-        story.append(ct)
-    else:
-        story.append(Paragraph("No MEP coordination clashes detected.", small))
-
-    # --- working-drawing schedules ---
-    story.append(PageBreak())
-    story.append(Paragraph("Door &amp; Window Schedule", h2))
-    ogroups = sched.opening_schedule(plan)
-    if ogroups:
-        drows = [["Mark", "Type", "Description", "Size W×H (mm)", "Qty"]]
-        for g in ogroups:
-            drows.append([g.mark, sched.type_label(g), g.description, f"{sched.to_mm(g.width_m)} × {sched.to_mm(g.height_m)}", str(g.qty)])
-        story.append(_table(drows, [1.6 * cm, 2.2 * cm, 5.4 * cm, 4.5 * cm, 1.5 * cm]))
-        story.append(Paragraph("Sizes are masonry openings (mm). Verify on site before fabrication.", cap))
-    else:
-        story.append(Paragraph("No openings defined for this plan yet.", small))
-
-    story.append(Paragraph("Finishes Schedule", h2))
-    frows = [["Space", "Floor", "Skirting / Dado", "Walls", "Ceiling"]]
-    for tp in sched.present_types(plan):
-        fin = sched.finish_for(tp)
-        frows.append([room_label(tp), fin.floor, fin.dado, fin.walls, fin.ceiling])
-    story.append(_table(frows, [3.0 * cm, 3.3 * cm, 4.0 * cm, 3.3 * cm, 3.0 * cm]))
-
-    story.append(Paragraph("Area Statement", h2))
-    arows = [["Item", "Metric", "Imperial"]]
-    for r in sched.area_statement(plan, code.metrics):
-        arows.append([r["label"], r["metric"], r["imperial"]])
-    pf = sched.per_floor_built_up(plan)
-    if pf:
-        for fl, sqm in pf:
-            arows.append([f"  {sched.floor_name(fl)} built-up", f"{sqm:.1f} m²", f"{sched.sqft(sqm)} ft²"])
-    story.append(_table(arows, [6.0 * cm, 5.3 * cm, 5.3 * cm]))
-
-    # --- Vastu ---
-    story.append(PageBreak())
-    story.append(Paragraph(f"Vastu Review — Score {vastu.score}/100 ({vastu.grade})", h2))
+    # 4. VASTU ANALYSIS
+    story.append(Paragraph("Vastu Analysis", h1))
+    story.append(Paragraph(f"Overall Score: {vastu.score}/100 — Grade: {vastu.grade}", h2))
     story.append(Paragraph(vastu.disclaimer, small))
+    story.append(Spacer(1, 12))
+    
+    story.append(Paragraph(narrative['vastu_approach'], body))
+    story.append(Spacer(1, 12))
+    
     vrows = [["Room", "Zone", "Status", "Note"]]
     for r in vastu.rooms + [vastu.brahmasthan]:
         vrows.append([r.room_label, r.zone, r.status.upper(), r.message])
@@ -802,64 +771,45 @@ def build_pdf(
         vstyle.append(("TEXTCOLOR", (2, i), (2, i), STATUS_COLOR.get(r.status, colors.black)))
     vt.setStyle(TableStyle(vstyle))
     story.append(vt)
+    story.append(PageBreak())
 
-    # --- Code ---
-    story.append(Paragraph(f"Preliminary Code Review — {code.state} ({code.status.upper()})", h2))
+    # 5. CODE COMPLIANCE
+    story.append(Paragraph("Code Compliance", h1))
+    story.append(Paragraph(f"Review against {code.state} Bylaws", h2))
     story.append(Paragraph(code.disclaimer, small))
+    story.append(Spacer(1, 12))
+    
     m = code.metrics
     crows = [
         ["Plot area", f"{m.plot_area_sqm} m2", "Ground coverage", f"{m.ground_coverage_pct}% / {m.max_ground_coverage_pct}%"],
         ["Built-up", f"{m.built_up_sqm} m2", "FAR", f"{m.far_used} / {m.far_allowed}"],
     ]
     ct = Table(crows, colWidths=[3 * cm, 4 * cm, 4 * cm, 5 * cm])
-    ct.setStyle(TableStyle([("FONTSIZE", (0, 0), (-1, -1), 8), ("BOTTOMPADDING", (0, 0), (-1, -1), 3)]))
+    ct.setStyle(TableStyle([("FONTSIZE", (0, 0), (-1, -1), 9), ("BOTTOMPADDING", (0, 0), (-1, -1), 5)]))
     story.append(ct)
+    story.append(Spacer(1, 12))
+    
     flagged = [c for c in code.checks if c.status != "pass"]
-    if flagged:
-        frows = [["Check", "Actual", "Required", "Note"]] + [
-            [c.label, c.actual or "", c.required or "", c.message] for c in flagged
-        ]
-        story.append(Spacer(1, 4))
-        story.append(_table(frows, [3 * cm, 2.5 * cm, 2.5 * cm, 8 * cm], header_bg=colors.HexColor("#E69500")))
-    else:
-        story.append(Paragraph("All preliminary checks passed.", small))
-
-    # --- BOQ ---
+    all_checks = [c for c in code.checks]
+    frows = [["Check", "Actual", "Required", "Status", "Note"]]
+    for c in all_checks:
+        frows.append([c.label, c.actual or "", c.required or "", c.status.upper(), c.message])
+    ft = _table(frows, [3 * cm, 2.5 * cm, 2.5 * cm, 1.5 * cm, 6.5 * cm])
+    fstyle = []
+    for i, c in enumerate(all_checks, start=1):
+        fstyle.append(("TEXTCOLOR", (3, i), (3, i), STATUS_COLOR.get(c.status, colors.black)))
+    ft.setStyle(TableStyle(fstyle))
+    story.append(ft)
+    story.append(Spacer(1, 12))
+    story.append(Paragraph("Compliance Summary: " + ("Issues found, redesign recommended." if flagged else "All preliminary checks passed."), body))
     story.append(PageBreak())
-    story.append(Paragraph(f"Bill of Quantities — {boq.finish_tier.value.title()} finish, {boq.city.value}", h2))
-    brows = [["Room", "Description", "Unit", "Qty", "Rate", "Amount", "GST", "Total"]]
-    for ln in boq.lines:
-        brows.append(
-            [
-                ln.room_label or "",
-                ln.description,
-                ln.unit,
-                f"{ln.qty:g}",
-                _inr(ln.rate),
-                _inr(ln.amount),
-                _inr(ln.gst_amount),
-                _inr(ln.total),
-            ]
-        )
-    bt = Table(
-        brows,
-        colWidths=[2.4 * cm, 5 * cm, 1 * cm, 1.2 * cm, 2.2 * cm, 2.4 * cm, 2 * cm, 2.4 * cm],
-        repeatRows=1,
-    )
-    bt.setStyle(
-        TableStyle(
-            [
-                ("BACKGROUND", (0, 0), (-1, 0), BRAND),
-                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-                ("FONTSIZE", (0, 0), (-1, -1), 6.8),
-                ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#ECECEC")),
-                ("ALIGN", (3, 0), (-1, -1), "RIGHT"),
-                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F7F9FC")]),
-            ]
-        )
-    )
-    story.append(bt)
 
+    # 6. COST ESTIMATE
+    story.append(Paragraph("Cost Estimate", h1))
+    story.append(Paragraph(f"Preliminary Estimate — {boq.finish_tier.value.title()} finish, {boq.city.value}", h2))
+    story.append(Paragraph("Note: This is a preliminary estimate. Get contractor quotes before budgeting.", h3))
+    story.append(Spacer(1, 12))
+    
     s = boq.summary
     trows = [
         ["Subtotal", _inr(s.subtotal)],
@@ -870,7 +820,7 @@ def build_pdf(
     tt.setStyle(
         TableStyle(
             [
-                ("FONTSIZE", (0, 0), (-1, -1), 9),
+                ("FONTSIZE", (0, 0), (-1, -1), 10),
                 ("ALIGN", (1, 0), (1, -1), "RIGHT"),
                 ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
                 ("TEXTCOLOR", (0, -1), (-1, -1), BRAND),
@@ -878,12 +828,51 @@ def build_pdf(
             ]
         )
     )
-    story.append(Spacer(1, 4))
     story.append(tt)
+    
+    if plan.plot.area_sqm > 0 and m.built_up_sqm > 0:
+        story.append(Paragraph(f"Approximate Per Sq Ft Rate: {_inr(s.grand_total / (m.built_up_sqm * 10.764))}/sqft built-up", body))
+    story.append(Spacer(1, 12))
+    
+    # Trade-wise summary instead of massive line-items for brevity in proposal
+    story.append(Paragraph("Trade-wise Breakdown", h3))
+    trades = {}
+    for ln in boq.lines:
+        cat = getattr(ln, 'category', 'General')
+        trades[cat] = trades.get(cat, 0) + ln.total
+        
+    trade_rows = [["Category", "Amount"]]
+    for cat, amt in trades.items():
+        trade_rows.append([cat, _inr(amt)])
+        
+    story.append(_table(trade_rows, [10 * cm, 6 * cm]))
+    
+    story.append(Spacer(1, 12))
     story.append(Paragraph(boq.disclaimer, small))
+    story.append(PageBreak())
 
-    # --- T&Cs ---
-    story.append(Paragraph("Terms &amp; Conditions", h2))
+    # 7. WHAT'S NEXT
+    story.append(Paragraph("What's Next", h1))
+    story.append(Paragraph("Recommended Next Steps", h2))
+    story.append(Spacer(1, 12))
+    
+    steps = [
+        "Engage a registered architect for detailed working drawings and finishes.",
+        "Commission a structural engineer to design the foundations and framework.",
+        "Submit drawings to BMRDA/DTCP/local authority for building permit approval.",
+        "Shortlist local contractors and obtain at least 3 competitive quotes.",
+        "Start construction with proper site supervision and quality checks."
+    ]
+    
+    for i, step in enumerate(steps, start=1):
+        story.append(Paragraph(f"<b>{i}.</b> {step}", body))
+        story.append(Spacer(1, 6))
+        
+    story.append(Spacer(1, 1 * cm))
+    story.append(Paragraph("Disclaimer", h3))
+    story.append(Paragraph("This is an AI-generated architectural concept and feasibility report. It is NOT meant for construction. You must engage qualified professionals (Architect, Structural Engineer) to verify the design, structural safety, and local code compliance before breaking ground.", body))
+    story.append(Spacer(1, 1 * cm))
+    story.append(Paragraph("Terms &amp; Conditions", h3))
     story.append(Paragraph(branding.terms, small))
 
     doc = SimpleDocTemplate(

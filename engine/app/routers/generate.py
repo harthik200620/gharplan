@@ -26,6 +26,8 @@ from app.models.plan import Plan, Plot
 from app.models.reports import CodeReport, VastuReport
 from app.services.refine_service import parse_edits
 from app.services.rules import get_code_rules, get_vastu_rules
+from app.services.climate_service import get_climate_zone, get_passive_strategies, get_orientation_advice, get_shading_requirements
+from app.services.structural_service import get_column_grid, get_foundation_type, get_structural_narrative
 
 router = APIRouter(prefix="/plan", tags=["generate"])
 
@@ -75,6 +77,8 @@ class GenerateResponse(CamelModel):
     vastu: VastuReport
     code: CodeReport
     meta: dict
+    climate: dict | None = None
+    structure: dict | None = None
 
 
 class GeneratedOption(CamelModel):
@@ -178,7 +182,25 @@ def plan_generate(req: GenerateRequest) -> GenerateResponse:
             detail={"status": "infeasible_brief", "message": str(exc)},
         )
 
-    return GenerateResponse(plan=plan, vastu=vastu, code=code, meta=meta)
+    city_str = plot.city.value if hasattr(plot.city, "value") else str(plot.city)
+    facing_str = plot.facing.value if hasattr(plot.facing, "value") else str(plot.facing)
+    climate_zone = get_climate_zone(city_str)
+    
+    climate_data = {
+        "zone": climate_zone,
+        "passive_strategies": get_passive_strategies(climate_zone),
+        "orientation_advice": get_orientation_advice(climate_zone, facing_str),
+        "shading_requirements": get_shading_requirements(climate_zone)
+    }
+    
+    plot_sqm = plot.width_m * plot.depth_m
+    structure_data = {
+        "grid": get_column_grid(plot.width_m, plot.depth_m, req.floors),
+        "foundation": get_foundation_type(plot_sqm, req.floors, city_str),
+        "narrative": get_structural_narrative(plot.width_m, plot.depth_m, req.floors, city_str)
+    }
+
+    return GenerateResponse(plan=plan, vastu=vastu, code=code, meta=meta, climate=climate_data, structure=structure_data)
 
 
 @router.post("/options", response_model=GenerateOptionsResponse)
@@ -260,4 +282,23 @@ def plan_refine(req: RefineRequest) -> GenerateResponse:
     meta["appliedEdits"] = result.applied
     meta["unmatchedEdits"] = result.unmatched
     meta["editVariantId"] = result.variant_id
-    return GenerateResponse(plan=plan, vastu=vastu, code=code, meta=meta)
+    
+    city_str = plot.city.value if hasattr(plot.city, "value") else str(plot.city)
+    facing_str = plot.facing.value if hasattr(plot.facing, "value") else str(plot.facing)
+    climate_zone = get_climate_zone(city_str)
+    
+    climate_data = {
+        "zone": climate_zone,
+        "passive_strategies": get_passive_strategies(climate_zone),
+        "orientation_advice": get_orientation_advice(climate_zone, facing_str),
+        "shading_requirements": get_shading_requirements(climate_zone)
+    }
+    
+    plot_sqm = plot.width_m * plot.depth_m
+    structure_data = {
+        "grid": get_column_grid(plot.width_m, plot.depth_m, result.floors),
+        "foundation": get_foundation_type(plot_sqm, result.floors, city_str),
+        "narrative": get_structural_narrative(plot.width_m, plot.depth_m, result.floors, city_str)
+    }
+    
+    return GenerateResponse(plan=plan, vastu=vastu, code=code, meta=meta, climate=climate_data, structure=structure_data)

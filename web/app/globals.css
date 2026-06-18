@@ -251,6 +251,13 @@
   .stagger-5 { animation-delay: 0.5s; }
 }
 
+/* 🔨 Drawing animation for SVG floor plan elements 🔨 */
+.draw-line {
+  stroke-dasharray: 1000;
+  stroke-dashoffset: 1000;
+  animation: draw-path 3s ease forwards;
+}
+
 /* ── Drawing animation for SVG floor plan elements ── */
 @keyframes draw-path {
   from { stroke-dashoffset: var(--path-length, 1000); }

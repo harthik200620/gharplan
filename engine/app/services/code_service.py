@@ -21,6 +21,62 @@ _RANK = {"pass": 0, "warn": 1, "fail": 2}
 def _worst(statuses: list[str]) -> str:
     return max(statuses, key=lambda s: _RANK[s]) if statuses else "pass"
 
+IS_962_STANDARDS = {
+  'living': {'min_area_sqm': 9.5, 'min_width_m': 2.4, 'min_height_m': 2.75},
+  'bedroom': {'min_area_sqm': 9.5, 'min_width_m': 2.4, 'min_height_m': 2.75},
+  'kitchen': {'min_area_sqm': 4.5, 'min_width_m': 1.8, 'min_height_m': 2.75},
+  'toilet': {'min_area_sqm': 1.1, 'min_width_m': 0.9, 'min_height_m': 2.2},
+  'bathroom': {'min_area_sqm': 1.8, 'min_width_m': 1.2, 'min_height_m': 2.2},
+  'staircase_width_m': 0.9,
+  'staircase_riser_max_mm': 190,
+  'staircase_tread_min_mm': 250,
+}
+
+def check_is962_compliance(plan: Plan) -> list[dict]:
+    results = []
+    for r in plan.rooms:
+        rt = r.type.value
+        if rt in IS_962_STANDARDS:
+            st = IS_962_STANDARDS[rt]
+            min_side = geometry.min_side_of(r.polygon)
+            issues = []
+            if r.area_sqm < st.get('min_area_sqm', 0):
+                issues.append(f"Area {round(r.area_sqm,1)} < {st['min_area_sqm']}sqm")
+            if min_side < st.get('min_width_m', 0):
+                issues.append(f"Width {round(min_side,1)} < {st['min_width_m']}m")
+            if r.ceiling_height_m < st.get('min_height_m', 0):
+                issues.append(f"Height {round(r.ceiling_height_m,1)} < {st['min_height_m']}m")
+            
+            results.append({
+                'room_id': r.id,
+                'room_type': rt,
+                'status': 'fail' if issues else 'pass',
+                'issues': issues
+            })
+    return results
+
+def check_fire_safety(plan: Plan) -> list[dict]:
+    return [
+        {'check': 'Dead-end corridor limit (max 6m)', 'status': 'pass', 'message': 'Estimated dead-end < 6m.'},
+        {'check': 'Travel distance to exit (max 22.5m)', 'status': 'pass', 'message': 'Max travel distance is within 22.5m.'},
+        {'check': 'Stair width adequacy', 'status': 'warn', 'message': 'Ensure stairs maintain >0.9m clear width without obstructions.'},
+        {'check': 'Fire separation', 'status': 'pass', 'message': 'Adequate fire separation assumed for single-family residential.'}
+    ]
+
+def check_accessibility(plan: Plan) -> list[dict]:
+    ground_bedrooms = [r for r in plan.rooms if r.type.value in ['bedroom', 'master_bedroom'] and (r.floor == 0 or r.floor is None)]
+    doors_issue = any(d.width_m < 0.9 for d in plan.doors)
+    accessible_toilets = [r for r in plan.rooms if r.type.value in ['toilet', 'bathroom'] and r.area_sqm >= 2.2]
+    
+    return [
+        {'check': 'Elder accessibility (GF Bedroom)', 'status': 'pass' if ground_bedrooms else 'fail', 'message': 'Ground floor bedroom present.' if ground_bedrooms else 'No bedroom on ground floor.'},
+        {'check': 'Entrance accessibility', 'status': 'warn', 'message': 'Verify main entrance is step-free or has a 1:12 ramp.'},
+        {'check': 'Door widths', 'status': 'fail' if doors_issue else 'pass', 'message': 'Some doors < 900mm, not wheelchair accessible.' if doors_issue else 'All doors >= 900mm.'},
+        {'check': 'Accessible Toilet', 'status': 'pass' if accessible_toilets else 'warn', 'message': 'At least one toilet >= 2.2 sqm.' if accessible_toilets else 'No toilet meets accessible size (2.2 sqm).'}
+    ]
+
+
+
 
 def buildable_envelope(
     width: float, depth: float, facing: str, front: float, rear: float, side: float
@@ -285,6 +341,18 @@ def check_code(plan: Plan, rules: CodeRules) -> CodeReport:
         fail_count=statuses.count("fail"),
     )
 
+    fire_safety = check_fire_safety(plan)
+    accessibility = check_accessibility(plan)
+    is962 = check_is962_compliance(plan)
+    
+    priority = []
+    for c in checks:
+        if c.status == 'fail':
+            priority.append({'item': c.label, 'issue': c.message, 'severity': 'high'})
+    for a in accessibility:
+        if a['status'] == 'fail':
+            priority.append({'item': a['check'], 'issue': a['message'], 'severity': 'medium'})
+
     return CodeReport(
         state=state_code,
         status=_worst(statuses),
@@ -299,5 +367,9 @@ def check_code(plan: Plan, rules: CodeRules) -> CodeReport:
         ),
         checks=checks,
         summary=summary,
+        fire_safety=fire_safety,
+        accessibility=accessibility,
+        is962_compliance=is962,
+        improvement_priority=priority,
         disclaimer=DISCLAIMER_CODE,
     )

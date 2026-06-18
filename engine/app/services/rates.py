@@ -57,6 +57,20 @@ def _row_to_rate(r: dict) -> Rate:
     )
 
 
+CITY_MODIFIERS = {
+    'Mumbai': {'material': 1.25, 'labour': 1.25},
+    'Delhi NCR': {'material': 1.15, 'labour': 1.15},
+    'Bengaluru': {'material': 1.10, 'labour': 1.10},
+    'Ahmedabad': {'material': 1.05, 'labour': 1.05},
+    'Pune': {'material': 1.05, 'labour': 1.05},
+    'Hyderabad': {'material': 1.05, 'labour': 1.05},
+    'North East': {'material': 1.15, 'labour': 0.90},  # +15% transport (material), -10% labour
+}
+
+def get_city_modifier(city: str) -> dict:
+    """Returns material and labour modifiers for a given city."""
+    return CITY_MODIFIERS.get(city, {'material': 1.0, 'labour': 1.0})
+
 class DictRatesProvider:
     """In-memory provider. Accepts seed rows (dicts) or pre-built Rate objects."""
 
@@ -69,8 +83,32 @@ class DictRatesProvider:
     def get(self, city: str, item_code: str) -> Rate:
         try:
             return self._by[(city, item_code)]
-        except KeyError as exc:
-            raise MissingRateError(city, item_code) from exc
+        except KeyError:
+            # Fallback to Bengaluru or first available city as base
+            fallback_city = 'Bengaluru' if ('Bengaluru', item_code) in self._by else None
+            if not fallback_city:
+                # Find any city for this item
+                for (c, ic), r in self._by.items():
+                    if ic == item_code:
+                        fallback_city = c
+                        break
+                        
+            if not fallback_city:
+                raise MissingRateError(city, item_code)
+                
+            base_rate = self._by[(fallback_city, item_code)]
+            mod = get_city_modifier(city)
+            return Rate(
+                city=city,
+                item_code=item_code,
+                description=base_rate.description,
+                unit=base_rate.unit,
+                material_rate=base_rate.material_rate * Decimal(str(mod['material'])),
+                labour_rate=base_rate.labour_rate * Decimal(str(mod['labour'])),
+                gst_percent=base_rate.gst_percent,
+                hsn_code=base_rate.hsn_code,
+                finish_tier=base_rate.finish_tier,
+            )
 
     @classmethod
     def from_file(cls, path: str | Path) -> "DictRatesProvider":

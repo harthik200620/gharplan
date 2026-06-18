@@ -82,3 +82,38 @@ def export_pdf(req: ExportRequest) -> Response:
         media_type="application/pdf",
         headers=_attach(f"{_slug(norm.project.name)}_proposal.pdf"),
     )
+
+
+@router.get("/checklist")
+def export_checklist() -> Response:
+    content = """# Architect's Comprehensive Checklist
+
+## PRE-DESIGN CHECKLIST
+- [ ] Plot survey and soil test done
+- [ ] DTCP/BBMP/local authority approval process understood
+- [ ] Registered architect engaged (required by NBC for >100sqm)
+- [ ] Structural engineer identified
+- [ ] MEP consultants identified
+- [ ] Budget finalized and loan pre-approved
+
+## DESIGN STAGE CHECKLIST
+- [ ] Concept approved by family
+- [ ] Vastu consultant reviewed (if needed)
+- [ ] All room sizes confirmed
+- [ ] Future expansion planned (additional floor option)
+- [ ] Parking count confirmed per bylaw
+- [ ] Utility connections checked (water, electricity, sewage)
+
+## PRE-CONSTRUCTION CHECKLIST
+- [ ] Working drawings complete
+- [ ] Building permit obtained
+- [ ] Contractor agreement signed
+- [ ] Site supervisor appointed
+- [ ] Material samples approved
+- [ ] Construction insurance in place
+"""
+    return Response(
+        content=content,
+        media_type="text/markdown",
+        headers=_attach("architect_checklist.md"),
+    )

@@ -91,6 +91,8 @@ class BoqReport(CamelModel):
     lines: list[BoqLine]
     by_room: list[BoqGroup]
     by_trade: list[BoqGroup]
+    trade_summary: list[dict] = Field(default_factory=list)
+    construction_timeline: Optional[dict] = None
     summary: BoqSummary
     warnings: list[str] = Field(default_factory=list)
     disclaimer: str = ""

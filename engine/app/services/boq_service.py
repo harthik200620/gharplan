@@ -29,8 +29,85 @@ from app.services.rules import BoqRules
 
 ZERO = Decimal("0")
 
+FINISH_SPECS = {
+    'economy': {
+        'floor_living': 'Vitrified tiles 600x600mm (Grade 2)',
+        'floor_bedroom': 'Vitrified tiles 600x600mm (Grade 2)',
+        'floor_kitchen': 'Ceramic tiles 400x400mm anti-skid',
+        'floor_toilet': 'Ceramic tiles 300x300mm anti-skid',
+        'wall_living': 'OBD paint 2 coats, putty finish',
+        'wall_bedroom': 'OBD paint 2 coats',
+        'wall_kitchen': 'Glazed ceramic dado to 2.1m ht',
+        'wall_toilet': 'Glazed ceramic dado full height',
+        'ceiling': 'POP punning on RCC slab',
+        'doors': 'Flush door in sal wood frame',
+        'windows': 'Powder-coated aluminum sliding',
+        'kitchen_platform': 'Granite 20mm Black Galaxy',
+    },
+    'standard': {
+        'floor_living': 'Vitrified tiles 800x800mm (Premium Grade)',
+        'floor_bedroom': 'Vitrified tiles 600x600mm / Laminated Wooden Flooring',
+        'floor_kitchen': 'Matte finish ceramic tiles 600x600mm',
+        'floor_toilet': 'Anti-skid ceramic tiles 300x300mm',
+        'wall_living': 'Acrylic Emulsion paint 2 coats, putty finish',
+        'wall_bedroom': 'Acrylic Emulsion paint 2 coats',
+        'wall_kitchen': 'Designer glazed ceramic dado to 2.1m ht',
+        'wall_toilet': 'Designer glazed ceramic dado full height',
+        'ceiling': 'Gypsum false ceiling with cove lighting in living',
+        'doors': 'Veneer finish flush door in teak wood frame',
+        'windows': 'UPVC sliding windows (2.5 track with mesh)',
+        'kitchen_platform': 'Granite 20mm Jet Black / Quartz',
+    },
+    'premium': {
+        'floor_living': 'Italian Marble (Boticino / Dyna)',
+        'floor_bedroom': 'Engineered Wooden Flooring',
+        'floor_kitchen': 'Large format vitrified tiles 1200x600mm',
+        'floor_toilet': 'Large format anti-skid tiles 600x600mm',
+        'wall_living': 'Premium washable emulsion / Wallpaper accents',
+        'wall_bedroom': 'Premium washable emulsion',
+        'wall_kitchen': 'Quartz / Large format dado full height',
+        'wall_toilet': 'Large format tiles full height / Marble dado',
+        'ceiling': 'Designer gypsum false ceiling in all rooms',
+        'doors': 'Solid teak wood doors with premium hardware',
+        'windows': 'UPVC / Aluminum system windows (Schuco or eq.)',
+        'kitchen_platform': 'Premium Quartz / Corian',
+    }
+}
 
-@dataclass
+def get_finish_specification(room_type: str, tier: FinishTier) -> dict:
+    """Returns the specifications for a room type based on the finish tier."""
+    specs = FINISH_SPECS.get(tier.value, FINISH_SPECS['standard'])
+    # Customize slightly based on room_type if needed, but returning full tier spec as requested
+    return specs
+
+def estimate_construction_timeline(total_sqft: float, floors: int, tier: str) -> dict:
+    """Estimates construction timeline based on project size and complexity."""
+    base_foundation_weeks = 4 if total_sqft < 2000 else 6
+    superstructure_per_floor = 8 if total_sqft / floors < 1000 else 12
+    mep_per_floor = 3 if tier == 'economy' else 4
+    finishes_per_floor = 6 if tier == 'economy' else (8 if tier == 'standard' else 10)
+    finishing_touches = 4 if tier == 'economy' else 6
+    
+    total_weeks = (
+        base_foundation_weeks + 
+        (superstructure_per_floor * floors) +
+        (mep_per_floor * floors) +
+        (finishes_per_floor * floors) +
+        finishing_touches
+    )
+    
+    return {
+        'phases': {
+            'Foundation': f"{base_foundation_weeks} weeks",
+            'Superstructure': f"{superstructure_per_floor * floors} weeks",
+            'MEP Rough-in': f"{mep_per_floor * floors} weeks",
+            'Finishes': f"{finishes_per_floor * floors} weeks",
+            'Finishing touches': f"{finishing_touches} weeks"
+        },
+        'total_duration_months': round(total_weeks / 4.33, 1),
+        'ideal_start_season': 'Post-Monsoon (October-November) to avoid foundation delays'
+    }
+
 class _RoomCtx:
     """Per-room quantities derived once from geometry, reused by every formula."""
 
@@ -214,6 +291,10 @@ def generate_boq(
     warnings: list[str] = []
 
     lines: list[BoqLine] = []
+    total_area_sqm = sum(r.area_sqm for r in plan.rooms) if plan.rooms else 0
+    total_sqft = total_area_sqm * 10.7639
+    floor_count = len({r.floor for r in plan.rooms if r.floor is not None}) or 1
+
     for room in plan.rooms:
         if room.type.value in excluded:
             continue
@@ -309,12 +390,25 @@ def generate_boq(
         line_count=len(lines),
     )
 
+    by_trade_groups = _group(lines, lambda ln: ln.trade, lambda ln: ln.trade)
+    trade_summary = [
+        {
+            "trade": g.label,
+            "subtotal": float(g.subtotal),
+            "percentage": float(g.total / summary.grand_total * 100) if summary.grand_total > 0 else 0
+        }
+        for g in by_trade_groups
+    ]
+    timeline = estimate_construction_timeline(total_sqft, floor_count, tier)
+
     return BoqReport(
         city=city,
         finish_tier=finish_tier,
         lines=lines,
         by_room=_group(lines, lambda ln: ln.room_id or "unassigned", lambda ln: ln.room_label or "Unassigned"),
-        by_trade=_group(lines, lambda ln: ln.trade, lambda ln: ln.trade),
+        by_trade=by_trade_groups,
+        trade_summary=trade_summary,
+        construction_timeline=timeline,
         summary=summary,
         warnings=warnings,
         disclaimer="Indicative BOQ generated from plan geometry. Rates are seed values — verify before quoting.",

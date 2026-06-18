@@ -23,6 +23,7 @@ class VastuRoomResult(CamelModel):
     weight: int
     message: str
     suggested_zones: list[str] = Field(default_factory=list)
+    remedy: str = ""
 
 
 class VastuSummary(CamelModel):
@@ -39,6 +40,9 @@ class VastuReport(CamelModel):
     brahmasthan: VastuRoomResult
     fixes: list[VastuRoomResult]
     summary: VastuSummary
+    ayadi: dict = Field(default_factory=dict)
+    marma_points: list[dict] = Field(default_factory=list)
+    entrance_quality: dict = Field(default_factory=dict)
     disclaimer: str = ""
 
 
@@ -79,4 +83,8 @@ class CodeReport(CamelModel):
     metrics: CodeMetrics
     checks: list[CodeCheck]
     summary: CodeSummary
+    fire_safety: list[dict] = Field(default_factory=list)
+    accessibility: list[dict] = Field(default_factory=list)
+    is962_compliance: list[dict] = Field(default_factory=list)
+    improvement_priority: list[dict] = Field(default_factory=list)
     disclaimer: str = ""

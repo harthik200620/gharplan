@@ -409,7 +409,7 @@ export default async function Landing() {
                 className="card-gradient-border group relative overflow-hidden rounded-2xl bg-card p-5 shadow-soft transition-all hover:-translate-y-1 hover:shadow-premium"
               >
                 {/* Large ghost number */}
-                <span className="pointer-events-none absolute right-3 top-1 font-display text-6xl font-extrabold text-primary/5 select-none">
+                <span className="pointer-events-none absolute right-3 top-1 font-display text-6xl font-extrabold text-primary/5 select-none counter-animate">
                   {number}
                 </span>
 

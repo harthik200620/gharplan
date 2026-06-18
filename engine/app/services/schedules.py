@@ -65,6 +65,13 @@ class OpeningGroup:
     height_m: float
     qty: int
     description: str
+    type_detail: str = ""
+    frame_material: str = ""
+    hardware: str = ""
+    glazing: str = ""
+    u_value: str = ""
+    shgc: str = ""
+    remarks: str = ""
 
 
 def default_height(o: Opening) -> float:
@@ -143,6 +150,10 @@ def opening_schedule(plan: Plan) -> list[OpeningGroup]:
                 height_m=g.height_m,
                 qty=g.qty,
                 description=_door_description(g.width_m),
+                type_detail="Panel/Teak" if g.width_m >= 1.0 else "Flush",
+                frame_material="Sal wood / WPC",
+                hardware="SS Mortise lock, 3 hinges, door stopper",
+                remarks="Ensure 5mm bottom clearance."
             )
         )
     for i, g in enumerate(windows):
@@ -155,6 +166,12 @@ def opening_schedule(plan: Plan) -> list[OpeningGroup]:
                 height_m=g.height_m,
                 qty=g.qty,
                 description=_window_description(g.width_m, False),
+                type_detail="Sliding (2.5 track)",
+                frame_material="UPVC / Aluminum",
+                glazing="6mm toughened clear",
+                u_value="< 3.0 W/m²K",
+                shgc="< 0.4",
+                remarks="Include mosquito mesh."
             )
         )
     for i, g in enumerate(vents):
@@ -231,6 +248,54 @@ def present_types(plan: Plan) -> list[str]:
             seen.add(t)
             out.append(t)
     return out
+
+def tiered_finish_schedule(plan: Plan, tier: str) -> list[dict]:
+    """Returns a room-by-room finish schedule based on the given tier."""
+    # We use a simplified mapping similar to boq_service
+    out = []
+    types = present_types(plan)
+    for rt in types:
+        label = room_label(rt)
+        if tier == 'economy':
+            floor = "Vitrified tiles 600x600mm" if rt not in ['toilet', 'bathroom'] else "Ceramic anti-skid 300x300mm"
+            wall = "OBD paint 2 coats" if rt not in ['toilet', 'bathroom'] else "Ceramic dado full height"
+            ceiling = "POP punning on RCC"
+        elif tier == 'premium':
+            floor = "Italian Marble / Engineered Wood" if rt not in ['toilet', 'bathroom'] else "Large format anti-skid 600x600mm"
+            wall = "Premium emulsion / Wallpaper" if rt not in ['toilet', 'bathroom'] else "Large format dado full height"
+            ceiling = "Designer gypsum false ceiling"
+        else:
+            floor = "Vitrified tiles 800x800mm" if rt not in ['toilet', 'bathroom'] else "Anti-skid 300x300mm"
+            wall = "Acrylic emulsion paint" if rt not in ['toilet', 'bathroom'] else "Designer dado full height"
+            ceiling = "Gypsum false ceiling"
+            
+        out.append({
+            "room": label,
+            "floor": floor,
+            "wall": wall,
+            "ceiling": ceiling
+        })
+    return out
+
+def column_schedule(plan: Plan) -> list[dict]:
+    """Provides a structural column schedule."""
+    return [
+        {
+            "mark": "C1",
+            "position": "Corners / High load",
+            "size": "230x450mm (9x18\")",
+            "reinforcement": "6-16mm dia TMT, 8mm links @ 150c/c",
+            "concrete_grade": "M25"
+        },
+        {
+            "mark": "C2",
+            "position": "Intermediate",
+            "size": "230x230mm (9x9\")",
+            "reinforcement": "4-16mm dia TMT, 8mm links @ 150c/c",
+            "concrete_grade": "M25"
+        }
+    ]
+
 
 
 # ---------------------------------------------------------------------------

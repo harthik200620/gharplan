@@ -73,3 +73,7 @@ class Plan(CamelModel):
     rooms: list[Room]
     doors: list[Opening] = Field(default_factory=list)
     windows: list[Opening] = Field(default_factory=list)
+    variant_id: Optional[str] = None
+    design_narrative: Optional[str] = None
+    variant_highlights: list[str] = Field(default_factory=list)
+    precedent_reference: Optional[str] = None

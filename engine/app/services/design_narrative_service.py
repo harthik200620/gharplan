@@ -154,3 +154,5 @@ def get_design_narrative(variant_name: str, plot_data: dict, climate_zone: str, 
         "sustainability_measures": sustainability,
         "vastu_approach": vastu_approach,
     }
+ 
+ 

@@ -58,6 +58,7 @@ export function ResultPanel({
   refining,
   editNote,
   subtitle,
+  finishTier,
 }: {
   data: GenerateResponse;
   options: GeneratedOption[];
@@ -72,6 +73,7 @@ export function ResultPanel({
   refining: boolean;
   editNote: { applied: string[]; unmatched: string[] } | null;
   subtitle: string;
+  finishTier?: "economy" | "standard" | "premium";
 }) {
   const [colorBy, setColorBy] = React.useState<"zone" | "status">("zone");
   const [view, setView] = React.useState<"2d" | "3d" | "elevation" | "section" | "mep">("2d");
@@ -229,7 +231,7 @@ export function ResultPanel({
           </>
         ) : view === "3d" ? (
           <>
-            <FloorPlan3D plan={data.plan} structure={data.structure} className="h-[460px] overflow-hidden rounded-xl border bg-card shadow-soft" />
+            <FloorPlan3D plan={data.plan} structure={data.structure} finishTier={finishTier} className="h-[460px] overflow-hidden rounded-xl border bg-card shadow-soft" />
             <p className="px-1 text-[11px] text-muted-foreground">
               Axonometric 3D Â· same geometry as the CAD drawing &amp; DXF
             </p>

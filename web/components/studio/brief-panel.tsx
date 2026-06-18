@@ -19,6 +19,7 @@ import { Stepper } from "@/components/ui/stepper";
 import { Switch } from "@/components/ui/switch";
 import { COMPASS_GRID, FACING_LABELS, type BriefForm } from "@/lib/studio";
 import { cn } from "@/lib/utils";
+import { TierSelector } from "./tier-selector";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -366,18 +367,13 @@ export function BriefPanel({
       </div>
 
       {/* ── Finish / budget ───────────────────────────────────────────────── */}
-      <Field label="Finish / budget">
-        <Segmented<FinishTier>
-          full
-          value={value.budgetTier}
+      <div className="pt-2">
+        <TierSelector
+          selected={value.budgetTier as any}
           onChange={(v) => onChange({ budgetTier: v })}
-          options={[
-            { value: "economy", label: "Economy" },
-            { value: "standard", label: "Standard" },
-            { value: "premium", label: "Premium" },
-          ]}
+          plotAreaSqyd={(value.widthFt * value.depthFt) / 9}
         />
-      </Field>
+      </div>
 
       {/* ── Family Persona ────────────────────────────────────────────────── */}
       <Field label="Family Persona" hint="Deep lifestyle profile (optional)">

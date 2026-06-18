@@ -219,6 +219,7 @@ export function Studio() {
             refining={refining}
             editNote={editNote}
             subtitle={subtitle}
+            finishTier={brief.budgetTier}
           />
         ) : (
           <EmptyState onGenerate={generate} />

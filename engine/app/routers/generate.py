@@ -28,6 +28,7 @@ from app.services.refine_service import parse_edits
 from app.services.rules import get_code_rules, get_vastu_rules
 from app.services.climate_service import get_climate_zone, get_passive_strategies, get_orientation_advice, get_shading_requirements
 from app.services.structural_service import get_column_grid, get_foundation_type, get_structural_narrative
+from app.services.autonomous_loop import optimize_plan
 
 router = APIRouter(prefix="/plan", tags=["generate"])
 
@@ -299,6 +300,42 @@ def plan_refine(req: RefineRequest) -> GenerateResponse:
         "grid": get_column_grid(plot.width_m, plot.depth_m, result.floors),
         "foundation": get_foundation_type(plot_sqm, result.floors, city_str),
         "narrative": get_structural_narrative(plot.width_m, plot.depth_m, result.floors, city_str)
+    }
+    
+    return GenerateResponse(plan=plan, vastu=vastu, code=code, meta=meta, climate=climate_data, structure=structure_data)
+
+@router.post("/auto-perfect", response_model=GenerateResponse)
+def plan_auto_perfect(req: GenerateRequest) -> GenerateResponse:
+    """
+    Autonomous architectural optimization loop.
+    Acts as a 10-year experienced architect continuously refining the plan
+    until it meets high Vastu and structural score criteria.
+    """
+    plot = _validated_plot(req)
+    
+    plan, vastu, code, meta = optimize_plan(
+        bhk=req.bhk,
+        plot=plot,
+        floors=req.floors,
+        vastu_priority=req.vastu_priority
+    )
+    
+    city_str = plot.city.value if hasattr(plot.city, "value") else str(plot.city)
+    facing_str = plot.facing.value if hasattr(plot.facing, "value") else str(plot.facing)
+    climate_zone = get_climate_zone(city_str)
+    
+    climate_data = {
+        "zone": climate_zone,
+        "passive_strategies": get_passive_strategies(climate_zone),
+        "orientation_advice": get_orientation_advice(climate_zone, facing_str),
+        "shading_requirements": get_shading_requirements(climate_zone)
+    }
+    
+    plot_sqm = plot.width_m * plot.depth_m
+    structure_data = {
+        "grid": get_column_grid(plot.width_m, plot.depth_m, req.floors),
+        "foundation": get_foundation_type(plot_sqm, req.floors, city_str),
+        "narrative": get_structural_narrative(plot.width_m, plot.depth_m, req.floors, city_str)
     }
     
     return GenerateResponse(plan=plan, vastu=vastu, code=code, meta=meta, climate=climate_data, structure=structure_data)

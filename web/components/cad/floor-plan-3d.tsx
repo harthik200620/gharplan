@@ -23,6 +23,8 @@ import {
   type PlacedOpening,
   type Rect,
 } from "@/lib/cad";
+import { buildMepModel } from "@/lib/mep";
+import { cn } from "@/lib/utils";
 
 // Levels (metres) — kept in step with the engine drawing levels.
 const WALL_H = 2.75; // clear room height
@@ -855,6 +857,7 @@ function FloorGroup({
   D,
   openings,
   entranceId,
+  mepMode = false,
 }: {
   plan: Plan;
   floor: number;
@@ -862,6 +865,7 @@ function FloorGroup({
   D: number;
   openings: PlacedOpening[];
   entranceId: string | null;
+  mepMode?: boolean;
 }) {
   const rooms = plan.rooms.filter((r) => !VIRTUAL.has(r.type) && (r.floor ?? 0) === floor);
   const fp = buildingFootprint(plan, floor);
@@ -895,9 +899,13 @@ function FloorGroup({
               )}
             </mesh>
             {walls.map((w, i) => (
-              <mesh key={`w${i}`} position={w.pos} castShadow receiveShadow>
+              <mesh key={`w${i}`} position={w.pos} castShadow={!mepMode} receiveShadow={!mepMode}>
                 <boxGeometry args={w.size} />
-                <meshStandardMaterial color={wallCol} roughness={0.92} bumpScale={0.01} />
+                {mepMode ? (
+                  <meshPhysicalMaterial color={wallCol} transmission={0.8} opacity={0.3} transparent roughness={0.3} />
+                ) : (
+                  <meshStandardMaterial color={wallCol} roughness={0.92} bumpScale={0.01} />
+                )}
               </mesh>
             ))}
             {glass.map((g, i) => (
@@ -1316,7 +1324,7 @@ function AutoFrame({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-function StructuralGrid({ structure, plan, W, D }: { structure: StructureReport; plan: Plan; W: number; D: number }) {
+function StructuralGrid({ structure, plan, W, D, mepMode }: { structure: StructureReport; plan: Plan; W: number; D: number; mepMode?: boolean }) {
   if (!structure.grid_x || !structure.grid_y) return null;
   const fp = footprint(plan.rooms);
   if (!fp) return null;
@@ -1340,16 +1348,66 @@ function StructuralGrid({ structure, plan, W, D }: { structure: StructureReport;
   return (
     <group>
       {cols.map((c, i) => (
-        <mesh key={i} position={[X(c.x), colH / 2, Z(c.y)]} castShadow receiveShadow>
+        <mesh key={i} position={[X(c.x), colH / 2, Z(c.y)]} castShadow={!mepMode} receiveShadow={!mepMode}>
           <boxGeometry args={[colSize, colH, colSize]} />
-          <ConcreteMat color={CONCRETE} />
+          {mepMode ? (
+            <meshPhysicalMaterial color={CONCRETE} transmission={0.8} opacity={0.3} transparent roughness={0.3} />
+          ) : (
+            <ConcreteMat color={CONCRETE} />
+          )}
         </mesh>
       ))}
     </group>
   );
 }
 
-function Scene({ plan, structure }: { plan: Plan; structure?: StructureReport }) {
+function MepPipes({ plan, W, D }: { plan: Plan; W: number; D: number }) {
+  const model = React.useMemo(() => buildMepModel(plan), [plan]);
+  const X = (px: number) => px - W / 2;
+  const Z = (py: number) => D / 2 - py;
+
+  return (
+    <group>
+      {/* Plumbing Pipes */}
+      {model.pipes.map(p => {
+        const height = p.service === "soil" || p.service === "waste" ? FLOOR_Y + 0.1 : LINTEL + 0.2;
+        const v3pts = p.points.map(pt => new THREE.Vector3(X(pt[0]), height, Z(pt[1])));
+        if (v3pts.length < 2) return null;
+        // sharp corners for pipes
+        const curve = new THREE.CatmullRomCurve3(v3pts, false, 'chordal', 0);
+        let color = "#9ca3af";
+        if (p.service === "hot") color = "#dc2626";
+        else if (p.service === "cold") color = "#2563eb";
+        else if (p.service === "soil") color = "#7c4a1e";
+        else if (p.service === "waste") color = "#15803d";
+        
+        return (
+          <mesh key={p.id} castShadow>
+            <tubeGeometry args={[curve, 64, (p.sizeMm / 1000) * 0.5, 8, false]} />
+            <meshStandardMaterial color={color} roughness={0.3} metalness={0.4} />
+          </mesh>
+        );
+      })}
+      
+      {/* Conduits */}
+      {model.conduits.map((c, i) => {
+        const height = LINTEL + 0.4;
+        const v3pts = c.points.map(pt => new THREE.Vector3(X(pt[0]), height, Z(pt[1])));
+        if (v3pts.length < 2) return null;
+        // smooth corners for conduit
+        const curve = new THREE.CatmullRomCurve3(v3pts, false, 'catmullrom', 0.2);
+        return (
+          <mesh key={`cond-${i}`} castShadow>
+            <tubeGeometry args={[curve, 64, 0.015, 8, false]} />
+            <meshStandardMaterial color="#ca8a04" roughness={0.3} metalness={0.5} />
+          </mesh>
+        );
+      })}
+    </group>
+  );
+}
+
+function Scene({ plan, structure, mepMode }: { plan: Plan; structure?: StructureReport; mepMode?: boolean }) {
   const W = plan.plot.widthM;
   const D = plan.plot.depthM;
   const openings = React.useMemo(() => placeOpenings(plan), [plan]);
@@ -1410,12 +1468,13 @@ function Scene({ plan, structure }: { plan: Plan; structure?: StructureReport })
       <Bounds clip margin={1.2}>
         <AutoFrame>
           {floors.map((f) => (
-            <FloorGroup key={f} plan={plan} floor={f} W={W} D={D} openings={openings} entranceId={entranceId} />
+            <FloorGroup key={f} plan={plan} floor={f} W={W} D={D} openings={openings} entranceId={entranceId} mepMode={mepMode} />
           ))}
           <Slabs plan={plan} W={W} D={D} />
-          {structure && <StructuralGrid structure={structure} plan={plan} W={W} D={D} />}
+          {structure && <StructuralGrid structure={structure} plan={plan} W={W} D={D} mepMode={mepMode} />}
           <EntrancePorch plan={plan} W={W} D={D} />
           <CompoundWall W={W} D={D} />
+          {mepMode && <MepPipes plan={plan} W={W} D={D} />}
         </AutoFrame>
       </Bounds>
 
@@ -1432,14 +1491,24 @@ function Scene({ plan, structure }: { plan: Plan; structure?: StructureReport })
   );
 }
 
-export function FloorPlan3D({ plan, structure, className }: { plan: Plan; structure?: StructureReport; className?: string }) {
+export function FloorPlan3D({ plan, structure, className, mepMode: controlledMepMode }: { plan: Plan; structure?: StructureReport; className?: string; mepMode?: boolean }) {
+  const [localMepMode, setLocalMepMode] = React.useState(false);
+  const mepMode = controlledMepMode ?? localMepMode;
   const W = plan.plot.widthM;
   const D = plan.plot.depthM;
   const floors = Math.max(1, new Set(plan.rooms.map((r) => r.floor ?? 0)).size);
   const dist = Math.max(W, D);
   const h = floors * FLOOR_TO_FLOOR;
   return (
-    <div className={className}>
+    <div className={cn("relative group", className)}>
+      {controlledMepMode === undefined && (
+        <button
+          onClick={() => setLocalMepMode(m => !m)}
+          className="absolute top-4 right-4 z-10 rounded-md bg-background/80 backdrop-blur px-3 py-1.5 text-xs font-semibold shadow border hover:bg-background transition"
+        >
+          {mepMode ? "Exit MEP X-Ray" : "MEP X-Ray"}
+        </button>
+      )}
       <Canvas
         shadows
         dpr={[1, 1.8]}
@@ -1447,7 +1516,7 @@ export function FloorPlan3D({ plan, structure, className }: { plan: Plan; struct
         gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.15 }}
         style={{ background: "linear-gradient(180deg,#cfe0f2 0%,#e8edf3 100%)" }}
       >
-        <Scene plan={plan} structure={structure} />
+        <Scene plan={plan} structure={structure} mepMode={mepMode} />
       </Canvas>
     </div>
   );

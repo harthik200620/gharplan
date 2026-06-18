@@ -324,7 +324,7 @@ def _draw_general_notes(msp, doc, plan: Plan, dx: float, dy: float):
     _ensure(doc, "GENERAL_NOTES", 7)
     
     bhk = len([r for r in plan.rooms if r.type.value == "Bedroom"])
-    narrative = get_design_narrative(plan.variant_id or "vastu", {"width": plan.plot.width_m}, "Composite", bhk)
+    narrative = get_design_narrative(plan.variant_id or "vastu", {"width": plan.plot.width_m}, "Composite", bhk, plan.plot.family_persona)
     vastu = check_vastu(plan, get_vastu_rules())
     
     lines = ["GENERAL NOTES"]

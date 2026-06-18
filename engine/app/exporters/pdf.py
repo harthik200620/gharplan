@@ -722,7 +722,7 @@ def build_pdf(
     story.append(_table(brief_summary, [5 * cm, 10 * cm], header=False))
     story.append(Spacer(1, 12))
     
-    narrative = get_design_narrative(plan.variant_id or "vastu", {"width": plan.plot.width_m}, "Composite", bhk)
+    narrative = get_design_narrative(plan.variant_id or "vastu", {"width": plan.plot.width_m}, "Composite", bhk, plan.plot.family_persona)
     story.append(Paragraph("Design Concept Snapshot", h3))
     story.append(Paragraph(f"<b>{narrative['concept_title']}</b> — {narrative['concept_statement']}", body))
     story.append(PageBreak())

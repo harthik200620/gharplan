@@ -1,4 +1,4 @@
-def get_design_narrative(variant_name: str, plot_data: dict, climate_zone: str, bhk: int) -> dict:
+def get_design_narrative(variant_name: str, plot_data: dict, climate_zone: str, bhk: int, family_persona: str = None) -> dict:
     """
     Returns professional architectural design narrative for a given variant.
     Mimics how a qualified architect writes a design concept statement.
@@ -132,6 +132,17 @@ def get_design_narrative(variant_name: str, plot_data: dict, climate_zone: str, 
             "Robust, long-lasting construction detailing"
         ]
         vastu_approach = "Adheres strictly to Vastu for the main entrance, pooja, and kitchen, while providing secondary Vastu-compliant sleeping orientations for multiple family heads."
+
+    if family_persona:
+        persona_intro = f"In the spirit of B.V. Doshi's humanist architecture, this home is deeply personalized for its inhabitants: {family_persona}. The design responds directly to these unique familial rhythms."
+        persona_lower = family_persona.lower()
+        if any(word in persona_lower for word in ["music", "drum", "guitar", "piano", "band", "sound"]):
+            persona_intro += " To accommodate musical aspirations without disrupting the household's peace, acoustic zones are carefully segregated."
+        if any(word in persona_lower for word in ["dog", "cat", "pet"]):
+            persona_intro += " Recognizing pets as integral family members, dedicated utility and wash areas are carefully planned to weave their care seamlessly into daily life."
+        if any(word in persona_lower for word in ["grandparent", "elder", "senior"]):
+            persona_intro += " Honoring the elders, the ground floor is gently sculpted for accessibility, ensuring their comfort and dignity remain at the very heart of the home."
+        statement = persona_intro + "\n\n" + statement
 
     return {
         "concept_title": title,

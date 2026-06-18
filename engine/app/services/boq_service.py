@@ -108,6 +108,7 @@ def estimate_construction_timeline(total_sqft: float, floors: int, tier: str) ->
         'ideal_start_season': 'Post-Monsoon (October-November) to avoid foundation delays'
     }
 
+@dataclass
 class _RoomCtx:
     """Per-room quantities derived once from geometry, reused by every formula."""
 
@@ -132,9 +133,9 @@ def _build_ctx(room: Room, plan: Plan, rules: BoqRules, warnings: list[str]) -> 
     door_area = sum(o.width_m * o.height_m * o.count for o in rdoors)
     window_area = sum(o.width_m * o.height_m * o.count for o in rwins)
 
-    area = room.area_sqm
-    perimeter = room.perimeter_m
-    ceiling = room.ceiling_height_m
+    area = room.area_sqm or 0.0
+    perimeter = room.perimeter_m or 0.0
+    ceiling = room.ceiling_height_m or 3.0
 
     dado_h = rules.dado_height(room.type.value)
     dado_area = perimeter * dado_h if dado_h else 0.0

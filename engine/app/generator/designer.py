@@ -818,7 +818,7 @@ def build_program(
         )
 
     # -- Front sit-out / verandah (courtyard / daylight variant) -- #
-    if spec["sitout"] or (family_profile in ["joint", "extended"]):
+    if spec.get("sitout", False) or (family_profile in ["joint", "extended"]):
         prio = 8 if (variant and variant.climate_first) else 3
         # if forced by family profile, increase priority
         if family_profile in ["joint", "extended"]:
@@ -1130,6 +1130,8 @@ class VastuGridPacker:
         total_floor = sum(floor)
 
         if total_floor > self.env_w + 1e-9:
+            hab = [self._column_hab_floor(cols[ci]) for ci in (0, 1, 2)]
+            print(f"Total floor {total_floor} > {self.env_w}, hab: {hab}")
             # Protect code-habitable bands at min_dim; shrink the rest to fit.
             hab = [self._column_hab_floor(cols[ci]) for ci in (0, 1, 2)]
             protected = sum(hab)
@@ -1142,12 +1144,17 @@ class VastuGridPacker:
                 bare = [self._column_bare_floor(cols[ci]) for ci in (0, 1, 2)]
                 # first satisfy every band's bare minimum width out of the slack
                 bare_extra = [max(0.0, bare[ci] - hab[ci]) for ci in (0, 1, 2)]
+                print(f"protected={protected}, slack={slack}, bare={bare}, bare_extra={bare_extra}, sum={sum(bare_extra)}")
                 if sum(bare_extra) <= slack + 1e-9:
                     rem = slack - sum(bare_extra)
                     base = [hab[ci] + bare_extra[ci] for ci in (0, 1, 2)]
                     esum = sum(excess) or 1.0
                     return [base[ci] + rem * excess[ci] / esum for ci in (0, 1, 2)]
-            # genuinely can't protect — proportional squeeze (legacy best-effort).
+                
+                # We can't even give the service bands their bare width.
+                # Protect hab bands and distribute slack proportionally to bare_extra.
+                besum = sum(bare_extra) or 1.0
+                return [hab[ci] + slack * bare_extra[ci] / besum for ci in (0, 1, 2)]
             s = total_floor or 1.0
             return [self.env_w * fl / s for fl in floor]
 
@@ -1616,6 +1623,7 @@ def _assert_no_overlap(placed: list[PlacedRoom]) -> None:
             ox = min(a.x1, b.x1) - max(a.x0, b.x0)
             oy = min(a.y1, b.y1) - max(a.y0, b.y0)
             if ox > 1e-6 and oy > 1e-6:
+                print(f"Overlap: {a.id} {a.x0},{a.y0} to {a.x1},{a.y1} vs {b.id} {b.x0},{b.y0} to {b.x1},{b.y1}")
                 raise AssertionError(
                     f"rooms '{a.id}' and '{b.id}' overlap by {round(ox * oy, 4)} m2"
                 )
@@ -2160,6 +2168,7 @@ def _enforce_coverage(
             dropped.append(victim.id)
             continue
         s = fac ** 0.5  # nothing optional left: uniform squeeze (rooms well over min)
+        print(f"UNIFORM SQUEEZE fac={fac}, s={s}")
         _shrink(s, s)
         break
     return dropped
@@ -2190,7 +2199,7 @@ def _footprint_voids(
     they live in the setback margins, not the footprint — and any room already
     outside the envelope is clipped to it."""
     minx, miny, maxx, maxy = env
-    builtup = [p for p in placed if p.type not in _SITE_ROOM_TYPES]
+    builtup = placed
     # candidate x-edges inside the envelope (clamped + de-duplicated)
     xs = {minx, maxx}
     for p in builtup:
@@ -2278,7 +2287,7 @@ def _fill_footprint_voids(
     courtyards added."""
     added: list[PlacedRoom] = []
     suffix = "" if floor == 0 else f"_f{floor}"
-    builtup = [p for p in placed if p.type not in _SITE_ROOM_TYPES]
+    builtup = placed
     k = 0
     # Largest first: handle big interior gaps before the thin edge strips.
     for (x0, y0, x1, y1) in sorted(
@@ -3001,6 +3010,7 @@ def generate_plan(
 
     program = build_program(
         effective_bhk, floors, env_w, env_d, min_habitable, min_kitchen, min_toilet,
+        vastu=vastu_rules,
         family_profile=plot.family_profile.value,
         family_persona=plot.family_persona,
     )
@@ -3018,6 +3028,7 @@ def generate_plan(
             plan, vastu, code, meta = _generate_multifloor(
                 bhk, plot, floors, requested_tier, footprint, env, keepout, plot_area,
                 max_cov, min_dim, min_habitable, min_kitchen, min_toilet,
+                min_area_by_type, vastu_rules, project_name,
                 family_profile=plot.family_profile.value,
                 family_persona=plot.family_persona,
             )

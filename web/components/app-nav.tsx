@@ -7,6 +7,7 @@ import {
   CreditCard,
   LayoutDashboard,
   LogOut,
+  MapPin,
   Menu,
   Settings,
   Sparkles,
@@ -21,6 +22,7 @@ import { cn } from "@/lib/utils";
 const LINKS = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/studio", label: "AI Studio", icon: Sparkles },
+  { href: "/tirupati", label: "Tirupati Layouts", icon: MapPin },
   { href: "/settings", label: "Settings", icon: Settings },
   { href: "/billing", label: "Billing", icon: CreditCard },
 ];

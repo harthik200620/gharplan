@@ -26,6 +26,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       className={`${inter.variable} ${sora.variable} ${mono.variable}`}
       suppressHydrationWarning
     >
+      <head>
+        <link
+          rel="stylesheet"
+          href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"
+        />
+      </head>
       <body className="min-h-screen bg-background font-sans antialiased">
         {children}
         <Toaster

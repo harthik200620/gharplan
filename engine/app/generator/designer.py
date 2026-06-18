@@ -613,6 +613,7 @@ def build_program(
     footprint: Optional[float] = None,
     variant: Optional["VariantProfile"] = None,
     edits: Optional["EditOverrides"] = None,
+    family_profile: str = "nuclear",
 ) -> list[ProgramRoom]:
     """Produce the room list (target areas + Vastu zones) for the effective tier.
 
@@ -631,6 +632,13 @@ def build_program(
 
     def zones(rt: str) -> list[str]:
         return ideal_zone_for(rt, vastu)
+
+    if family_profile in ["joint", "extended"]:
+        min_kitchen = max(min_kitchen, 10.0)
+        # increase dining comfort target if joint/extended
+        dining_comfort = max(_COMFORT["dining"], 14.0)
+    else:
+        dining_comfort = _COMFORT["dining"]
 
     # Region area floors per room class (never go below code/realistic minimum).
     bath_min = max(_BATH_AREA_MIN, min_toilet * 1.6)
@@ -760,7 +768,7 @@ def build_program(
     # -- Dining nook (1BHK+ has one; optional/droppable) -- #
     if spec["dining"]:
         prog.append(
-            ProgramRoom("dining", RoomType.dining, max(_COMFORT["dining"], min_habitable * 0.7),
+            ProgramRoom("dining", RoomType.dining, max(dining_comfort, min_habitable * 0.7),
                         zones("dining"), priority=4)
         )
 
@@ -782,9 +790,10 @@ def build_program(
     # -- Pooja (dedicated room from 3BHK, else a niche-sized room) -- #
     if spec["pooja"]:
         target = _COMFORT["pooja_room"] if spec["dedicated_pooja"] else _COMFORT["pooja"]
+        pooja_prio = 8 if family_profile == "eldercare" else 5
         prog.append(
             ProgramRoom("pooja", RoomType.pooja, max(target, 1.8),
-                        zones("pooja"), priority=5)
+                        zones("pooja"), priority=pooja_prio)
         )
 
     # -- Staircase (service core slot) -- #
@@ -808,11 +817,14 @@ def build_program(
         )
 
     # -- Front sit-out / verandah (courtyard / daylight variant) -- #
-    if variant is not None and variant.sitout:
-        prio = 8 if variant.climate_first else 3
+    if spec["sitout"] or (family_profile in ["joint", "extended"]):
+        prio = 8 if (variant and variant.climate_first) else 3
+        # if forced by family profile, increase priority
+        if family_profile in ["joint", "extended"]:
+            prio = 6
         prog.append(
             ProgramRoom("sitout", RoomType.sitout, max(_COMFORT.get("sitout", 6.0), 5.0),
-                        ["N", "E", "NE"], priority=prio,
+                        ["N", "E", "NE", "CENTER"], priority=prio,
                         design_logic="Buffer space for climate control and outdoor seating.")
         )
 
@@ -2504,6 +2516,7 @@ def _build_swap_sets(program: list[ProgramRoom]) -> list[Optional[dict[str, int]
 
 def _ground_program(
     env_w, env_d, min_habitable, min_kitchen, min_toilet, vastu, variant=None, guest_bedrooms=0,
+    family_profile="nuclear",
 ) -> list[ProgramRoom]:
     """Ground floor of a G+1/G+2: the social + service core PLUS (from 3BHK) one
     ensuite GUEST / PARENTS bedroom — the Indian convention so elders/guests avoid
@@ -2515,10 +2528,16 @@ def _ground_program(
     def z(rt: str) -> list[str]:
         return ideal_zone_for(rt, vastu)
 
+    if family_profile in ["joint", "extended"]:
+        min_kitchen = max(min_kitchen, 10.0)
+        dining_comfort = max(_COMFORT["dining"], 14.0)
+    else:
+        dining_comfort = _COMFORT["dining"]
+
     merge_dining = bool(variant and variant.merge_dining)
     living_target = max(_COMFORT["living"], min_habitable * 1.7)
     if variant and (merge_dining or variant.big_social):
-        living_target += _COMFORT["dining"] * (1.0 if merge_dining else 0.5)
+        living_target += dining_comfort * (1.0 if merge_dining else 0.5)
         if variant.big_social:
             living_target *= 1.3
     pooja_mode = variant.pooja_mode if variant else "auto"
@@ -2543,7 +2562,7 @@ def _ground_program(
     sec_bed_min = max(11.0, min_habitable)
     master_bed_min = max(14.0, min_habitable * 1.25)
     for gi in range(max(0, int(guest_bedrooms))):
-        if variant and variant.multi_gen and gi == 0:
+        if (variant and variant.multi_gen and gi == 0) or (family_profile == "eldercare" and gi == 0):
             prog.append(
                 ProgramRoom("master", RoomType.master_bedroom, master_bed_min + bath_min,
                             z("master_bedroom"), 10, attach_bath=True, bath_min_sqm=bath_min,
@@ -2559,10 +2578,11 @@ def _ground_program(
                             design_logic="Ground floor ensuite for elders/guests to avoid stairs.")
             )
     if not merge_dining:
-        prog.append(ProgramRoom("dining", RoomType.dining, max(_COMFORT["dining"], min_habitable * 0.9),
+        prog.append(ProgramRoom("dining", RoomType.dining, max(dining_comfort, min_habitable * 0.9),
                                 z("dining"), 7, min_area_floor=9.0, design_logic="Formal dining separate from living."))
     if pooja_mode != "none":
-        prog.append(ProgramRoom("pooja", RoomType.pooja, max(_COMFORT["pooja_room"], 1.8), z("pooja"), 5, design_logic="Dedicated sacred space on ground floor."))
+        pooja_prio = 8 if family_profile == "eldercare" else 5
+        prog.append(ProgramRoom("pooja", RoomType.pooja, max(_COMFORT["pooja_room"], 1.8), z("pooja"), pooja_prio, design_logic="Dedicated sacred space on ground floor."))
     # Owner brief: NO standalone common WC — every toilet is an attached bath on a
     # bedroom. The ensuite guest/parents bedroom (3BHK+) sits by the entry and
     # serves ground-floor guests. Only fall back to a common WC when this floor has
@@ -2572,14 +2592,16 @@ def _ground_program(
                                 z("toilet"), 7, design_logic="Powder room for ground-floor guests."))
     prog.append(ProgramRoom("stair", RoomType.staircase, max(0.05 * env_area, 3.4), z("staircase"), 6, design_logic="Vertical circulation core."))
     prog.append(ProgramRoom("entrance", RoomType.entrance, max(_COMFORT["entrance"], 2.2), z("entrance"), 4, design_logic="Foyer/transition space."))
-    if variant and variant.sitout:
-        prio = 8 if variant.climate_first else 3
+    if (variant and variant.sitout) or (family_profile in ["joint", "extended"]):
+        prio = 8 if (variant and variant.climate_first) else 3
+        if family_profile in ["joint", "extended"]:
+            prio = 6
         prog.append(ProgramRoom("sitout", RoomType.sitout, max(_COMFORT.get("sitout", 6.0), 5.0),
-                                ["N", "E", "NE"], priority=prio, design_logic="Buffer space for climate control and outdoor seating."))
+                                ["N", "E", "NE", "CENTER"], priority=prio, design_logic="Buffer space for climate control and outdoor seating."))
     return prog
 
 
-def _upper_program(tier, env_w, env_d, min_habitable, min_toilet, vastu, variant=None, ground_bedrooms=0) -> list[ProgramRoom]:
+def _upper_program(tier, env_w, env_d, min_habitable, min_toilet, vastu, variant=None, ground_bedrooms=0, family_profile="nuclear") -> list[ProgramRoom]:
     """Upper floor: a family LIVING area + the master and remaining bedrooms (each
     its own attached bath) + a common toilet + the stair. No kitchen/dining/pooja
     upstairs. ``ground_bedrooms`` are the bedrooms already placed downstairs, so
@@ -2608,7 +2630,7 @@ def _upper_program(tier, env_w, env_d, min_habitable, min_toilet, vastu, variant
                     z("living"), 8, min_area_floor=max(18.0, min_habitable),
                     design_logic="Upper floor family living area, minimum 18 sqm."),
     ]
-    if variant and variant.multi_gen:
+    if (variant and variant.multi_gen) or (family_profile == "eldercare"):
         # Master is downstairs, so put a guest / rental master here
         prog.append(
             ProgramRoom("u_guest", RoomType.bedroom, master_bed_min * 1.25 + master_bath_min,
@@ -2741,7 +2763,7 @@ def _layout_floor(
 def _generate_multifloor(
     bhk, plot, floors, tier, footprint, env, keepout, plot_area, max_cov,
     min_dim, min_habitable, min_kitchen, min_toilet, min_area_by_type,
-    vastu_rules, project_name, variant=None, edits=None,
+    vastu_rules, project_name, variant=None, edits=None, family_profile="nuclear",
 ) -> tuple[Plan, object, object, dict]:
     """G+1 / G+2: a social ground floor + an upper floor of family living and
     ensuite bedrooms, each room tagged with its ``floor``. The bhk is honoured
@@ -2757,8 +2779,10 @@ def _generate_multifloor(
     # bedrooms 2-and-2 across the floors gives each room its proper size and sector —
     # the call a practising architect makes — and lifts the 4BHK Vastu to ~94.
     ground_bedrooms = 2 if _TIER_BEDROOMS[tier] >= 4 else (1 if _TIER_BEDROOMS[tier] >= 3 else 0)
-    ground = _ground_program(env_w, env_d, min_habitable, min_kitchen, min_toilet, vastu_rules, variant, guest_bedrooms=ground_bedrooms)
-    upper = _upper_program(tier, env_w, env_d, min_habitable, min_toilet, vastu_rules, variant, ground_bedrooms=ground_bedrooms)
+    if family_profile == "eldercare" and ground_bedrooms == 0:
+        ground_bedrooms = 1
+    ground = _ground_program(env_w, env_d, min_habitable, min_kitchen, min_toilet, vastu_rules, variant, guest_bedrooms=ground_bedrooms, family_profile=family_profile)
+    upper = _upper_program(tier, env_w, env_d, min_habitable, min_toilet, vastu_rules, variant, ground_bedrooms=ground_bedrooms, family_profile=family_profile)
 
     # Fold single-prompt edits into both floors (matching by id/type means a resize
     # or move only touches the floor that owns the room); split ADDs by social vs.
@@ -2867,8 +2891,19 @@ def generate_plan(
     if bhk < 1 or bhk > 4:
         raise ValueError("bhk must be between 1 and 4")
 
-    env, keepout = _envelope_and_keepout(plot, code_rules)
+    # --- PLOT SHAPE LOGIC: narrow/widen front for gomukhi/shermukhi ---
+    plot_width = plot.width_m
+    if plot.plot_shape == "gomukhi":
+        plot_width *= 0.95
+    elif plot.plot_shape == "shermukhi":
+        plot_width *= 1.05
+    
+    # We create a temporary plot for the envelope generator
+    temp_plot = plot.model_copy(update={"width_m": plot_width})
+    env, keepout = _envelope_and_keepout(temp_plot, code_rules)
     minx, miny, maxx, maxy = env
+    
+    env = (minx, miny, maxx, maxy)
     env_w, env_d = maxx - minx, maxy - miny
     if env_w < 2.0 or env_d < 2.0:
         raise ValueError(
@@ -2913,6 +2948,7 @@ def generate_plan(
     program = build_program(
         effective_bhk, floors, env_w, env_d, min_habitable, min_kitchen, min_toilet,
         vastu_rules, tier=effective_tier, footprint=footprint, variant=variant, edits=edits,
+        family_profile=plot.family_profile.value,
     )
     program_by_id = {r.id: r for r in program}
 
@@ -2929,6 +2965,7 @@ def generate_plan(
                 bhk, plot, floors, requested_tier, footprint, env, keepout, plot_area,
                 max_cov, min_dim, min_habitable, min_kitchen, min_toilet,
                 min_area_by_type, vastu_rules, project_name, variant, edits,
+                family_profile=plot.family_profile.value,
             )
         except ValueError:
             if not auto_storey:

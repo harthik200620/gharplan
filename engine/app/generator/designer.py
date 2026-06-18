@@ -680,22 +680,24 @@ def build_program(
     # A modest comfort floor (a touch above the code minimum) keeps the hall from
     # collapsing to the bare minimum without starving the bedrooms; the living's
     # large target lets it grow to a roomy size whenever the band has slack.
-    living_floor = max(11.0, min_habitable + 1.0)
+    living_floor = max(18.0, min_habitable + 1.0)
     living_target = max(_COMFORT["living"], min_habitable * 1.7) + living_bonus
     if variant is not None:
         # open-plan folds the dining into the hall; big-social variants enlarge it.
         if variant.merge_dining:
             living_target += _COMFORT["dining"]
         if variant.big_social:
-            living_target += 4.0
+            living_target *= 1.3
     prog.append(
         ProgramRoom("living", RoomType.living, living_target,
-                    zones("living"), priority=9, min_area_floor=living_floor)
+                    zones("living"), priority=9, min_area_floor=living_floor,
+                    design_logic="Architectural standard minimum 18 sqm for primary social space.")
     )
     # -- Kitchen (SE) -- #
     prog.append(
         ProgramRoom("kitchen", RoomType.kitchen, max(_COMFORT["kitchen"], min_kitchen * 1.4),
-                    zones("kitchen"), priority=9, min_area_floor=max(6.5, min_kitchen + 1.0))
+                    zones("kitchen"), priority=9, min_area_floor=max(8.0, min_kitchen + 1.0),
+                    design_logic="IS 962 standard 8 sqm minimum, including comfortable work triangle.")
     )
 
     # Lean bedroom MINIMUMS so several bulky bedroom+bath blocks still fit; targets
@@ -719,13 +721,15 @@ def build_program(
                         zones("master_bedroom"), priority=10,
                         attach_bath=True, bath_min_sqm=mbath_min,
                         bedroom_min_sqm=master_bed_min, bath_id="toilet_master",
-                        dressing=spec["dressing"])
+                        dressing=spec["dressing"],
+                        design_logic="Primary suite, architectural standard minimum 14 sqm plus attached bath.")
         )
     else:
         prog.append(
             ProgramRoom("master", RoomType.master_bedroom,
                         max(_COMFORT["master"], min_habitable * 1.25) + master_bonus,
-                        zones("master_bedroom"), priority=10)
+                        zones("master_bedroom"), priority=10,
+                        design_logic="Primary suite, architectural standard minimum 14 sqm.")
         )
 
     # -- Secondary bedrooms (each its own attached bath from 2BHK) -- #
@@ -743,12 +747,14 @@ def build_program(
                 ProgramRoom(rid, rtype, sec_bed_min + bath_min + sec_target_bonus,
                             zones(zkey), priority=base_prio,
                             attach_bath=True, bath_min_sqm=bath_min,
-                            bedroom_min_sqm=sec_bed_min, bath_id=f"toilet_{rid}")
+                            bedroom_min_sqm=sec_bed_min, bath_id=f"toilet_{rid}",
+                            design_logic="Secondary bedroom with attached bath.")
             )
         else:
             prog.append(
                 ProgramRoom(rid, rtype, max(_COMFORT["bedroom"], min_habitable * 1.05) + sec_target_bonus,
-                            zones(zkey), priority=base_prio)
+                            zones(zkey), priority=base_prio,
+                            design_logic="Secondary bedroom.")
             )
 
     # -- Dining nook (1BHK+ has one; optional/droppable) -- #
@@ -803,9 +809,11 @@ def build_program(
 
     # -- Front sit-out / verandah (courtyard / daylight variant) -- #
     if variant is not None and variant.sitout:
+        prio = 8 if variant.climate_first else 3
         prog.append(
             ProgramRoom("sitout", RoomType.sitout, max(_COMFORT.get("sitout", 6.0), 5.0),
-                        ["N", "E", "NE"], priority=3)
+                        ["N", "E", "NE"], priority=prio,
+                        design_logic="Buffer space for climate control and outdoor seating.")
         )
 
     # -- Single-prompt edits (add/remove/resize/move) fold in last, then the whole
@@ -2512,7 +2520,7 @@ def _ground_program(
     if variant and (merge_dining or variant.big_social):
         living_target += _COMFORT["dining"] * (1.0 if merge_dining else 0.5)
         if variant.big_social:
-            living_target += 4.0
+            living_target *= 1.3
     pooja_mode = variant.pooja_mode if variant else "auto"
     bath_min = max(_BATH_AREA_MIN, min_toilet * 1.6)
 
@@ -2565,8 +2573,9 @@ def _ground_program(
     prog.append(ProgramRoom("stair", RoomType.staircase, max(0.05 * env_area, 3.4), z("staircase"), 6, design_logic="Vertical circulation core."))
     prog.append(ProgramRoom("entrance", RoomType.entrance, max(_COMFORT["entrance"], 2.2), z("entrance"), 4, design_logic="Foyer/transition space."))
     if variant and variant.sitout:
+        prio = 8 if variant.climate_first else 3
         prog.append(ProgramRoom("sitout", RoomType.sitout, max(_COMFORT.get("sitout", 6.0), 5.0),
-                                ["N", "E", "NE"], priority=3, design_logic="Buffer space for climate control and outdoor seating."))
+                                ["N", "E", "NE"], priority=prio, design_logic="Buffer space for climate control and outdoor seating."))
     return prog
 
 
@@ -2589,7 +2598,7 @@ def _upper_program(tier, env_w, env_d, min_habitable, min_toilet, vastu, variant
     sec_bed_min = max(11.0, min_habitable)
     u_living_target = max(_COMFORT["living"] * 0.8, min_habitable * 1.4)
     if variant and variant.big_social:
-        u_living_target += 4.0
+        u_living_target *= 1.3
 
     # Target the bedrooms a step above their minimum so they read as proper rooms
     # (master 16-18, others 12-14) and claim band width rather than ceding it all to
@@ -2639,7 +2648,7 @@ def _upper_program(tier, env_w, env_d, min_habitable, min_toilet, vastu, variant
 
 def _layout_floor(
     program, program_by_id, env, keepout, plot, min_dim, min_habitable,
-    min_area_by_type, plot_area, max_cov, stair_col=0,
+    min_area_by_type, plot_area, max_cov, stair_col=0, variant=None,
 ) -> tuple[list[PlacedRoom], list[str]]:
     """Optimise ONE floor's program (band sweep + swaps) and return the best placed
     rooms + dropped ids. The stair is pinned to ``stair_col`` so it sits in the
@@ -2683,7 +2692,8 @@ def _layout_floor(
                 overrides = dict(pins, **(base or {}))
                 packer = VastuGridPacker(
                     env, min_dim, min_habitable, min_area_by_type, keepout,
-                    band_fracs=bands, col_overrides=overrides, fill_center=True,
+                    band_fracs=bands, col_overrides=overrides, 
+                    fill_center=not bool(variant and variant.courtyard),
                     force_two_band=two_band,
                 )
                 result = packer.pack(program)
@@ -2706,7 +2716,7 @@ def _layout_floor(
                     continue
                 all_dropped = result.dropped + cov_dropped
                 ess_drop = sum(1 for d in all_dropped if prio.get(d, 0) >= ESS)
-                plan, vastu, code = _score_candidate(_build_plan(list(result.placed), plot, env, "floor", edits=None, variant=None))
+                plan, vastu, code = _score_candidate(_build_plan(list(result.placed), plot, env, "floor", edits=None, variant=variant))
                 kd_bad = 0 if _kitchen_dining_adjacent(result.placed) else 1
                 aspect_bad = _aspect_bad(result.placed)
                 worst_asp = _worst_aspect(result.placed)
@@ -2770,11 +2780,11 @@ def _generate_multifloor(
 
     g_placed, g_drop = _layout_floor(
         ground, {r.id: r for r in ground}, env, keepout, plot, min_dim,
-        min_habitable, min_area_by_type, plot_area, max_cov, stair_col=1,
+        min_habitable, min_area_by_type, plot_area, max_cov, stair_col=1, variant=variant,
     )
     u_placed, u_drop = _layout_floor(
         upper, {r.id: r for r in upper}, env, keepout, plot, min_dim,
-        min_habitable, min_area_by_type, plot_area, max_cov, stair_col=1,
+        min_habitable, min_area_by_type, plot_area, max_cov, stair_col=1, variant=variant,
     )
     if not g_placed or not u_placed:
         raise ValueError("could not lay out a multi-floor plan for the given brief")

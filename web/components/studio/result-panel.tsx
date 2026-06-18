@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import * as React from "react";
 import {
@@ -32,6 +32,11 @@ import { Schedules } from "@/components/studio/schedules";
 import { ScoreGauge, scoreColor } from "@/components/score-gauge";
 import { ZONE_CAD } from "@/lib/cad";
 import { cn, inr2 } from "@/lib/utils";
+
+import { ClimatePanel } from "./climate-panel";
+import { StructurePanel } from "./structure-panel";
+import { Switch } from "@/components/ui/switch";
+
 
 const STATUS_ICON: Record<Status, React.ReactNode> = {
   pass: <CheckCircle2 className="h-4 w-4 text-emerald-600" />,
@@ -71,7 +76,7 @@ export function ResultPanel({
   const [colorBy, setColorBy] = React.useState<"zone" | "status">("zone");
   const [view, setView] = React.useState<"2d" | "3d" | "elevation" | "section" | "mep">("2d");
   const [selected, setSelected] = React.useState<string | null>(null);
-  const [tab, setTab] = React.useState<"vastu" | "code" | "estimate" | "documents">("vastu");
+  const [tab, setTab] = React.useState<"overview" | "vastu" | "code" | "climate" | "structure" | "cost" | "documents">("overview");
   const [floor, setFloor] = React.useState(0);
 
   const floors = React.useMemo(
@@ -101,6 +106,30 @@ export function ResultPanel({
           </div>
           <p className="text-sm text-muted-foreground">{subtitle}</p>
         </div>
+
+      {/* SCORE DASHBOARD */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className={cn("rounded-full px-2.5 py-1 text-xs font-semibold", vastu.score >= 70 ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300" : vastu.score >= 50 ? "bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-300" : "bg-rose-100 text-rose-800 dark:bg-rose-500/20 dark:text-rose-300")}>
+          Vastu Score: {Math.round(vastu.score)}/100 {vastu.score >= 70 ? "â—â—â—â—â—‹" : "â—â—â—â—‹â—‹"}
+        </div>
+        <div className={cn("rounded-full px-2.5 py-1 text-xs font-semibold", code.status === "pass" ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300" : code.status === "warn" ? "bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-300" : "bg-rose-100 text-rose-800 dark:bg-rose-500/20 dark:text-rose-300")}>
+          Code: {code.status === "pass" ? "Pass âœ“" : code.status === "warn" ? "Warn !" : "Fail âœ—"}
+        </div>
+        {data.climate && (
+          <div className="rounded-full bg-blue-100 text-blue-800 dark:bg-blue-500/20 dark:text-blue-300 px-2.5 py-1 text-xs font-semibold">
+            Climate: {data.climate.orientationScore > 80 ? "A+" : data.climate.orientationScore > 60 ? "A" : "B"}
+          </div>
+        )}
+        {boq && (
+          <div className="rounded-full bg-indigo-100 text-indigo-800 dark:bg-indigo-500/20 dark:text-indigo-300 px-2.5 py-1 text-xs font-semibold">
+            Budget: {compactInr(boq.summary.grandTotal)}
+          </div>
+        )}
+        <div className="rounded-full bg-slate-100 text-slate-800 dark:bg-slate-500/20 dark:text-slate-300 px-2.5 py-1 text-xs font-semibold">
+          Efficiency: {Math.round((code.metrics.builtUpSqm / (code.metrics.plotAreaSqm || 1)) * 100)}%
+        </div>
+      </div>
+
         <div className="flex flex-wrap items-center gap-2">
           <Button variant="outline" size="sm" onClick={onOpenInEditor}>
             <Pencil className="h-4 w-4" /> Edit
@@ -129,10 +158,10 @@ export function ResultPanel({
         </div>
       )}
 
-      {/* single-prompt refine — edits the selected scheme in place */}
+      {/* single-prompt refine â€” edits the selected scheme in place */}
       <RefinePanel onRefine={onRefine} refining={refining} editNote={editNote} />
 
-      {/* the five schemes — pick one to drive the drawings + checks below */}
+      {/* the five schemes â€” pick one to drive the drawings + checks below */}
       <SchemeGallery options={options} selected={selectedOption} onSelect={onSelectOption} />
 
       {/* floor plan: 2D CAD / 3D */}
@@ -202,7 +231,7 @@ export function ResultPanel({
           <>
             <FloorPlan3D plan={data.plan} className="h-[460px] overflow-hidden rounded-xl border bg-card shadow-soft" />
             <p className="px-1 text-[11px] text-muted-foreground">
-              Axonometric 3D · same geometry as the CAD drawing &amp; DXF
+              Axonometric 3D Â· same geometry as the CAD drawing &amp; DXF
             </p>
           </>
         ) : view === "elevation" ? (
@@ -214,48 +243,40 @@ export function ResultPanel({
         )}
       </div>
 
-      {/* stat strip */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <StatCard
-          icon={<div className="scale-[0.55]"><ScoreGauge score={vastu.score} size={64} stroke={7} /></div>}
-          label="Vastu score"
-          value={vastu.grade}
-          sub={`${vastu.summary.passCount}✓ ${vastu.summary.warnCount}! ${vastu.summary.failCount}✕`}
-          tone={vastu.score >= 70 ? "ok" : vastu.score >= 50 ? "warn" : "bad"}
-        />
-        <StatCard
-          icon={code.status === "fail" ? <XCircle className="h-5 w-5" /> : code.status === "warn" ? <AlertTriangle className="h-5 w-5" /> : <CheckCircle2 className="h-5 w-5" />}
-          label="Code review"
-          value={code.status === "pass" ? "Clear" : code.status === "warn" ? "Advisories" : "Issues"}
-          sub={`${code.summary.failCount} fail · ${code.summary.warnCount} warn`}
-          tone={code.status === "fail" ? "bad" : code.status === "warn" ? "warn" : "ok"}
-        />
-        <StatCard
-          icon={<Layers className="h-5 w-5" />}
-          label="Plot use"
-          value={`${code.metrics.builtUpSqm.toFixed(0)} m²`}
-          sub={`${code.metrics.groundCoveragePct.toFixed(0)}% cover · FAR ${code.metrics.farUsed.toFixed(2)}`}
-          tone="neutral"
-        />
-        <StatCard
-          icon={<IndianRupee className="h-5 w-5" />}
-          label="Est. cost"
-          value={boqLoading ? "…" : boq ? compactInr(boq.summary.grandTotal) : "—"}
-          sub={boq ? `${boq.lines.length} items · incl. GST` : "estimate"}
-          tone="brand"
-        />
-      </div>
+      
 
-      <ArchitectWorkflow data={data} />
+
+      {data.meta?.narrative && (
+        <details className="group rounded-xl border bg-card p-4 shadow-soft [&_summary::-webkit-details-marker]:hidden" open>
+          <summary className="flex cursor-pointer items-center justify-between font-bold text-sm tracking-tight text-foreground">
+            <span className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-primary" /> WHY THIS DESIGN WORKS</span>
+            <span className="transition group-open:rotate-180">â–¼</span>
+          </summary>
+          <div className="mt-3 space-y-3 border-t pt-3 text-sm text-muted-foreground">
+            <p className="leading-relaxed">{data.meta.narrative}</p>
+            {data.meta.highlights && data.meta.highlights.length > 0 && (
+              <ul className="list-inside list-disc space-y-1 ml-1 text-xs">
+                {data.meta.highlights.map((h, i) => <li key={i}>{h}</li>)}
+              </ul>
+            )}
+            {data.meta.inspiredBy && (
+              <p className="font-medium text-foreground text-xs bg-muted/30 p-2 rounded-md">Inspired by: {data.meta.inspiredBy}</p>
+            )}
+          </div>
+        </details>
+      )}
 
       {/* tabs */}
       <div>
         <div className="flex gap-1 border-b">
           {([
+            ["overview", "Overview"],
             ["vastu", "Vastu"],
-            ["code", "Building code"],
-            ["estimate", "Bill of Quantities"],
-            ["documents", "Working drawings"],
+            ["code", "Code"],
+            ["climate", "Climate"],
+            ["structure", "Structure"],
+            ["cost", "Cost"],
+            ["documents", "Documents"],
           ] as const).map(([k, label]) => (
             <button
               key={k}
@@ -273,7 +294,21 @@ export function ResultPanel({
         </div>
 
         <div className="pt-4">
+          
+          {tab === "overview" && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <StatCard icon={<div className="scale-[0.55]"><ScoreGauge score={vastu.score} size={64} stroke={7} /></div>} label="Vastu score" value={vastu.grade} sub={${vastu.summary.passCount}âœ“ ! âœ—} tone={vastu.score >= 70 ? "ok" : vastu.score >= 50 ? "warn" : "bad"} />
+                <StatCard icon={code.status === "fail" ? <XCircle className="h-5 w-5" /> : code.status === "warn" ? <AlertTriangle className="h-5 w-5" /> : <CheckCircle2 className="h-5 w-5" />} label="Code review" value={code.status === "pass" ? "Clear" : code.status === "warn" ? "Advisories" : "Issues"} sub={${code.summary.failCount} fail Â·  warn} tone={code.status === "fail" ? "bad" : code.status === "warn" ? "warn" : "ok"} />
+                <StatCard icon={<Layers className="h-5 w-5" />} label="Plot use" value={${code.metrics.builtUpSqm.toFixed(0)} mÂ²} sub={${code.metrics.groundCoveragePct.toFixed(0)}% cover Â· FAR } tone="neutral" />
+                <StatCard icon={<IndianRupee className="h-5 w-5" />} label="Est. cost" value={boqLoading ? "..." : boq ? compactInr(boq.summary.grandTotal) : "?"} sub={boq ? ${boq.lines.length} items Â· incl. GST : "estimate"} tone="brand" />
+              </div>
+              <ArchitectWorkflow data={data} />
+            </div>
+          )}
+
           {tab === "vastu" && (
+
             <div className="space-y-2">
               <RoomRow result={vastu.brahmasthan} highlight={selected} onSelect={setSelected} />
               {vastu.rooms.map((r, i) => (
@@ -286,10 +321,10 @@ export function ResultPanel({
           {tab === "code" && (
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                <Metric label="Ground coverage" value={`${code.metrics.groundCoveragePct.toFixed(1)}%`} cap={`≤ ${code.metrics.maxGroundCoveragePct}%`} bad={code.metrics.groundCoveragePct > code.metrics.maxGroundCoveragePct} />
-                <Metric label="FAR used" value={code.metrics.farUsed.toFixed(2)} cap={`≤ ${code.metrics.farAllowed}`} bad={code.metrics.farUsed > code.metrics.farAllowed} />
-                <Metric label="Footprint" value={`${code.metrics.footprintSqm.toFixed(0)} m²`} cap={`plot ${code.metrics.plotAreaSqm.toFixed(0)} m²`} />
-                <Metric label="Built-up" value={`${code.metrics.builtUpSqm.toFixed(0)} m²`} cap={`${data.plan.plot.floors} floor(s)`} />
+                <Metric label="Ground coverage" value={`${code.metrics.groundCoveragePct.toFixed(1)}%`} cap={`â‰¤ ${code.metrics.maxGroundCoveragePct}%`} bad={code.metrics.groundCoveragePct > code.metrics.maxGroundCoveragePct} />
+                <Metric label="FAR used" value={code.metrics.farUsed.toFixed(2)} cap={`â‰¤ ${code.metrics.farAllowed}`} bad={code.metrics.farUsed > code.metrics.farAllowed} />
+                <Metric label="Footprint" value={`${code.metrics.footprintSqm.toFixed(0)} mÂ²`} cap={`plot ${code.metrics.plotAreaSqm.toFixed(0)} mÂ²`} />
+                <Metric label="Built-up" value={`${code.metrics.builtUpSqm.toFixed(0)} mÂ²`} cap={`${data.plan.plot.floors} floor(s)`} />
               </div>
               <div className="divide-y rounded-xl border bg-card">
                 {code.checks.map((c, i) => (
@@ -300,7 +335,7 @@ export function ResultPanel({
                         <span className="text-sm font-medium">{c.label}</span>
                         {(c.actual || c.required) && (
                           <span className="shrink-0 font-mono text-xs text-muted-foreground">
-                            {c.actual ?? "—"}{c.required ? ` / ${c.required}` : ""}
+                            {c.actual ?? "â€”"}{c.required ? ` / ${c.required}` : ""}
                           </span>
                         )}
                       </div>
@@ -310,21 +345,26 @@ export function ResultPanel({
                 ))}
               </div>
               <p className="text-xs text-muted-foreground">
-                {code.state} · {DISCLAIMERS.code}
+                {code.state} Â· {DISCLAIMERS.code}
               </p>
             </div>
           )}
 
-          {tab === "estimate" && (
+          
+          {tab === "climate" && <ClimatePanel data={data.climate} />}
+          {tab === "structure" && <StructurePanel data={data.structure} />}
+
+          {tab === "cost" && (
+
             <div className="space-y-3">
               {boqLoading && (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Loader2 className="h-4 w-4 animate-spin" /> Costing the geometry…
+                  <Loader2 className="h-4 w-4 animate-spin" /> Costing the geometryâ€¦
                 </div>
               )}
               {!boqLoading && !boq && (
                 <p className="text-sm text-muted-foreground">
-                  A detailed estimate isn’t available for this city yet. The plan, Vastu and code review above are ready.
+                  A detailed estimate isnâ€™t available for this city yet. The plan, Vastu and code review above are ready.
                 </p>
               )}
               {boq && (
@@ -339,7 +379,7 @@ export function ResultPanel({
                   </div>
                   <div className="flex items-center justify-between rounded-xl bg-primary/5 px-4 py-3">
                     <div>
-                      <div className="text-xs text-muted-foreground">Grand total · incl. GST</div>
+                      <div className="text-xs text-muted-foreground">Grand total Â· incl. GST</div>
                       <div className="font-display text-2xl font-bold text-primary">{inr2(boq.summary.grandTotal)}</div>
                     </div>
                     <div className="text-right text-xs text-muted-foreground">
@@ -348,7 +388,7 @@ export function ResultPanel({
                     </div>
                   </div>
                   <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <Ruler className="h-3 w-3" /> Generated from room geometry · {boq.finishTier} finish ·{" "}
+                    <Ruler className="h-3 w-3" /> Generated from room geometry Â· {boq.finishTier} finish Â·{" "}
                     <button className="underline underline-offset-2" onClick={onOpenInEditor}>edit line items</button>
                   </p>
                 </>
@@ -397,7 +437,7 @@ function RefinePanel({
         <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Refine this plan</div>
         {refining && (
           <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-            <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" /> Refining…
+            <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" /> Refiningâ€¦
           </span>
         )}
       </div>
@@ -446,7 +486,7 @@ function RefinePanel({
           {editNote.unmatched.length > 0 && (
             <div className="flex items-start gap-1.5 text-xs text-muted-foreground">
               <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-              <span>Couldn’t apply: {editNote.unmatched.join("; ")}</span>
+              <span>Couldnâ€™t apply: {editNote.unmatched.join("; ")}</span>
             </div>
           )}
         </div>
@@ -471,7 +511,7 @@ function statusChip(s: Status) {
       : "bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300";
 }
 
-/** The generated schemes — tap a card to drive the drawings + checks below. */
+/** The generated schemes â€” tap a card to drive the drawings + checks below. */
 function SchemeGallery({
   options,
   selected,
@@ -481,9 +521,13 @@ function SchemeGallery({
   selected: number;
   onSelect: (i: number) => void;
 }) {
+  const [compareMode, setCompareMode] = React.useState(false);
+  const [compareSelected, setCompareSelected] = React.useState<number>(selected === 0 ? 1 : 0);
+
   if (!options || options.length <= 1) return null;
+
   return (
-    <section className="rounded-xl border bg-card p-4 shadow-soft">
+    <section className="rounded-xl border bg-card p-4 shadow-soft space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
           <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -493,8 +537,48 @@ function SchemeGallery({
             {options.length} distinct designs for this plot
           </h3>
         </div>
-        <Badge variant="brand">Tap a card to load it below</Badge>
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-medium text-muted-foreground">Compare Mode</span>
+          <Switch checked={compareMode} onChange={setCompareMode} />
+          <Badge variant="brand">Tap a card to load it below</Badge>
+        </div>
       </div>
+      
+      {compareMode && (
+        <div className="grid grid-cols-2 gap-4 rounded-xl border bg-muted/10 p-4">
+          {[selected, compareSelected].map((optIdx, i) => {
+            const opt = options[optIdx];
+            if (!opt) return null;
+            const vs = Math.round(opt.vastu.score);
+            return (
+              <div key={i} className="flex flex-col gap-3 rounded-xl border bg-card p-3 shadow-soft">
+                <div className="flex items-center justify-between">
+                  <div className="text-sm font-bold">Option {optIdx + 1}</div>
+                  {i === 1 && (
+                    <select 
+                      className="text-xs border rounded p-1"
+                      value={compareSelected}
+                      onChange={(e) => setCompareSelected(Number(e.target.value))}
+                    >
+                      {options.map((_, idx) => (
+                        <option key={idx} value={idx} disabled={idx === selected}>Option {idx + 1}</option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+                <div className="aspect-[4/3] w-full overflow-hidden rounded-lg border bg-muted/20">
+                  <FloorPlanCad plan={opt.plan} className="h-full w-full" colorBy="zone" interactive={false} showZones={false} showOpenings={false} showFurniture={false} showDimensions={false} showGrid={false} showLabels={false} />
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="font-medium text-muted-foreground">Vastu Score: <span className={cn("font-bold", scoreColor(vs))}>{vs}/100</span></span>
+                  <span className="font-medium text-muted-foreground">Built: {Math.round(opt.code.metrics.builtUpSqm * 10.7639)} sqft</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         {options.map((opt, i) => {
           const isSel = i === selected;
@@ -538,7 +622,7 @@ function SchemeGallery({
                 )}
               </div>
               <div className="flex flex-1 flex-col gap-1.5 p-2.5">
-                <h4 className="font-display text-[13px] font-bold leading-snug">{opt.variantName}</h4>
+                <h4 className="font-display text-[13px] font-bold leading-snug">{i + 1} Â· {opt.variantName}</h4>
                 <p className="line-clamp-2 text-[11px] leading-4 text-muted-foreground">
                   {opt.variantTagline}
                 </p>
@@ -547,10 +631,10 @@ function SchemeGallery({
                     Vastu {vs}
                   </span>
                   <span className={cn("rounded px-1.5 py-0.5 font-medium", statusChip(opt.code.status))}>
-                    {opt.code.status === "pass" ? "Code ✓" : opt.code.status === "warn" ? "Code !" : "Code ✕"}
+                    {opt.code.status === "pass" ? "Code âœ“" : opt.code.status === "warn" ? "Code !" : "Code âœ•"}
                   </span>
                   <span className="rounded bg-muted px-1.5 py-0.5 text-muted-foreground">
-                    {area.toLocaleString("en-IN")} ft²
+                    {area.toLocaleString("en-IN")} ftÂ²
                   </span>
                 </div>
               </div>
@@ -637,8 +721,8 @@ function ArchitectWorkflow({ data }: { data: GenerateResponse }) {
 }
 
 function compactInr(n: number): string {
-  if (n >= 1e7) return `₹${(n / 1e7).toFixed(2)} Cr`;
-  if (n >= 1e5) return `₹${(n / 1e5).toFixed(2)} L`;
+  if (n >= 1e7) return `â‚¹${(n / 1e7).toFixed(2)} Cr`;
+  if (n >= 1e5) return `â‚¹${(n / 1e5).toFixed(2)} L`;
   return inr2(n);
 }
 
@@ -720,3 +804,4 @@ function RoomRow({
     </button>
   );
 }
+

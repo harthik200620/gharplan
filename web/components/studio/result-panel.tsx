@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import * as React from "react";
 import {
@@ -298,10 +298,10 @@ export function ResultPanel({
           {tab === "overview" && (
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                <StatCard icon={<div className="scale-[0.55]"><ScoreGauge score={vastu.score} size={64} stroke={7} /></div>} label="Vastu score" value={vastu.grade} sub={${vastu.summary.passCount}âœ“ ! âœ—} tone={vastu.score >= 70 ? "ok" : vastu.score >= 50 ? "warn" : "bad"} />
-                <StatCard icon={code.status === "fail" ? <XCircle className="h-5 w-5" /> : code.status === "warn" ? <AlertTriangle className="h-5 w-5" /> : <CheckCircle2 className="h-5 w-5" />} label="Code review" value={code.status === "pass" ? "Clear" : code.status === "warn" ? "Advisories" : "Issues"} sub={${code.summary.failCount} fail Â·  warn} tone={code.status === "fail" ? "bad" : code.status === "warn" ? "warn" : "ok"} />
-                <StatCard icon={<Layers className="h-5 w-5" />} label="Plot use" value={${code.metrics.builtUpSqm.toFixed(0)} mÂ²} sub={${code.metrics.groundCoveragePct.toFixed(0)}% cover Â· FAR } tone="neutral" />
-                <StatCard icon={<IndianRupee className="h-5 w-5" />} label="Est. cost" value={boqLoading ? "..." : boq ? compactInr(boq.summary.grandTotal) : "?"} sub={boq ? ${boq.lines.length} items Â· incl. GST : "estimate"} tone="brand" />
+                <StatCard icon={<div className="scale-[0.55]"><ScoreGauge score={vastu.score} size={64} stroke={7} /></div>} label="Vastu score" value={vastu.grade} sub={`${vastu.summary.passCount}✓ ${vastu.summary.warnCount}! ${vastu.summary.failCount}✗`} tone={vastu.score >= 70 ? "ok" : vastu.score >= 50 ? "warn" : "bad"} />
+                <StatCard icon={code.status === "fail" ? <XCircle className="h-5 w-5" /> : code.status === "warn" ? <AlertTriangle className="h-5 w-5" /> : <CheckCircle2 className="h-5 w-5" />} label="Code review" value={code.status === "pass" ? "Clear" : code.status === "warn" ? "Advisories" : "Issues"} sub={`${code.summary.failCount} fail · ${code.summary.warnCount} warn`} tone={code.status === "fail" ? "bad" : code.status === "warn" ? "warn" : "ok"} />
+                <StatCard icon={<Layers className="h-5 w-5" />} label="Plot use" value={`${code.metrics.builtUpSqm.toFixed(0)} m²`} sub={`${code.metrics.groundCoveragePct.toFixed(0)}% cover · FAR ${code.metrics.farUsed.toFixed(2)}`} tone="neutral" />
+                <StatCard icon={<IndianRupee className="h-5 w-5" />} label="Est. cost" value={boqLoading ? "..." : boq ? compactInr(boq.summary.grandTotal) : "?"} sub={boq ? `${boq.lines.length} items · incl. GST` : "estimate"} tone="brand" />
               </div>
               <ArchitectWorkflow data={data} />
             </div>

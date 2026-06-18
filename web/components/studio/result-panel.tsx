@@ -158,9 +158,6 @@ export function ResultPanel({
         </div>
       )}
 
-      {/* single-prompt refine â€” edits the selected scheme in place */}
-      <RefinePanel onRefine={onRefine} refining={refining} editNote={editNote} />
-
       {/* the five schemes â€” pick one to drive the drawings + checks below */}
       <SchemeGallery options={options} selected={selectedOption} onSelect={onSelectOption} />
 
@@ -229,7 +226,7 @@ export function ResultPanel({
           </>
         ) : view === "3d" ? (
           <>
-            <FloorPlan3D plan={data.plan} className="h-[460px] overflow-hidden rounded-xl border bg-card shadow-soft" />
+            <FloorPlan3D plan={data.plan} structure={data.structure} className="h-[460px] overflow-hidden rounded-xl border bg-card shadow-soft" />
             <p className="px-1 text-[11px] text-muted-foreground">
               Axonometric 3D Â· same geometry as the CAD drawing &amp; DXF
             </p>
@@ -400,15 +397,16 @@ export function ResultPanel({
           {tab === "documents" && <Schedules plan={data.plan} code={data.code} />}
         </div>
       </div>
+
+      <RefinePanel onRefine={onRefine} refining={refining} editNote={editNote} />
     </div>
   );
 }
 
 const REFINE_EXAMPLES = [
-  "Make the master bedroom bigger",
-  "Move the kitchen to the SE",
-  "Add a study",
-  "Make it two floors",
+  "make the master bedroom larger",
+  "move kitchen to the south-east",
+  "make it an open plan",
 ];
 
 /** A single-line "tell the studio what to change" control that refines the selected scheme in place. */
@@ -431,17 +429,20 @@ function RefinePanel({
   }
 
   return (
-    <section className="rounded-xl border bg-card p-4 shadow-soft">
-      <div className="flex items-center gap-2">
-        <Wand2 className="h-4 w-4 text-primary" />
-        <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Refine this plan</div>
+    <div className="sticky bottom-4 z-40 mt-8 rounded-2xl border border-white/20 bg-background/60 p-4 shadow-[0_8px_32px_rgba(0,0,0,0.08)] backdrop-blur-2xl dark:border-white/10 dark:bg-background/40">
+      <div className="flex items-center gap-2 mb-3">
+        <div className="flex h-6 w-6 items-center justify-center rounded-full bg-brand-gradient text-white shadow-glow">
+          <Sparkles className="h-3.5 w-3.5" />
+        </div>
+        <div className="text-xs font-semibold uppercase tracking-widest text-foreground">Parametric Co-Pilot</div>
         {refining && (
-          <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-            <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" /> Refiningâ€¦
+          <span className="ml-auto flex items-center gap-1.5 text-xs font-medium text-primary">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" /> Refining geometry...
           </span>
         )}
       </div>
-      <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+      
+      <div className="relative flex items-center">
         <input
           value={value}
           onChange={(e) => setValue(e.target.value)}
@@ -452,23 +453,27 @@ function RefinePanel({
             }
           }}
           disabled={refining}
-          placeholder="e.g. make the master bedroom bigger, move the kitchen to the SE, add a study, make it two floors"
-          className="h-9 min-w-0 flex-1 rounded-lg border bg-background px-3 text-sm shadow-soft outline-none transition-colors placeholder:text-muted-foreground/70 focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/30 disabled:opacity-60"
+          placeholder="Ask AI to refine this design..."
+          className="h-12 w-full rounded-xl border border-input/50 bg-background/50 pl-4 pr-24 text-sm font-medium shadow-inner transition-all placeholder:text-muted-foreground/50 focus:border-primary/50 focus:bg-background focus:outline-none focus:ring-4 focus:ring-primary/10 disabled:opacity-50"
         />
-        <Button size="sm" onClick={submit} disabled={refining || !value.trim()} className="shrink-0">
-          {refining ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-          Apply
-        </Button>
+        <button
+          onClick={submit}
+          disabled={refining || !value.trim()}
+          className="absolute right-1.5 top-1.5 flex h-9 items-center justify-center gap-2 rounded-lg bg-foreground px-4 text-xs font-medium text-background transition-transform active:scale-95 disabled:pointer-events-none disabled:opacity-50 hover:bg-foreground/90"
+        >
+          {refining ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
+          Update
+        </button>
       </div>
 
-      <div className="mt-2.5 flex flex-wrap gap-1.5">
+      <div className="mt-3 flex flex-wrap gap-2">
         {REFINE_EXAMPLES.map((ex) => (
           <button
             key={ex}
             type="button"
             disabled={refining}
             onClick={() => onRefine(ex)}
-            className="rounded-md bg-muted px-2 py-1 text-[11px] font-medium text-foreground transition-colors hover:bg-primary/10 hover:text-primary disabled:opacity-60"
+            className="rounded-full border border-primary/10 bg-primary/5 px-3 py-1.5 text-[11px] font-medium text-primary transition-all hover:bg-primary/15 hover:shadow-soft disabled:opacity-50"
           >
             {ex}
           </button>
@@ -476,22 +481,22 @@ function RefinePanel({
       </div>
 
       {editNote && (editNote.applied.length > 0 || editNote.unmatched.length > 0) && (
-        <div className="mt-3 space-y-1.5 border-t pt-3">
+        <div className="mt-4 space-y-2 rounded-xl bg-muted/30 p-3 text-xs">
           {editNote.applied.map((a, i) => (
-            <div key={`a-${i}`} className="flex items-start gap-1.5 text-xs text-emerald-700 dark:text-emerald-300">
+            <div key={`a-${i}`} className="flex items-start gap-2 text-emerald-600 dark:text-emerald-400">
               <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-              <span>{a}</span>
+              <span className="font-medium">{a}</span>
             </div>
           ))}
           {editNote.unmatched.length > 0 && (
-            <div className="flex items-start gap-1.5 text-xs text-muted-foreground">
+            <div className="flex items-start gap-2 text-muted-foreground">
               <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-              <span>Couldnâ€™t apply: {editNote.unmatched.join("; ")}</span>
+              <span>Could not apply: {editNote.unmatched.join("; ")}</span>
             </div>
           )}
         </div>
       )}
-    </section>
+    </div>
   );
 }
 

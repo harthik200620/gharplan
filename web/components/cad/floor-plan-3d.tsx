@@ -13,7 +13,7 @@ import {
   Bounds,
   useBounds,
 } from "@react-three/drei";
-import type { Plan, Room } from "@gharplan/shared";
+import type { Plan, Room, StructureReport } from "@gharplan/shared";
 import {
   bounds,
   buildingFootprint,
@@ -88,13 +88,13 @@ const GlassMat = () =>
       color={GLASS_COL}
       roughness={0.05}
       metalness={0}
-      transmission={0.55}
+      transmission={0.95}
       thickness={0.05}
       ior={1.45}
       clearcoat={1}
       clearcoatRoughness={0.06}
       transparent
-      opacity={0.55}
+      opacity={0.8}
       envMapIntensity={1.1}
     />
   );
@@ -104,15 +104,15 @@ const FrameMat = () => (
 );
 // Polished marble for living/dining — low roughness with a subtle clearcoat sheen.
 const MarbleMat = ({ color = MARBLE_COL }: { color?: string }) => (
-  <meshPhysicalMaterial color={color} roughness={0.18} metalness={0} clearcoat={0.6} clearcoatRoughness={0.25} envMapIntensity={0.8} />
+  <meshPhysicalMaterial color={color} roughness={0.1} metalness={0} clearcoat={0.8} clearcoatRoughness={0.15} envMapIntensity={1.0} />
 );
 // Matte RCC for slabs / chajja / parapet.
 const ConcreteMat = ({ color = CONCRETE }: { color?: string }) => (
-  <meshStandardMaterial color={color} roughness={0.95} metalness={0} />
+  <meshPhysicalMaterial color={color} roughness={0.8} metalness={0.1} clearcoat={0.1} clearcoatRoughness={0.8} />
 );
 // Warm teak for doors and timber joinery.
 const TeakMat = ({ color = TEAK_COL }: { color?: string }) => (
-  <meshPhysicalMaterial color={color} roughness={0.45} metalness={0.04} clearcoat={0.3} clearcoatRoughness={0.4} envMapIntensity={0.5} />
+  <meshPhysicalMaterial color={color} roughness={0.4} metalness={0.05} clearcoat={0.4} clearcoatRoughness={0.3} envMapIntensity={0.6} />
 );
 // Glazed tile for wet rooms.
 const TileMat = ({ color = TILE_WET }: { color?: string }) => (
@@ -897,7 +897,7 @@ function FloorGroup({
             {walls.map((w, i) => (
               <mesh key={`w${i}`} position={w.pos} castShadow receiveShadow>
                 <boxGeometry args={w.size} />
-                <meshStandardMaterial color={wallCol} roughness={0.92} />
+                <meshStandardMaterial color={wallCol} roughness={0.92} bumpScale={0.01} />
               </mesh>
             ))}
             {glass.map((g, i) => (
@@ -935,7 +935,7 @@ function Plinth({ fp, W, D }: { fp: Rect; W: number; D: number }) {
       {bands.map((b, i) => (
         <mesh key={i} position={b.pos} castShadow receiveShadow>
           <boxGeometry args={b.size} />
-          <meshStandardMaterial color={PLINTH_COL} roughness={0.95} />
+          <meshPhysicalMaterial color={PLINTH_COL} roughness={0.8} metalness={0.1} clearcoat={0.2} />
         </mesh>
       ))}
     </>
@@ -1316,7 +1316,40 @@ function AutoFrame({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-function Scene({ plan }: { plan: Plan }) {
+function StructuralGrid({ structure, plan, W, D }: { structure: StructureReport; plan: Plan; W: number; D: number }) {
+  if (!structure.grid_x || !structure.grid_y) return null;
+  const fp = footprint(plan.rooms);
+  if (!fp) return null;
+  
+  const X = (px: number) => px - W / 2;
+  const Z = (py: number) => D / 2 - py;
+  const colSize = 0.23; // 9 inches
+  const floors = floorsOf(plan);
+  const maxFloor = floors[floors.length - 1] ?? 0;
+  const colH = (maxFloor + 1) * FLOOR_TO_FLOOR + PARAPET;
+
+  const cols = [];
+  for (const x of structure.grid_x) {
+    for (const y of structure.grid_y) {
+      if (x >= fp.x - 0.5 && x <= fp.x + fp.w + 0.5 && y >= fp.y - 0.5 && y <= fp.y + fp.h + 0.5) {
+        cols.push({ x, y });
+      }
+    }
+  }
+
+  return (
+    <group>
+      {cols.map((c, i) => (
+        <mesh key={i} position={[X(c.x), colH / 2, Z(c.y)]} castShadow receiveShadow>
+          <boxGeometry args={[colSize, colH, colSize]} />
+          <ConcreteMat color={CONCRETE} />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
+function Scene({ plan, structure }: { plan: Plan; structure?: StructureReport }) {
   const W = plan.plot.widthM;
   const D = plan.plot.depthM;
   const openings = React.useMemo(() => placeOpenings(plan), [plan]);
@@ -1330,11 +1363,11 @@ function Scene({ plan }: { plan: Plan }) {
   return (
     <>
       {/* perceptually-soft contact shadows from the directional sun */}
-      <SoftShadows size={26} samples={12} focus={0.8} />
+      <SoftShadows size={30} samples={16} focus={0.5} />
 
       {/* procedural sky (no network assets) for a believable horizon + sun glow.
           Kept alongside the HDRI so the scene still reads if the CDN is offline. */}
-      <Sky distance={450000} sunPosition={[W * 0.6, 30, D * 0.5]} turbidity={6} rayleigh={1.2} mieCoefficient={0.006} mieDirectionalG={0.85} />
+      <Sky distance={450000} sunPosition={[W * 1.5, 12, -D * 0.8]} turbidity={8} rayleigh={1.5} mieCoefficient={0.008} mieDirectionalG={0.8} />
 
       {/* image-based lighting for soft fill + real reflections in glass/marble/metal.
           Loaded from drei's CDN HDRI; if it fails or is offline, the hemisphere +
@@ -1350,9 +1383,9 @@ function Scene({ plan }: { plan: Plan }) {
       <hemisphereLight args={["#fdf6e8", "#b8bdc8", 0.45]} />
       <ambientLight intensity={0.18} />
       <directionalLight
-        position={[W * 0.6, 18, D * 0.5]}
-        intensity={1.7}
-        color="#fff2da"
+        position={[W * 1.5, 12, -D * 0.8]}
+        intensity={2.2}
+        color="#ffd7a0"
         castShadow
         shadow-mapSize-width={2048}
         shadow-mapSize-height={2048}
@@ -1380,6 +1413,7 @@ function Scene({ plan }: { plan: Plan }) {
             <FloorGroup key={f} plan={plan} floor={f} W={W} D={D} openings={openings} entranceId={entranceId} />
           ))}
           <Slabs plan={plan} W={W} D={D} />
+          {structure && <StructuralGrid structure={structure} plan={plan} W={W} D={D} />}
           <EntrancePorch plan={plan} W={W} D={D} />
           <CompoundWall W={W} D={D} />
         </AutoFrame>
@@ -1398,7 +1432,7 @@ function Scene({ plan }: { plan: Plan }) {
   );
 }
 
-export function FloorPlan3D({ plan, className }: { plan: Plan; className?: string }) {
+export function FloorPlan3D({ plan, structure, className }: { plan: Plan; structure?: StructureReport; className?: string }) {
   const W = plan.plot.widthM;
   const D = plan.plot.depthM;
   const floors = Math.max(1, new Set(plan.rooms.map((r) => r.floor ?? 0)).size);
@@ -1413,7 +1447,7 @@ export function FloorPlan3D({ plan, className }: { plan: Plan; className?: strin
         gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.15 }}
         style={{ background: "linear-gradient(180deg,#cfe0f2 0%,#e8edf3 100%)" }}
       >
-        <Scene plan={plan} />
+        <Scene plan={plan} structure={structure} />
       </Canvas>
     </div>
   );

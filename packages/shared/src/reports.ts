@@ -1,4 +1,4 @@
-﻿// Vastu + Code report types â€” mirror /engine/app/models/reports.py.
+// Vastu + Code report types â€” mirror /engine/app/models/reports.py.
 
 import type { Plan } from "./plan";
 
@@ -157,24 +157,11 @@ export interface StructureReport {
   structuralNote: string;
   beams: { name: string; size: string }[];
   columns: { x: number; y: number }[];
+  grid_x?: number[];
+  grid_y?: number[];
 }
 
 
 
 
 
-export interface ClimateReport {
-  zoneName: string;
-  orientationScore: number;
-  passiveStrategies: string[];
-  windDirection: string;
-  solarRisk: Record<'N'|'S'|'E'|'W', number>;
-}
-
-export interface StructureReport {
-  foundationType: string;
-  foundationReason: string;
-  structuralNote: string;
-  beams: { name: string; size: string }[];
-  columns: { x: number; y: number }[];
-}

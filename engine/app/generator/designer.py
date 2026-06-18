@@ -1475,6 +1475,7 @@ def _make_openings(
     placed: list[PlacedRoom],
     env: tuple[float, float, float, float],
     edits: Optional["EditOverrides"] = None,
+    variant: Optional["VariantProfile"] = None,
 ) -> tuple[list[Opening], list[Opening]]:
     """One door per room + NBC-compliant ventilation windows.
 
@@ -1487,7 +1488,7 @@ def _make_openings(
     keep a small ventilator only where they already reach an exterior wall. Windows
     prefer a North then East exposure (Vastu light)."""
     minx, miny, maxx, maxy = env
-    boost = bool(edits and edits.ventilation_boost)
+    boost = bool(edits and edits.ventilation_boost) or bool(variant and variant.climate_first)
     doors: list[Opening] = []
     windows: list[Opening] = []
     for p in placed:
@@ -3206,6 +3207,11 @@ def generate_options(
             )
         except ValueError:
             continue
+        
+        plan.variant_id = vp.id
+        plan.design_narrative = vp.design_narrative
+        plan.variant_highlights = vp.variant_highlights
+        plan.precedent_reference = vp.precedent_reference
         meta = {
             **meta,
             "variantId": vp.id,

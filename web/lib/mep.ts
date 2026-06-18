@@ -161,7 +161,7 @@ export type MepModel = {
 export const SERVICE_STYLE: Record<ServiceKind, ServiceLegendItem> = {
   cold: { service: "cold", label: "Cold supply", color: "#2563eb", width: 0.05 },
   hot: { service: "hot", label: "Hot supply", color: "#dc2626", width: 0.05 },
-  soil: { service: "soil", label: "Soil (WC)", color: "#7c4a1e", width: 0.1 },
+  soil: { service: "soil", label: "Soil (WC)", color: "#7c4a1e", dash: "0.25 0.1", width: 0.1 },
   waste: { service: "waste", label: "Waste", color: "#15803d", dash: "0.22 0.14", width: 0.06 },
   vent: { service: "vent", label: "Vent", color: "#0891b2", dash: "0.1 0.12", width: 0.035 },
   rainwater: { service: "rainwater", label: "Rainwater", color: "#7c3aed", width: 0.06 },

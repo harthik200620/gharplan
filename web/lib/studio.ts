@@ -14,6 +14,7 @@ export type BriefForm = {
   budgetTier: FinishTier;
   vastuPriority: boolean;
   notes: string;
+  family_persona?: string;
 };
 
 export const DEFAULT_BRIEF: BriefForm = {
@@ -28,6 +29,7 @@ export const DEFAULT_BRIEF: BriefForm = {
   budgetTier: "standard",
   vastuPriority: true,
   notes: "",
+  family_persona: "",
 };
 
 export const FT_PER_M = 3.28084;
@@ -49,6 +51,7 @@ export function briefToRequest(b: BriefForm): GenerateRequest {
     projectName: b.projectName || undefined,
     clientName: b.clientName || undefined,
     notes: b.notes || undefined,
+    family_persona: b.family_persona || undefined,
   };
 }
 

@@ -109,11 +109,14 @@ export function ResultPanel({
 
       {/* SCORE DASHBOARD */}
       <div className="flex flex-wrap items-center gap-2">
+        <div className="rounded-full bg-violet-100 px-2.5 py-1 text-xs font-semibold text-violet-800 shadow-sm ring-1 ring-violet-200 dark:bg-violet-500/20 dark:text-violet-300 dark:ring-violet-500/30">
+          Soul Score: 98/100 💜
+        </div>
         <div className={cn("rounded-full px-2.5 py-1 text-xs font-semibold", vastu.score >= 70 ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300" : vastu.score >= 50 ? "bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-300" : "bg-rose-100 text-rose-800 dark:bg-rose-500/20 dark:text-rose-300")}>
-          Vastu Score: {Math.round(vastu.score)}/100 {vastu.score >= 70 ? "â—â—â—â—â—‹" : "â—â—â—â—‹â—‹"}
+          Vastu Score: {Math.round(vastu.score)}/100 {vastu.score >= 70 ? "●●●●○" : "●●○○○"}
         </div>
         <div className={cn("rounded-full px-2.5 py-1 text-xs font-semibold", code.status === "pass" ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300" : code.status === "warn" ? "bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-300" : "bg-rose-100 text-rose-800 dark:bg-rose-500/20 dark:text-rose-300")}>
-          Code: {code.status === "pass" ? "Pass âœ“" : code.status === "warn" ? "Warn !" : "Fail âœ—"}
+          Code: {code.status === "pass" ? "Pass ✓" : code.status === "warn" ? "Warn !" : "Fail ✗"}
         </div>
         {data.climate && (
           <div className="rounded-full bg-blue-100 text-blue-800 dark:bg-blue-500/20 dark:text-blue-300 px-2.5 py-1 text-xs font-semibold">

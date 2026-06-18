@@ -36,6 +36,7 @@ class Plot(CamelModel):
     floors: int = Field(default=1, ge=1)
     family_profile: FamilyProfile = Field(default=FamilyProfile.nuclear)
     plot_shape: PlotShape = Field(default=PlotShape.regular)
+    family_persona: Optional[str] = None
 
 
 class Opening(CamelModel):

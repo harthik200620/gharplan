@@ -53,6 +53,7 @@ export function Studio() {
         "projectName",
         "clientName",
         "notes",
+        "family_persona",
       ] as const;
       const next: Partial<BriefForm> = {};
       for (const k of keys) if (ai[k] !== undefined && ai[k] !== null) (next as Record<string, unknown>)[k] = ai[k];

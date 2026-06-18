@@ -116,4 +116,5 @@ export interface GenerateRequest {
   clientName?: string;
   /** Optional free-text wishes ("home office", "pooja room", "parking"). */
   notes?: string;
+  family_persona?: string;
 }

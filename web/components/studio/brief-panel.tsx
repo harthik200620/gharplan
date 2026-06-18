@@ -73,7 +73,7 @@ type SiteChallenge = (typeof SITE_CHALLENGES)[number]["key"];
 
 const AI_CHIPS = [
   "East-facing 30×40 3BHK Bengaluru",
-  "West-facing 40×60 4BHK Chennai + parents",
+  "We have two kids and a golden retriever. Add a dog wash.",
   "North 20×30 2BHK budget compact",
   "South-facing 50×80 duplex premium Hyderabad",
 ];
@@ -178,7 +178,7 @@ export function BriefPanel({
             value={nl}
             onChange={(e) => setNl(e.target.value)}
             rows={3}
-            placeholder="3BHK east-facing 30×40 Bengaluru home for parents and two kids, pooja, utility, parking, good ventilation, premium but practical."
+            placeholder="e.g. 3BHK east-facing 30×40 Bengaluru. We have two kids and a golden retriever. Add a dog wash. Premium but practical."
             className="mt-2 w-full resize-none rounded-lg border bg-card px-3 py-2 text-sm outline-none ring-primary/30 placeholder:text-muted-foreground/70 focus:ring-2"
           />
           {/* Chips */}
@@ -379,13 +379,24 @@ export function BriefPanel({
         />
       </Field>
 
+      {/* ── Family Persona ────────────────────────────────────────────────── */}
+      <Field label="Family Persona" hint="Deep lifestyle profile (optional)">
+        <textarea
+          value={value.family_persona ?? ""}
+          onChange={(e) => onChange({ family_persona: e.target.value })}
+          rows={2}
+          placeholder="e.g. We have two kids and a golden retriever. Add a dog wash."
+          className="w-full resize-none rounded-lg border bg-card px-3 py-2 text-sm outline-none ring-primary/30 placeholder:text-muted-foreground/70 focus:ring-2"
+        />
+      </Field>
+
       {/* ── Notes ─────────────────────────────────────────────────────────── */}
-      <Field label="Family and design priorities" hint="optional">
+      <Field label="Design priorities" hint="optional">
         <textarea
           value={value.notes}
           onChange={(e) => onChange({ notes: e.target.value })}
-          rows={3}
-          placeholder="Parents room, puja, utility, rental floor, parking, home office, low heat, more storage, balcony, future lift..."
+          rows={2}
+          placeholder="Parents room, puja, utility, rental floor, parking, home office, low heat..."
           className="w-full resize-none rounded-lg border bg-card px-3 py-2 text-sm outline-none ring-primary/30 placeholder:text-muted-foreground/70 focus:ring-2"
         />
       </Field>

@@ -66,6 +66,7 @@ class GenerateRequest(CamelModel):
     budget_tier: Optional[FinishTier] = None
     family_profile: FamilyProfile = Field(default=FamilyProfile.nuclear)
     plot_shape: PlotShape = Field(default=PlotShape.regular)
+    family_persona: Optional[str] = None
 
     @field_validator("plot_width_m", "plot_depth_m")
     @classmethod
@@ -139,6 +140,7 @@ def _validated_plot(req: "GenerateRequest") -> Plot:
         floors=req.floors,
         family_profile=req.family_profile,
         plot_shape=req.plot_shape,
+        family_persona=req.family_persona,
     )
 
 
@@ -172,6 +174,7 @@ def plan_generate(req: GenerateRequest) -> GenerateResponse:
         floors=req.floors,
         family_profile=req.family_profile,
         plot_shape=req.plot_shape,
+        family_persona=req.family_persona,
     )
 
     try:

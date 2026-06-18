@@ -614,6 +614,7 @@ def build_program(
     variant: Optional["VariantProfile"] = None,
     edits: Optional["EditOverrides"] = None,
     family_profile: str = "nuclear",
+    family_persona: Optional[str] = None,
 ) -> list[ProgramRoom]:
     """Produce the room list (target areas + Vastu zones) for the effective tier.
 
@@ -827,6 +828,31 @@ def build_program(
                         ["N", "E", "NE", "CENTER"], priority=prio,
                         design_logic="Buffer space for climate control and outdoor seating.")
         )
+
+    # -- Family Persona Heuristics -- #
+    if family_persona:
+        persona_lower = family_persona.lower()
+        if any(word in persona_lower for word in ["music", "drum", "guitar", "piano", "band", "sound"]):
+            prog.append(
+                ProgramRoom("studio", RoomType.study, max(_COMFORT.get("study", 11.0), 10.0),
+                            ["NW", "W"], priority=7,
+                            design_logic="Soundproof Studio added based on musical family persona.")
+            )
+            if variant:
+                variant.variant_highlights.append("Soundproof acoustic treatment for music room")
+                
+        if any(word in persona_lower for word in ["dog", "cat", "pet"]):
+            prog.append(
+                ProgramRoom("pet_wash", RoomType.utility, max(_COMFORT.get("utility", 2.5), 3.0),
+                            ["NW", "W", "N"], priority=7,
+                            design_logic="Pet Wash Station / Expanded Utility added based on pet in family persona.")
+            )
+            if variant:
+                variant.variant_highlights.append("Dedicated pet wash station / expanded utility")
+                
+        if any(word in persona_lower for word in ["grandparent", "elder", "senior"]):
+            if variant:
+                variant.variant_highlights.append("Ground floor bathroom fitted with grab bars and anti-slip tiles for elders")
 
     # -- Single-prompt edits (add/remove/resize/move) fold in last, then the whole
     # optimiser re-runs over this program so the result stays a valid plan. -- #
@@ -2516,7 +2542,7 @@ def _build_swap_sets(program: list[ProgramRoom]) -> list[Optional[dict[str, int]
 
 def _ground_program(
     env_w, env_d, min_habitable, min_kitchen, min_toilet, vastu, variant=None, guest_bedrooms=0,
-    family_profile="nuclear",
+    family_profile="nuclear", family_persona=None
 ) -> list[ProgramRoom]:
     """Ground floor of a G+1/G+2: the social + service core PLUS (from 3BHK) one
     ensuite GUEST / PARENTS bedroom — the Indian convention so elders/guests avoid
@@ -2598,10 +2624,26 @@ def _ground_program(
             prio = 6
         prog.append(ProgramRoom("sitout", RoomType.sitout, max(_COMFORT.get("sitout", 6.0), 5.0),
                                 ["N", "E", "NE", "CENTER"], priority=prio, design_logic="Buffer space for climate control and outdoor seating."))
+
+    if family_persona:
+        persona_lower = family_persona.lower()
+        if any(word in persona_lower for word in ["dog", "cat", "pet"]):
+            prog.append(
+                ProgramRoom("pet_wash", RoomType.utility, max(_COMFORT.get("utility", 2.5), 3.0),
+                            ["NW", "W", "N"], priority=7,
+                            design_logic="Pet Wash Station / Expanded Utility added based on pet in family persona.")
+            )
+            if variant and "Dedicated pet wash station / expanded utility on ground floor" not in variant.variant_highlights:
+                variant.variant_highlights.append("Dedicated pet wash station / expanded utility on ground floor")
+                
+        if any(word in persona_lower for word in ["grandparent", "elder", "senior"]):
+            if variant and "Ground floor bathroom fitted with grab bars and anti-slip tiles for elders" not in variant.variant_highlights:
+                variant.variant_highlights.append("Ground floor bathroom fitted with grab bars and anti-slip tiles for elders")
+
     return prog
 
 
-def _upper_program(tier, env_w, env_d, min_habitable, min_toilet, vastu, variant=None, ground_bedrooms=0, family_profile="nuclear") -> list[ProgramRoom]:
+def _upper_program(tier, env_w, env_d, min_habitable, min_toilet, vastu, variant=None, ground_bedrooms=0, family_profile="nuclear", family_persona=None) -> list[ProgramRoom]:
     """Upper floor: a family LIVING area + the master and remaining bedrooms (each
     its own attached bath) + a common toilet + the stair. No kitchen/dining/pooja
     upstairs. ``ground_bedrooms`` are the bedrooms already placed downstairs, so
@@ -2665,6 +2707,18 @@ def _upper_program(tier, env_w, env_d, min_habitable, min_toilet, vastu, variant
     prog.append(
         ProgramRoom("u_stair", RoomType.staircase, max(0.05 * env_area, 3.4), z("staircase"), 6, design_logic="Vertical circulation core.")
     )
+
+    if family_persona:
+        persona_lower = family_persona.lower()
+        if any(word in persona_lower for word in ["music", "drum", "guitar", "piano", "band", "sound"]):
+            prog.append(
+                ProgramRoom("studio", RoomType.study, max(_COMFORT.get("study", 11.0), 10.0),
+                            ["NW", "W"], priority=7,
+                            design_logic="Soundproof Studio added based on musical family persona.")
+            )
+            if variant and "Soundproof acoustic treatment for music room" not in variant.variant_highlights:
+                variant.variant_highlights.append("Soundproof acoustic treatment for music room")
+
     return prog
 
 
@@ -2763,7 +2817,7 @@ def _layout_floor(
 def _generate_multifloor(
     bhk, plot, floors, tier, footprint, env, keepout, plot_area, max_cov,
     min_dim, min_habitable, min_kitchen, min_toilet, min_area_by_type,
-    vastu_rules, project_name, variant=None, edits=None, family_profile="nuclear",
+    vastu_rules, project_name, variant=None, edits=None, family_profile="nuclear", family_persona=None
 ) -> tuple[Plan, object, object, dict]:
     """G+1 / G+2: a social ground floor + an upper floor of family living and
     ensuite bedrooms, each room tagged with its ``floor``. The bhk is honoured
@@ -2781,8 +2835,8 @@ def _generate_multifloor(
     ground_bedrooms = 2 if _TIER_BEDROOMS[tier] >= 4 else (1 if _TIER_BEDROOMS[tier] >= 3 else 0)
     if family_profile == "eldercare" and ground_bedrooms == 0:
         ground_bedrooms = 1
-    ground = _ground_program(env_w, env_d, min_habitable, min_kitchen, min_toilet, vastu_rules, variant, guest_bedrooms=ground_bedrooms, family_profile=family_profile)
-    upper = _upper_program(tier, env_w, env_d, min_habitable, min_toilet, vastu_rules, variant, ground_bedrooms=ground_bedrooms, family_profile=family_profile)
+    ground = _ground_program(env_w, env_d, min_habitable, min_kitchen, min_toilet, vastu_rules, variant, guest_bedrooms=ground_bedrooms, family_profile=family_profile, family_persona=family_persona)
+    upper = _upper_program(tier, env_w, env_d, min_habitable, min_toilet, vastu_rules, variant, ground_bedrooms=ground_bedrooms, family_profile=family_profile, family_persona=family_persona)
 
     # Fold single-prompt edits into both floors (matching by id/type means a resize
     # or move only touches the floor that owns the room); split ADDs by social vs.
@@ -2947,8 +3001,8 @@ def generate_plan(
 
     program = build_program(
         effective_bhk, floors, env_w, env_d, min_habitable, min_kitchen, min_toilet,
-        vastu_rules, tier=effective_tier, footprint=footprint, variant=variant, edits=edits,
         family_profile=plot.family_profile.value,
+        family_persona=plot.family_persona,
     )
     program_by_id = {r.id: r for r in program}
 
@@ -2964,8 +3018,8 @@ def generate_plan(
             plan, vastu, code, meta = _generate_multifloor(
                 bhk, plot, floors, requested_tier, footprint, env, keepout, plot_area,
                 max_cov, min_dim, min_habitable, min_kitchen, min_toilet,
-                min_area_by_type, vastu_rules, project_name, variant, edits,
                 family_profile=plot.family_profile.value,
+                family_persona=plot.family_persona,
             )
         except ValueError:
             if not auto_storey:

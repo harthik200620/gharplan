@@ -502,16 +502,35 @@ function ElectricalLayer({ model, X, Y }: { model: MepModel; X: Proj; Y: Proj })
   );
 }
 
+function buildConduitPath(points: [number, number][]): string {
+  if (points.length === 0) return "";
+  if (points.length === 1) return `M ${points[0][0]},${points[0][1]}`;
+  let d = `M ${points[0][0]},${points[0][1]}`;
+  for (let i = 1; i < points.length; i++) {
+    const p0 = points[i - 1];
+    const p1 = points[i];
+    const dx = p1[0] - p0[0];
+    const dy = p1[1] - p0[1];
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    // Draw a gentle arc (15% offset)
+    const cx = p0[0] + dx / 2 - (dy / dist) * dist * 0.15;
+    const cy = p0[1] + dy / 2 + (dx / dist) * dist * 0.15;
+    d += ` Q ${cx},${cy} ${p1[0]},${p1[1]}`;
+  }
+  return d;
+}
+
 function ConduitLine({ cd, X, Y }: { cd: Conduit; X: Proj; Y: Proj }) {
-  const pts = cd.points.map((p) => `${X(p[0])},${Y(p[1])}`).join(" ");
+  const pts = cd.points.map((p) => [X(p[0]), Y(p[1])] as [number, number]);
   return (
-    <polyline
-      points={pts}
+    <path
+      d={buildConduitPath(pts)}
       fill="none"
-      stroke="#9ca3af"
-      strokeWidth={1}
-      strokeDasharray="3 3"
+      stroke="#ca8a04" // richer color for better visibility
+      strokeWidth={1.2}
+      strokeDasharray="4 4"
       strokeLinejoin="round"
+      strokeLinecap="round"
     />
   );
 }

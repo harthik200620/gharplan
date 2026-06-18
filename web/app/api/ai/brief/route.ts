@@ -24,6 +24,7 @@ const TOOL = {
       projectName: { type: "string" },
       clientName: { type: "string" },
       notes: { type: "string", description: "special rooms or wishes, e.g. home office, pooja, parking" },
+      family_persona: { type: "string", description: "deep family persona or lifestyle descriptions, e.g. 'We have two kids and a golden retriever. Add a dog wash.'" },
     },
     required: [],
   },
@@ -34,6 +35,7 @@ const SYSTEM =
   "Plots are in feet (common sizes 30x40, 40x60, 20x30). Map city aliases (Bangalore→Bengaluru, Hyd→Hyderabad). " +
   "Infer budgetTier from cues ('premium', 'budget'→economy, a rupee figure→standard unless clearly luxury). " +
   "Default vastuPriority true unless the user explicitly doesn't want Vastu. Put special-room requests in notes. " +
+  "Put family or lifestyle descriptions in family_persona. " +
   "Only set fields you can confidently infer; omit the rest.";
 
 export async function POST(req: Request) {

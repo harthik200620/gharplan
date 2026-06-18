@@ -75,6 +75,19 @@ class FinishTier(str, Enum):
     premium = "premium"
 
 
+class FamilyProfile(str, Enum):
+    nuclear = "nuclear"
+    joint = "joint"
+    extended = "extended"
+    eldercare = "eldercare"
+
+
+class PlotShape(str, Enum):
+    regular = "regular"
+    gomukhi = "gomukhi"
+    shermukhi = "shermukhi"
+
+
 # Human-friendly room labels (used in BOQ grouping, DXF labels, PDF).
 ROOM_LABELS: dict[str, str] = {
     "pooja": "Pooja",

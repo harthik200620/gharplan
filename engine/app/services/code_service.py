@@ -21,6 +21,18 @@ _RANK = {"pass": 0, "warn": 1, "fail": 2}
 def _worst(statuses: list[str]) -> str:
     return max(statuses, key=lambda s: _RANK[s]) if statuses else "pass"
 
+def get_required_setbacks(state_code: str, plot_area_sqm: float, rules: CodeRules = None) -> dict[str, float]:
+    """Return strict local setbacks (front_m, rear_m, side_m) based on state and plot size."""
+    if rules is None:
+        from app.services.rules import get_code_rules
+        rules = get_code_rules()
+    band = rules.setback_for(state_code, plot_area_sqm)
+    return {
+        "front_m": float(band.get("frontM", 0)),
+        "rear_m": float(band.get("rearM", 0)),
+        "side_m": float(band.get("sideM", 0)),
+    }
+
 IS_962_STANDARDS = {
   'living': {'min_area_sqm': 9.5, 'min_width_m': 2.4, 'min_height_m': 2.75},
   'bedroom': {'min_area_sqm': 9.5, 'min_width_m': 2.4, 'min_height_m': 2.75},

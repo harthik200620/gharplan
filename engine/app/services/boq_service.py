@@ -310,6 +310,11 @@ def generate_boq(
                 continue
             item_code = item["itemCodeByTier"][tier]
             rate = rates.get(city_name, item_code)
+            
+            # Regional labor rate variations (MH & KA = +15%, AP & TG = +0%)
+            labour_multiplier = Decimal("1.15") if city_name in ("Bengaluru", "Pune") else Decimal("1.0")
+            adj_labour_rate = rate.labour_rate * labour_multiplier
+            
             lines.append(
                 _make_line(
                     line_id=f"{room.id}:{item['key']}",
@@ -320,7 +325,7 @@ def generate_boq(
                     unit=item["unit"],
                     qty=qty,
                     material_rate=rate.material_rate,
-                    labour_rate=rate.labour_rate,
+                    labour_rate=adj_labour_rate,
                     gst_percent=rate.gst_percent,
                     hsn_code=rate.hsn_code,
                 )
@@ -380,13 +385,16 @@ def generate_boq(
     gst_total = sum((ln.gst_amount for ln in lines), ZERO)
     cgst_total = sum((ln.cgst_amount for ln in lines), ZERO)
     sgst_total = sum((ln.sgst_amount for ln in lines), ZERO)
+    
+    jugaad_contingency = subtotal * Decimal("0.10")
 
     summary = BoqSummary(
         subtotal=subtotal,
         gst_total=gst_total,
         cgst_total=cgst_total,
         sgst_total=sgst_total,
-        grand_total=subtotal + gst_total,
+        jugaad_contingency=jugaad_contingency,
+        grand_total=subtotal + gst_total + jugaad_contingency,
         line_count=len(lines),
     )
 

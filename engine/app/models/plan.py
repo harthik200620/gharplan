@@ -13,7 +13,7 @@ from typing import Literal, Optional
 from pydantic import Field, field_validator
 
 from .base import CamelModel
-from .enums import City, Compass, Facing, RoomType, StateCode
+from .enums import City, Compass, Facing, RoomType, StateCode, FamilyProfile, PlotShape
 
 # A 2D point [x, y] in metres.
 Point = tuple[float, float]
@@ -34,6 +34,8 @@ class Plot(CamelModel):
     state: StateCode
     city: City
     floors: int = Field(default=1, ge=1)
+    family_profile: FamilyProfile = Field(default=FamilyProfile.nuclear)
+    plot_shape: PlotShape = Field(default=PlotShape.regular)
 
 
 class Opening(CamelModel):

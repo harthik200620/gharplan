@@ -111,6 +111,12 @@ def export_checklist() -> Response:
 - [ ] Site supervisor appointed
 - [ ] Material samples approved
 - [ ] Construction insurance in place
+
+## Critical Site Supervision Checklist (Indian Context)
+- [ ] Watch out for plumbers core-cutting through primary RCC beams.
+- [ ] Ensure bar-benders do not alter column steel spacing for convenience.
+- [ ] Mandate proper tarpaulin storage for cement bags during monsoon to prevent curing.
+- [ ] Verify local mandi material delivery schedules before demolition.
 """
     return Response(
         content=content,

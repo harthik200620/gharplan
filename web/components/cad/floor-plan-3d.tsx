@@ -2494,31 +2494,25 @@ function Scene({ plan, structure, mepMode, finishTier }: { plan: Plan; structure
       )}
 
       {/* earth slab under the lawn — warm Indian soil color */}
-      {!isPremium && (
-        <mesh position={[0, -0.05, 0]} receiveShadow>
-          <boxGeometry args={[W + 0.3, 0.12, D + 0.3]} />
-          <meshStandardMaterial color="#c8a87a" roughness={1} />
-        </mesh>
-      )}
-      {!isPremium && <SiteLandscape plan={plan} W={W} D={D} />}
+      {/* earth slab under the lawn — warm Indian soil color */}
+      <mesh position={[0, -0.05, 0]} receiveShadow>
+        <boxGeometry args={[W + 0.3, 0.12, D + 0.3]} />
+        <meshStandardMaterial color="#c8a87a" roughness={1} />
+      </mesh>
+      <SiteLandscape plan={plan} W={W} D={D} />
 
       {/* auto-fit the building + site on first mount, then hand off to OrbitControls */}
       <Bounds clip margin={1.2}>
         <AutoFrame>
-          {isPremium ? (
-            <PremiumGlassHouseScene plan={plan} />
-          ) : (
-            <>
-              {floors.map((f) => (
-                <FloorGroup key={f} plan={plan} floor={f} W={W} D={D} openings={openings} entranceId={entranceId} mepMode={mepMode} />
-              ))}
-              <Slabs plan={plan} W={W} D={D} />
-              {structure && <StructuralGrid structure={structure} plan={plan} W={W} D={D} mepMode={mepMode} />}
-              <EntrancePorch plan={plan} W={W} D={D} />
-              <CompoundWall W={W} D={D} />
-              {mepMode && <MepPipes plan={plan} W={W} D={D} />}
-            </>
-          )}
+          {floors.map((f) => (
+            <FloorGroup key={f} plan={plan} floor={f} W={W} D={D} openings={openings} entranceId={entranceId} mepMode={mepMode} />
+          ))}
+          <Slabs plan={plan} W={W} D={D} />
+          {structure && <StructuralGrid structure={structure} plan={plan} W={W} D={D} mepMode={mepMode} />}
+          <EntrancePorch plan={plan} W={W} D={D} />
+          <CompoundWall W={W} D={D} />
+          {mepMode && <MepPipes plan={plan} W={W} D={D} />}
+
         </AutoFrame>
       </Bounds>
 

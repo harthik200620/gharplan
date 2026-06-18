@@ -42,7 +42,9 @@ export function AppNav({
   const [open, setOpen] = useState(false);
 
   async function signOut() {
-    await supabase.auth.signOut();
+    if (supabase) {
+      await supabase.auth.signOut();
+    }
     router.push("/login");
     router.refresh();
   }

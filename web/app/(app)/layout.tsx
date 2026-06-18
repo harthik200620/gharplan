@@ -2,8 +2,24 @@ import { redirect } from "next/navigation";
 import { AppNav } from "@/components/app-nav";
 import { getOrCreateProfile, hasActiveSubscription } from "@/lib/db";
 import { createClient } from "@/lib/supabase/server";
+import { hasSupabaseEnv } from "@/lib/supabase/env";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
+  if (!hasSupabaseEnv()) {
+    return (
+      <div className="min-h-screen bg-muted/30">
+        <AppNav
+          studioName="Demo Studio"
+          credits={99}
+          subscribed={true}
+        />
+        <main className="lg:pl-64">
+          <div className="mx-auto max-w-6xl animate-fade-up px-4 py-8 sm:px-6 lg:px-8">{children}</div>
+        </main>
+      </div>
+    );
+  }
+
   const supabase = createClient();
   const {
     data: { user },

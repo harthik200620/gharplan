@@ -119,8 +119,16 @@ const PremiumGoldMat = () => (
  */
 function PremiumGlassHouseScene({ plan }: { plan: Plan }) {
   const floors = floorsOf(plan);
-  const fp = footprint(plan.rooms);
-  if (!fp) return null;
+  const rect = footprint(plan.rooms);
+  if (!rect) return null;
+
+  const fp = {
+    ...rect,
+    minX: rect.x,
+    maxX: rect.x + rect.w,
+    minY: rect.y,
+    maxY: rect.y + rect.h,
+  };
 
   const W = fp.maxX - fp.minX;
   const D = fp.maxY - fp.minY;

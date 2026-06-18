@@ -4,7 +4,15 @@ import { Plan, Room } from '@gharplan/shared';
 
 // Create a dummy luxury plan for the showcase
 const createDemoPlan = (): Plan => {
-  const plot = { widthM: 12, depthM: 18, facing: 'East', areaSqyd: 260 };
+  const plot = {
+    widthM: 12,
+    depthM: 18,
+    facing: 'E' as const,
+    areaSqm: 216,
+    state: 'KA' as const,
+    city: 'Bengaluru' as const,
+    floors: 2,
+  };
   
   // A simple dummy room to establish the footprint
   const rooms: Room[] = [
@@ -13,28 +21,35 @@ const createDemoPlan = (): Plan => {
       type: 'living',
       floor: 0,
       polygon: [[2, 2], [10, 2], [10, 14], [2, 14]],
-      doors: [],
-      windows: [],
-      area: 96,
-      name: 'Living Room'
+      areaSqm: 96,
+      perimeterM: 32,
+      ceilingHeightM: 2.75,
     },
     {
       id: 'r2',
       type: 'living',
       floor: 1,
       polygon: [[2, 2], [10, 2], [10, 14], [2, 14]],
-      doors: [],
-      windows: [],
-      area: 96,
-      name: 'Upper Living'
+      areaSqm: 96,
+      perimeterM: 32,
+      ceilingHeightM: 2.75,
     }
   ];
 
   return {
-    id: 'premium-demo',
-    variant: 'MODERN_OPEN',
+    schemaVersion: "1.0",
+    project: {
+      id: 'p1',
+      name: 'Premium Demo Project',
+      clientName: 'Luxury Client',
+    },
     plot,
     rooms,
+    doors: [],
+    windows: [],
+    // Add extended fields as any for the 3D viewer
+    id: 'premium-demo',
+    variant: 'MODERN_OPEN',
     stats: {
       totalAreaSqm: 192,
       totalAreaSqft: 2066,
@@ -53,7 +68,7 @@ const createDemoPlan = (): Plan => {
       standard: 80,
       premium: 200
     }
-  };
+  } as any;
 };
 
 export default function Premium3DViewer() {

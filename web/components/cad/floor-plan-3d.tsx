@@ -13,7 +13,8 @@ import {
   Bounds,
   useBounds,
 } from "@react-three/drei";
-import type { Plan, Room, StructureReport } from "@gharplan/shared";
+import type { Plan as SharedPlan, Room, StructureReport } from "@gharplan/shared";
+type Plan = SharedPlan & { variant?: string; id?: string };
 import {
   bounds,
   buildingFootprint,
@@ -333,8 +334,8 @@ function PremiumGlassHouseScene({ plan }: { plan: Plan }) {
               <meshStandardMaterial color="#b2533e" roughness={0.85} />
             </mesh>
           </group>
-          <mesh position={[0, 0.45 + bW * 0.088, 0]} castShadow>
-            <cylinderGeometry args={[0.11, 0.11, bD + 1.28, 8]} rotation={[Math.PI / 2, 0, 0]} />
+          <mesh position={[0, 0.45 + bW * 0.088, 0]} rotation={[Math.PI / 2, 0, 0]} castShadow>
+            <cylinderGeometry args={[0.11, 0.11, bD + 1.28, 8]} />
             <meshStandardMaterial color="#943422" roughness={0.9} />
           </mesh>
         </group>
@@ -485,6 +486,146 @@ const TileMat = ({ color = TILE_WET }: { color?: string }) => (
   <meshPhysicalMaterial color={color} roughness={0.22} metalness={0} clearcoat={0.4} clearcoatRoughness={0.3} envMapIntensity={0.7} />
 );
 
+// Traditional and Modern Window shading Chajjas
+function Chajja3D({ part, variant, px, headY, pz, span }: { part: GlassPart; variant?: string; px: number; headY: number; pz: number; span: number }) {
+  const isTraditional = variant === 'VASTU_FIRST' || variant === 'COURTYARD';
+  const outDir = part.horiz ? Math.sign(pz) || 1 : Math.sign(px) || 1;
+  const hingeOff = WALL_T / 2;
+  
+  // Hinge position on the wall face
+  const hx = part.horiz ? px : px + outDir * hingeOff;
+  const hz = part.horiz ? pz + outDir * hingeOff : pz;
+  
+  const angle = 0.22; // ~12 degrees slope
+  
+  if (isTraditional) {
+    // Traditional: sloped clay-tiled chajja with wooden brackets
+    return (
+      <group position={[hx, headY, hz]}>
+        <group rotation={part.horiz ? [outDir * angle, 0, 0] : [0, 0, -outDir * angle]}>
+          {/* Terracotta tile slab */}
+          <mesh position={part.horiz ? [0, -CHAJJA_T / 2, outDir * CHAJJA_PROJ / 2] : [outDir * CHAJJA_PROJ / 2, -CHAJJA_T / 2, 0]} castShadow receiveShadow>
+            <boxGeometry args={part.horiz ? [span + 0.3, CHAJJA_T, CHAJJA_PROJ] : [CHAJJA_PROJ, CHAJJA_T, span + 0.3]} />
+            <meshStandardMaterial color="#c86446" roughness={0.8} />
+          </mesh>
+          {/* Terracotta ridge tile cap */}
+          <mesh position={part.horiz ? [0, 0, outDir * CHAJJA_PROJ] : [outDir * CHAJJA_PROJ, 0, 0]}>
+            <boxGeometry args={part.horiz ? [span + 0.34, CHAJJA_T * 1.5, 0.04] : [0.04, CHAJJA_T * 1.5, span + 0.34]} />
+            <meshStandardMaterial color="#943422" roughness={0.9} />
+          </mesh>
+        </group>
+        {/* Teak bracket supports */}
+        {[-span / 2 + 0.1, span / 2 - 0.1].map((offset, idx) => {
+          const bPos: [number, number, number] = part.horiz
+            ? [offset, -0.15, outDir * (CHAJJA_PROJ * 0.25)]
+            : [outDir * (CHAJJA_PROJ * 0.25), -0.15, offset];
+          return (
+            <mesh key={idx} position={bPos} castShadow>
+              <boxGeometry args={part.horiz ? [0.04, 0.3, CHAJJA_PROJ * 0.4] : [CHAJJA_PROJ * 0.4, 0.3, 0.04]} />
+              <TeakMat />
+            </mesh>
+          );
+        })}
+      </group>
+    );
+  } else {
+    // Modern: flat concrete slab with steel struts
+    return (
+      <group position={[hx, headY, hz]}>
+        <mesh position={part.horiz ? [0, CHAJJA_T / 2, outDir * CHAJJA_PROJ / 2] : [outDir * CHAJJA_PROJ / 2, CHAJJA_T / 2, 0]} castShadow receiveShadow>
+          <boxGeometry args={part.horiz ? [span + 0.2, CHAJJA_T, CHAJJA_PROJ] : [CHAJJA_PROJ, CHAJJA_T, span + 0.2]} />
+          <ConcreteMat />
+        </mesh>
+        {[-span / 2 + 0.15, span / 2 - 0.15].map((offset, idx) => {
+          const sPos: [number, number, number] = part.horiz
+            ? [offset, -0.12, outDir * (CHAJJA_PROJ * 0.3)]
+            : [outDir * (CHAJJA_PROJ * 0.3), -0.12, offset];
+          return (
+            <mesh key={idx} position={sPos} castShadow>
+              <boxGeometry args={part.horiz ? [0.02, 0.24, CHAJJA_PROJ * 0.5] : [CHAJJA_PROJ * 0.5, 0.24, 0.02]} />
+              <meshStandardMaterial color="#5a5550" metalness={0.8} roughness={0.2} />
+            </mesh>
+          );
+        })}
+      </group>
+    );
+  }
+}
+
+// Parapet wall - traditional jaali screen or modern sleek concrete band
+function ParapetSide({
+  start,
+  end,
+  yBase,
+  isTraditional,
+  horiz,
+}: {
+  start: [number, number];
+  end: [number, number];
+  yBase: number;
+  isTraditional: boolean;
+  horiz: boolean;
+}) {
+  const len = horiz ? end[0] - start[0] : end[1] - start[1];
+  const cx = (start[0] + end[0]) / 2;
+  const cz = (start[1] + end[1]) / 2;
+  
+  if (isTraditional) {
+    const baseH = 0.35;
+    const jaaliH = 0.45;
+    const copingH = 0.04;
+    
+    const brickW = 0.15;
+    const gapW = 0.15;
+    const pitch = brickW + gapW;
+    const count = Math.max(1, Math.floor(len / pitch));
+    const startOffset = -((count - 1) * pitch) / 2;
+    
+    return (
+      <group>
+        {/* Solid base plaster wall */}
+        <mesh position={[cx, yBase + baseH / 2, cz]} castShadow receiveShadow>
+          <boxGeometry args={horiz ? [len, baseH, WALL_T] : [WALL_T, baseH, len]} />
+          <meshStandardMaterial color={PLASTER_EXT} roughness={0.92} />
+        </mesh>
+        
+        {/* Jaali brick screen */}
+        {Array.from({ length: count }).map((_, i) => {
+          const offset = startOffset + i * pitch;
+          const bx = horiz ? cx + offset : cx;
+          const bz = horiz ? cz : cz + offset;
+          return (
+            <mesh key={i} position={[bx, yBase + baseH + jaaliH / 2, bz]} castShadow receiveShadow>
+              <boxGeometry args={horiz ? [brickW, jaaliH, WALL_T - 0.01] : [WALL_T - 0.01, jaaliH, brickW]} />
+              <meshStandardMaterial color="#b2533e" roughness={0.85} />
+            </mesh>
+          );
+        })}
+        
+        {/* Terracotta tiled coping on top */}
+        <mesh position={[cx, yBase + baseH + jaaliH + copingH / 2, cz]} castShadow receiveShadow>
+          <boxGeometry args={horiz ? [len + 0.1, copingH, WALL_T + 0.04] : [WALL_T + 0.04, copingH, len + 0.1]} />
+          <meshStandardMaterial color="#943422" roughness={0.9} />
+        </mesh>
+      </group>
+    );
+  } else {
+    // Modern: solid plaster parapet with concrete coping cap
+    return (
+      <group>
+        <mesh position={[cx, yBase + PARAPET / 2, cz]} castShadow receiveShadow>
+          <boxGeometry args={horiz ? [len, PARAPET, WALL_T] : [WALL_T, PARAPET, len]} />
+          <meshStandardMaterial color={PLASTER_EXT} roughness={0.92} />
+        </mesh>
+        <mesh position={[cx, yBase + PARAPET + 0.02, cz]} castShadow>
+          <boxGeometry args={horiz ? [len + 0.04, 0.04, WALL_T + 0.02] : [WALL_T + 0.02, 0.04, len + 0.04]} />
+          <ConcreteMat />
+        </mesh>
+      </group>
+    );
+  }
+}
+
 const WET = /toilet|bath|kitchen|utility|wash/;
 const VIRTUAL = new Set(["overhead_tank", "borewell", "brahmasthan"]);
 const SITE_TYPES = new Set(["parking", "sitout", "courtyard", "garden", "service_shaft", "future_expansion", "balcony"]);
@@ -621,7 +762,7 @@ function buildWallParts(room: Room, openings: PlacedOpening[], W: number, D: num
 
 /** A four-pane glazed window: dark frame border + one horizontal + one vertical
  *  glazing bar, with tinted glass behind. Exterior windows also get a chajja. */
-function Window3D({ part, W, D }: { part: GlassPart; W: number; D: number }) {
+function Window3D({ part, W, D, variant }: { part: GlassPart; W: number; D: number; variant?: string }) {
   const [px, py, pz] = part.pos;
   const [sx, sy, sz] = part.size;
   // span/up = the two in-plane dimensions of the window; depth runs through the wall
@@ -650,16 +791,7 @@ function Window3D({ part, W, D }: { part: GlassPart; W: number; D: number }) {
     { pos: inPlane(0, 0), size: inPlaneSize(F, up) }, // vertical mullion
   ];
 
-  // chajja: thin RCC slab projecting outward over the head, at lintel level
-  let chajja: Box | null = null;
-  if (part.exterior) {
-    const headY = FLOOR_Y + part.sill + up; // top of the glazed band (lintel)
-    const outDir = part.horiz ? Math.sign(pz) || 1 : Math.sign(px) || 1;
-    const off = WALL_T / 2 + CHAJJA_PROJ / 2;
-    chajja = part.horiz
-      ? { pos: [px, headY + CHAJJA_T / 2, pz + outDir * off], size: [span + 0.4, CHAJJA_T, CHAJJA_PROJ] }
-      : { pos: [px + outDir * off, headY + CHAJJA_T / 2, pz], size: [CHAJJA_PROJ, CHAJJA_T, span + 0.4] };
-  }
+  const headY = FLOOR_Y + part.sill + up; // top of the glazed band (lintel)
 
   return (
     <group>
@@ -673,11 +805,8 @@ function Window3D({ part, W, D }: { part: GlassPart; W: number; D: number }) {
           <FrameMat />
         </mesh>
       ))}
-      {chajja && (
-        <mesh position={chajja.pos} castShadow receiveShadow>
-          <boxGeometry args={chajja.size} />
-          <ConcreteMat />
-        </mesh>
+      {part.exterior && (
+        <Chajja3D part={part} variant={variant} px={px} headY={headY} pz={pz} span={span} />
       )}
     </group>
   );
@@ -883,7 +1012,7 @@ function StairSteps({ room, W, D, toRoof = false }: { room: Room; W: number; D: 
   );
 }
 
-function Furniture3D({ room, W, D, isTopFloor = false }: { room: Room; W: number; D: number; isTopFloor?: boolean }) {
+function Furniture3D({ room, W, D, isTopFloor = false, variant }: { room: Room; W: number; D: number; isTopFloor?: boolean; variant?: string }) {
   const r = bounds(room.polygon);
   const cx = r.x + r.w / 2 - W / 2;
   const cz = D / 2 - (r.y + r.h / 2);
@@ -894,19 +1023,84 @@ function Furniture3D({ room, W, D, isTopFloor = false }: { room: Room; W: number
   if (t === "staircase") return <StairSteps room={room} W={W} D={D} toRoof={isTopFloor} />;
 
   if (t === "parking") return <Car cx={cx} cz={cz} along={r.h >= r.w} />;
-  if (t === "garden" || t === "courtyard") {
-    // trunk + spherical canopy reads as a real tree
-    const rad = Math.min(r.w, r.h);
-    const canopy = Math.min(Math.max(rad * 0.35, 0.6), 1.4);
+  
+  // Traditional Courtyard Tulsi Vrindavan
+  if (t === "courtyard" && (variant === "VASTU_FIRST" || variant === "COURTYARD")) {
     return (
       <group position={[cx, FLOOR_Y, cz]}>
-        <mesh position={[0, 0.5, 0]} castShadow>
-          <cylinderGeometry args={[0.09, 0.13, 1.0, 8]} />
-          <meshStandardMaterial color="#6b4f2a" roughness={0.95} />
+        {/* Plinth Base */}
+        <mesh position={[0, 0.15, 0]} castShadow receiveShadow>
+          <boxGeometry args={[0.5, 0.3, 0.5]} />
+          <meshStandardMaterial color="#b2533e" roughness={0.85} />
         </mesh>
-        <mesh position={[0, 1.0 + canopy * 0.7, 0]} castShadow receiveShadow>
-          <sphereGeometry args={[canopy, 16, 12]} />
-          <meshStandardMaterial color="#4d7c2f" roughness={0.95} />
+        {/* Molded cap */}
+        <mesh position={[0, 0.32, 0]} castShadow>
+          <boxGeometry args={[0.54, 0.04, 0.54]} />
+          <meshStandardMaterial color="#8b2635" roughness={0.9} />
+        </mesh>
+        {/* Soil top */}
+        <mesh position={[0, 0.345, 0]}>
+          <boxGeometry args={[0.44, 0.01, 0.44]} />
+          <meshStandardMaterial color="#403024" roughness={1.0} />
+        </mesh>
+        {/* Tulsi Plant */}
+        <group position={[0, 0.35, 0]}>
+          <mesh position={[0, 0.1, 0]} castShadow>
+            <cylinderGeometry args={[0.015, 0.02, 0.2, 5]} />
+            <meshStandardMaterial color="#4a3018" />
+          </mesh>
+          {[-1, 1].map((dir, idx) => (
+            <group key={idx} position={[dir * 0.05, 0.15, 0]} rotation={[0, 0, dir * 0.5]}>
+              <mesh position={[0, 0.06, 0]} castShadow>
+                <cylinderGeometry args={[0.008, 0.012, 0.12, 4]} />
+                <meshStandardMaterial color="#4a3018" />
+              </mesh>
+              <mesh position={[0, 0.12, 0]}>
+                <dodecahedronGeometry args={[0.08, 1]} />
+                <meshStandardMaterial color="#1e5e2e" roughness={0.9} />
+              </mesh>
+            </group>
+          ))}
+          <mesh position={[0, 0.22, 0]} castShadow>
+            <dodecahedronGeometry args={[0.1, 1]} />
+            <meshStandardMaterial color="#2d7c3e" roughness={0.85} />
+          </mesh>
+        </group>
+      </group>
+    );
+  }
+
+  if (t === "garden" || t === "courtyard") {
+    // Beautiful branching tree scaled to fit
+    const rad = Math.min(r.w, r.h);
+    const scale = Math.min(Math.max(rad * 0.35, 0.6), 1.1);
+    const trunkH = 1.2 * scale;
+    const isTraditional = variant === "VASTU_FIRST" || variant === "COURTYARD";
+    return (
+      <group position={[cx, FLOOR_Y, cz]}>
+        <mesh castShadow position={[0, trunkH / 2, 0]}>
+          <cylinderGeometry args={[0.04 * scale, 0.06 * scale, trunkH, 8]} />
+          <meshStandardMaterial color="#4b3524" roughness={0.95} />
+        </mesh>
+        <mesh castShadow position={[0.15 * scale, trunkH * 0.85, 0.1 * scale]} rotation={[0.3, 0, 0.4]}>
+          <cylinderGeometry args={[0.02 * scale, 0.03 * scale, trunkH * 0.5, 6]} />
+          <meshStandardMaterial color="#4b3524" roughness={0.95} />
+        </mesh>
+        <mesh castShadow position={[-0.18 * scale, trunkH * 0.9, -0.12 * scale]} rotation={[-0.4, 0, -0.5]}>
+          <cylinderGeometry args={[0.02 * scale, 0.03 * scale, trunkH * 0.55, 6]} />
+          <meshStandardMaterial color="#4b3524" roughness={0.95} />
+        </mesh>
+        <mesh castShadow position={[0, trunkH * 1.15, 0]}>
+          <dodecahedronGeometry args={[0.55 * scale, 1]} />
+          <meshStandardMaterial color={isTraditional ? "#3b5c23" : "#224c1e"} roughness={0.85} />
+        </mesh>
+        <mesh castShadow position={[0.2 * scale, trunkH * 1.2, 0.15 * scale]}>
+          <dodecahedronGeometry args={[0.4 * scale, 1]} />
+          <meshStandardMaterial color={isTraditional ? "#4a7431" : "#305f28"} roughness={0.8} />
+        </mesh>
+        <mesh castShadow position={[-0.25 * scale, trunkH * 1.25, -0.2 * scale]}>
+          <dodecahedronGeometry args={[0.45 * scale, 1]} />
+          <meshStandardMaterial color={isTraditional ? "#2b4618" : "#1a3915"} roughness={0.9} />
         </mesh>
       </group>
     );
@@ -1236,6 +1430,8 @@ function FloorGroup({
   const exterior = floor === 0; // plinth + exterior render only on ground storey faces
   const allFloors = floorsOf(plan);
   const isTopFloor = floor === allFloors[allFloors.length - 1]; // no slab void above
+  const isTraditional = plan.variant === 'VASTU_FIRST' || plan.variant === 'COURTYARD';
+  
   return (
     <group position={[0, floor * FLOOR_TO_FLOOR, 0]}>
       {rooms.map((room) => {
@@ -1247,8 +1443,30 @@ function FloorGroup({
         // an exterior room face gets the warm render; interior partitions stay light
         const eMap = exteriorEdges(r, fp);
         const hasExt = eMap.N || eMap.S || eMap.E || eMap.W;
-        const wallCol = hasExt ? PLASTER_EXT : PLASTER_INT;
-        const fcol = floorColor(room.type);
+        
+        // Dynamic style colors based on variant
+        let wallCol = hasExt ? PLASTER_EXT : PLASTER_INT;
+        if (hasExt) {
+          if (plan.variant === 'VASTU_FIRST' || plan.variant === 'COURTYARD') {
+            wallCol = '#eedfc2'; // warm mud-plaster yellow
+          } else if (plan.variant === 'CLIMATE_FIRST' || plan.variant === 'MODERN_OPEN') {
+            wallCol = '#cbd5e1'; // raw concrete/slate grey
+          } else if (plan.variant === 'MULTI_GEN') {
+            wallCol = '#eae5db'; // warm off-white
+          }
+        }
+
+        let fcol = floorColor(room.type);
+        if (isTraditional) {
+          if (room.type === "living" || room.type === "dining" || room.type === "entrance") {
+            fcol = "#8b2635"; // Athangudi red tile color
+          } else if (room.type.includes("bedroom")) {
+            fcol = "#d6ae5c"; // Jaisalmer yellow stone color
+          } else if (room.type === "pooja") {
+            fcol = "#e8c87e"; // bright yellow marigold pooja floor
+          }
+        }
+
         const wet = WET.test(room.type);
         return (
           <group key={room.id}>
@@ -1273,12 +1491,37 @@ function FloorGroup({
               </mesh>
             ))}
             {glass.map((g, i) => (
-              <Window3D key={`g${i}`} part={g} W={W} D={D} />
+              <Window3D key={`g${i}`} part={g} W={W} D={D} variant={plan.variant} />
             ))}
             {doors.map((d, i) => (
               <Door3D key={`d${i}`} part={d} W={W} D={D} />
             ))}
-            <Furniture3D room={room} W={W} D={D} isTopFloor={isTopFloor} />
+            <Furniture3D room={room} W={W} D={D} isTopFloor={isTopFloor} variant={plan.variant} />
+            {isTraditional && (room.type === "sitout" || room.type === "balcony" || room.type === "entrance") && (
+              <group position={[cx, 0, cz]}>
+                {[
+                  [-r.w / 2 + 0.1, -r.h / 2 + 0.1],
+                  [r.w / 2 - 0.1, -r.h / 2 + 0.1],
+                  [-r.w / 2 + 0.1, r.h / 2 - 0.1],
+                  [r.w / 2 - 0.1, r.h / 2 - 0.1],
+                ].map(([px, pz], pIdx) => (
+                  <group key={`pillar-${pIdx}`} position={[px, 0, pz]}>
+                    <mesh position={[0, 0.15, 0]} castShadow>
+                      <cylinderGeometry args={[0.08, 0.1, 0.3, 8]} />
+                      <meshStandardMaterial color="#3b3530" roughness={0.8} />
+                    </mesh>
+                    <mesh position={[0, WALL_H / 2 + 0.05, 0]} castShadow>
+                      <cylinderGeometry args={[0.05, 0.06, WALL_H - 0.3, 8]} />
+                      <TeakMat />
+                    </mesh>
+                    <mesh position={[0, WALL_H - 0.05, 0]}>
+                      <boxGeometry args={[0.15, 0.1, 0.15]} />
+                      <meshStandardMaterial color="#caa15a" metalness={0.5} roughness={0.2} />
+                    </mesh>
+                  </group>
+                ))}
+              </group>
+            )}
             {room.type === "balcony" && <Railing room={room} W={W} D={D} />}
           </group>
         );
@@ -1393,6 +1636,10 @@ function Slabs({ plan, W, D }: { plan: Plan; W: number; D: number }) {
   const roofY = topFloor * FLOOR_TO_FLOOR + WALL_H + SLAB / 2;
   const roofTop = roofY + SLAB / 2; // walking surface of the roof
   const concrete = CONCRETE;
+  const isVastuFirst = plan.variant === 'VASTU_FIRST';
+  const isCourtyard = plan.variant === 'COURTYARD';
+  const bW = fp.w;
+  const bD = fp.h;
 
   // staircase mumty (headroom box) above the top-floor staircase footprint
   const stair = plan.rooms.find((r) => r.type === "staircase" && (r.floor ?? 0) === topFloor)
@@ -1480,18 +1727,58 @@ function Slabs({ plan, W, D }: { plan: Plan; W: number; D: number }) {
         <boxGeometry args={[fp.w + 0.4, SLAB, fp.h + 0.4]} />
         <ConcreteMat color={concrete} />
       </mesh>
-      {/* parapet ring */}
-      {([
-        { pos: [cx, roofY + SLAB / 2 + PARAPET / 2, D / 2 - fp.y] as [number, number, number], size: [fp.w + 0.4, PARAPET, WALL_T] as [number, number, number] },
-        { pos: [cx, roofY + SLAB / 2 + PARAPET / 2, D / 2 - (fp.y + fp.h)] as [number, number, number], size: [fp.w + 0.4, PARAPET, WALL_T] as [number, number, number] },
-        { pos: [fp.x - W / 2, roofY + SLAB / 2 + PARAPET / 2, cz] as [number, number, number], size: [WALL_T, PARAPET, fp.h + 0.4] as [number, number, number] },
-        { pos: [fp.x + fp.w - W / 2, roofY + SLAB / 2 + PARAPET / 2, cz] as [number, number, number], size: [WALL_T, PARAPET, fp.h + 0.4] as [number, number, number] },
-      ]).map((p, i) => (
-        <mesh key={i} position={p.pos} castShadow receiveShadow>
-          <boxGeometry args={p.size} />
-          <meshStandardMaterial color="#e7e2d9" roughness={0.9} />
-        </mesh>
-      ))}
+      
+      {/* Traditional sloped tiled roof above the flat slab for Vastu-First */}
+      {isVastuFirst ? (
+        <group position={[cx, roofTop, cz]}>
+          <group rotation={[0, 0, 0.32]}>
+            <mesh castShadow receiveShadow position={[-bW * 0.27, 0.45, 0]}>
+              <boxGeometry args={[bW * 0.62, 0.08, bD + 1.2]} />
+              <meshStandardMaterial color="#b2533e" roughness={0.85} />
+            </mesh>
+            {/* Wooden rafters support details */}
+            {Array.from({ length: Math.max(3, Math.round(bD / 1.5)) }).map((_, idx) => {
+              const rz = -bD / 2 + (idx * bD) / (Math.max(3, Math.round(bD / 1.5)) - 1 || 1);
+              return (
+                <mesh key={idx} position={[-bW * 0.27, 0.38, rz]} castShadow>
+                  <boxGeometry args={[bW * 0.6, 0.06, 0.08]} />
+                  <TeakMat />
+                </mesh>
+              );
+            })}
+          </group>
+          <group rotation={[0, 0, -0.32]}>
+            <mesh castShadow receiveShadow position={[bW * 0.27, 0.45, 0]}>
+              <boxGeometry args={[bW * 0.62, 0.08, bD + 1.2]} />
+              <meshStandardMaterial color="#b2533e" roughness={0.85} />
+            </mesh>
+            {/* Wooden rafters support details */}
+            {Array.from({ length: Math.max(3, Math.round(bD / 1.5)) }).map((_, idx) => {
+              const rz = -bD / 2 + (idx * bD) / (Math.max(3, Math.round(bD / 1.5)) - 1 || 1);
+              return (
+                <mesh key={idx} position={[bW * 0.27, 0.38, rz]} castShadow>
+                  <boxGeometry args={[bW * 0.6, 0.06, 0.08]} />
+                  <TeakMat />
+                </mesh>
+              );
+            })}
+          </group>
+          {/* Ridge cap tile */}
+          <mesh position={[0, 0.45 + bW * 0.088, 0]} rotation={[Math.PI / 2, 0, 0]} castShadow>
+            <cylinderGeometry args={[0.11, 0.11, bD + 1.28, 8]} />
+            <meshStandardMaterial color="#943422" roughness={0.9} />
+          </mesh>
+        </group>
+      ) : (
+        /* parapet ring for Courtyard (traditional jaali) and Modern/other (sleek concrete) */
+        <group>
+          <ParapetSide start={[cx - (fp.w + 0.4) / 2, D / 2 - fp.y]} end={[cx + (fp.w + 0.4) / 2, D / 2 - fp.y]} yBase={roofTop} isTraditional={isCourtyard} horiz={true} />
+          <ParapetSide start={[cx - (fp.w + 0.4) / 2, D / 2 - (fp.y + fp.h)]} end={[cx + (fp.w + 0.4) / 2, D / 2 - (fp.y + fp.h)]} yBase={roofTop} isTraditional={isCourtyard} horiz={true} />
+          <ParapetSide start={[fp.x - W / 2, cz - (fp.h + 0.4) / 2]} end={[fp.x - W / 2, cz + (fp.h + 0.4) / 2]} yBase={roofTop} isTraditional={isCourtyard} horiz={false} />
+          <ParapetSide start={[fp.x + fp.w - W / 2, cz - (fp.h + 0.4) / 2]} end={[fp.x + fp.w - W / 2, cz + (fp.h + 0.4) / 2]} yBase={roofTop} isTraditional={isCourtyard} horiz={false} />
+        </group>
+      )}
+      
       {/* staircase mumty (roof headroom box) */}
       {mumty && (
         <mesh position={mumty.pos} castShadow receiveShadow>
@@ -1563,22 +1850,42 @@ function CompoundWall({ W, D }: { W: number; D: number }) {
 }
 
 /** Trunk + layered canopy spheres — reads as a small ornamental tree. */
-function Tree({ x, z, scale = 1 }: { x: number; z: number; scale?: number }) {
-  const trunkH = 0.9 * scale;
-  const rad = 0.7 * scale;
+/** Branching Acacia Tree — authentic Indian garden look with cylindrical trunk, angular branches, and dodecahedron leaf clusters. */
+function Tree({ x, z, scale = 1, isTraditional = false }: { x: number; z: number; scale?: number; isTraditional?: boolean }) {
+  const trunkH = 1.8 * scale;
+  const baseThickness = 0.08 * scale;
+  const topThickness = 0.12 * scale;
   return (
     <group position={[x, 0, z]}>
-      <mesh position={[0, trunkH / 2, 0]} castShadow>
-        <cylinderGeometry args={[0.08 * scale, 0.12 * scale, trunkH, 8]} />
-        <meshStandardMaterial color="#6b4f2a" roughness={0.95} />
+      {/* Main Trunk */}
+      <mesh castShadow position={[0, trunkH / 2, 0]}>
+        <cylinderGeometry args={[baseThickness, topThickness, trunkH, 8]} />
+        <meshStandardMaterial color="#2d1f18" roughness={0.95} />
       </mesh>
-      <mesh position={[0, trunkH + rad * 0.7, 0]} castShadow receiveShadow>
-        <sphereGeometry args={[rad, 14, 12]} />
-        <meshStandardMaterial color="#4d7c2f" roughness={0.95} />
+      {/* Angular Branch A */}
+      <mesh castShadow position={[0.25 * scale, trunkH * 0.9, 0.15 * scale]} rotation={[0.3, 0, 0.4]}>
+        <cylinderGeometry args={[baseThickness * 0.5, topThickness * 0.6, trunkH * 0.55, 6]} />
+        <meshStandardMaterial color="#2d1f18" roughness={0.95} />
       </mesh>
-      <mesh position={[rad * 0.4, trunkH + rad * 1.2, 0]} castShadow>
-        <sphereGeometry args={[rad * 0.7, 12, 10]} />
-        <meshStandardMaterial color="#5b8f38" roughness={0.95} />
+      {/* Angular Branch B */}
+      <mesh castShadow position={[-0.3 * scale, trunkH * 0.95, -0.2 * scale]} rotation={[-0.4, 0, -0.5]}>
+        <cylinderGeometry args={[baseThickness * 0.5, topThickness * 0.6, trunkH * 0.6, 6]} />
+        <meshStandardMaterial color="#2d1f18" roughness={0.95} />
+      </mesh>
+      {/* Central leaf cluster */}
+      <mesh castShadow position={[0, trunkH * 1.25, 0]}>
+        <dodecahedronGeometry args={[0.9 * scale, 1]} />
+        <meshStandardMaterial color={isTraditional ? "#3b5c23" : "#224c1e"} roughness={0.85} />
+      </mesh>
+      {/* Side leaf cluster A */}
+      <mesh castShadow position={[0.3 * scale, trunkH * 1.3, 0.25 * scale]}>
+        <dodecahedronGeometry args={[0.65 * scale, 1]} />
+        <meshStandardMaterial color={isTraditional ? "#4a7431" : "#305f28"} roughness={0.8} />
+      </mesh>
+      {/* Side leaf cluster B */}
+      <mesh castShadow position={[-0.4 * scale, trunkH * 1.4, -0.3 * scale]}>
+        <dodecahedronGeometry args={[0.75 * scale, 1]} />
+        <meshStandardMaterial color={isTraditional ? "#2b4618" : "#1a3915"} roughness={0.9} />
       </mesh>
     </group>
   );
@@ -1600,9 +1907,6 @@ function SiteLandscape({ plan, W, D }: { plan: Plan; W: number; D: number }) {
   const pathLen = Math.max(pathPlanX1 - pathPlanX0, 0.5);
 
   // Greenery scaled to plot area so it isn't out of proportion on small plots:
-  //  < 110 m²  → 1–2 small trees
-  //  110–300 m² → 3–4 medium trees
-  //  > 300 m²   → a few larger trees
   const area = W * D;
   const treeCfg =
     area < 110
@@ -1610,16 +1914,33 @@ function SiteLandscape({ plan, W, D }: { plan: Plan; W: number; D: number }) {
       : area <= 300
         ? { count: area < 200 ? 3 : 4, scale: 1.0 }
         : { count: 5, scale: 1.35 };
-  // candidate spots along the back/side strips, away from the front approach;
-  // take only as many as the band calls for.
+
+  // candidate spots along the back/side strips (in world coords)
   const treeSpots: [number, number][] = [
     [-hx + 0.9, -hz + 1.0],
     [-hx + 0.9, hz - 1.0],
     [hx - 1.1, -hz + 1.1],
     [-hx + 0.9, 0],
     [hx - 1.1, hz - 1.1],
+    [0, -hz + 1.0],
+    [0, hz - 1.0],
+    [-hx + 0.9, hz / 2],
+    [hx - 1.1, -hz / 2],
   ];
-  const trees = treeSpots.slice(0, treeCfg.count);
+
+  // Filter out tree spots that collide with the building footprint (with a 1.5m buffer)
+  const validTreeSpots = treeSpots.filter(([tx, tz]) => {
+    if (!fp) return true;
+    const tpx = tx + W / 2;
+    const tpy = D / 2 - tz;
+    const collisionBuffer = 1.5;
+    const inX = tpx >= fp.x - collisionBuffer && tpx <= fp.x + fp.w + collisionBuffer;
+    const inY = tpy >= fp.y - collisionBuffer && tpy <= fp.y + fp.h + collisionBuffer;
+    return !(inX && inY);
+  });
+
+  const trees = validTreeSpots.slice(0, treeCfg.count);
+  const isTraditional = plan.variant === 'VASTU_FIRST' || plan.variant === 'COURTYARD';
 
   // shrubs scale with the back-wall length (one roughly every ~1.8 m), capped.
   const nShrub = Math.max(2, Math.min(7, Math.round((D - 0.8) / 1.8)));
@@ -1639,9 +1960,9 @@ function SiteLandscape({ plan, W, D }: { plan: Plan; W: number; D: number }) {
         <boxGeometry args={[pathLen, 0.06, Math.min(D * 0.22, 2.0)]} />
         <meshPhysicalMaterial color={PATH_COL} roughness={0.7} metalness={0} clearcoat={0.2} />
       </mesh>
-      {/* trees scaled + counted to the plot area */}
+      {/* trees scaled + counted to the plot area, filtered for collisions */}
       {trees.map(([tx, tz], i) => (
-        <Tree key={i} x={tx} z={tz} scale={treeCfg.scale * (i % 2 ? 0.9 : 1)} />
+        <Tree key={i} x={tx} z={tz} scale={treeCfg.scale * (i % 2 ? 0.9 : 1)} isTraditional={isTraditional} />
       ))}
       {/* low shrubs along the West wall */}
       {plantZs.map((z, i) => (

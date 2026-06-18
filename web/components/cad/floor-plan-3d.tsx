@@ -184,10 +184,9 @@ function PremiumGlassHouseScene({ plan }: { plan: Plan }) {
   return (
     <group>
       {/* === GROUND PLANE — Polished concrete approach === */}
-      <mesh receiveShadow position={[0, -0.01, 0]}>
-        <boxGeometry args={[plotW + 20, 0.05, plotD + 20]} />
-        <primitive object={PREMIUM_CONCRETE_MAT} attach="material" />
-      </mesh>
+      <mesh receiveShadow position={[0, -0.01, 0]} material={PREMIUM_CONCRETE_MAT}>
+          <boxGeometry args={[plotW + 20, 0.05, plotD + 20]} />
+        </mesh>
 
       {/* === LANDSCAPING GRASS === */}
       <mesh receiveShadow position={[0, 0, 0]}>
@@ -198,9 +197,8 @@ function PremiumGlassHouseScene({ plan }: { plan: Plan }) {
       {/* === STRUCTURAL STEEL COLUMNS === */}
       {colPositions.map(([x, y], i) => (
         <mesh key={`col-${i}`} castShadow receiveShadow
-          position={[toX(x), totalH / 2, toZ(y)]}>
+          position={[toX(x), totalH / 2, toZ(y)]} material={PREMIUM_STEEL_MAT}>
           <boxGeometry args={[0.12, totalH, 0.12]} />
-          <primitive object={PREMIUM_STEEL_MAT} attach="material" />
         </mesh>
       ))}
 
@@ -210,25 +208,21 @@ function PremiumGlassHouseScene({ plan }: { plan: Plan }) {
         return (
           <group key={`beam-fl${fl}`}>
             {/* N edge */}
-            <mesh castShadow position={[cx, beamY, toZ(fp.maxY)]}>
-              <boxGeometry args={[W, 0.15, 0.12]} />
-              <primitive object={PREMIUM_STEEL_MAT} attach="material" />
-            </mesh>
+            <mesh castShadow position={[cx, beamY, toZ(fp.maxY)]} material={PREMIUM_STEEL_MAT}>
+          <boxGeometry args={[W, 0.15, 0.12]} />
+        </mesh>
             {/* S edge */}
-            <mesh castShadow position={[cx, beamY, toZ(fp.minY)]}>
-              <boxGeometry args={[W, 0.15, 0.12]} />
-              <primitive object={PREMIUM_STEEL_MAT} attach="material" />
-            </mesh>
+            <mesh castShadow position={[cx, beamY, toZ(fp.minY)]} material={PREMIUM_STEEL_MAT}>
+          <boxGeometry args={[W, 0.15, 0.12]} />
+        </mesh>
             {/* E edge */}
-            <mesh castShadow position={[toX(fp.maxX), beamY, cz]}>
-              <boxGeometry args={[0.12, 0.15, D]} />
-              <primitive object={PREMIUM_STEEL_MAT} attach="material" />
-            </mesh>
+            <mesh castShadow position={[toX(fp.maxX), beamY, cz]} material={PREMIUM_STEEL_MAT}>
+          <boxGeometry args={[0.12, 0.15, D]} />
+        </mesh>
             {/* W edge */}
-            <mesh castShadow position={[toX(fp.minX), beamY, cz]}>
-              <boxGeometry args={[0.12, 0.15, D]} />
-              <primitive object={PREMIUM_STEEL_MAT} attach="material" />
-            </mesh>
+            <mesh castShadow position={[toX(fp.minX), beamY, cz]} material={PREMIUM_STEEL_MAT}>
+          <boxGeometry args={[0.12, 0.15, D]} />
+        </mesh>
           </group>
         );
       })}
@@ -248,21 +242,18 @@ function PremiumGlassHouseScene({ plan }: { plan: Plan }) {
               const px = toX(fp.minX + pi * mullionStep + mullionStep / 2);
               return (
                 <group key={`S-${pi}`}>
-                  <mesh castShadow position={[px, glassY, toZ(fp.minY)]}>
-                    <boxGeometry args={[mullionStep - 0.03, glassH, 0.025]} />
-                    <primitive object={PREMIUM_GLASS_MAT} attach="material" />
-                  </mesh>
-                  <mesh position={[toX(fp.minX + pi * mullionStep), glassY, toZ(fp.minY)]}>
-                    <boxGeometry args={[0.03, glassH, 0.04]} />
-                    <primitive object={PREMIUM_STEEL_MAT} attach="material" />
-                  </mesh>
+                  <mesh castShadow position={[px, glassY, toZ(fp.minY)]} material={PREMIUM_GLASS_MAT}>
+          <boxGeometry args={[mullionStep - 0.03, glassH, 0.025]} />
+        </mesh>
+                  <mesh position={[toX(fp.minX + pi * mullionStep), glassY, toZ(fp.minY)]} material={PREMIUM_STEEL_MAT}>
+          <boxGeometry args={[0.03, glassH, 0.04]} />
+        </mesh>
                   {/* Timber louvers for sun shading */}
                   <group position={[px, glassY, toZ(fp.minY) + 0.2]}>
                     {Array.from({ length: 4 }).map((_, li) => (
-                      <mesh key={`lvr-${li}`} castShadow position={[-mullionStep/2 + (li + 0.5) * (mullionStep/4), 0, 0]} rotation={[0, Math.PI / 6, 0]}>
-                        <boxGeometry args={[0.04, glassH, 0.25]} />
-                        <primitive object={PREMIUM_WOOD_MAT} attach="material" />
-                      </mesh>
+                      <mesh key={`lvr-${li}`} castShadow position={[-mullionStep/2 + (li + 0.5) * (mullionStep/4), 0, 0]} rotation={[0, Math.PI / 6, 0]} material={PREMIUM_WOOD_MAT}>
+          <boxGeometry args={[0.04, glassH, 0.25]} />
+        </mesh>
                     ))}
                   </group>
                 </group>
@@ -274,14 +265,12 @@ function PremiumGlassHouseScene({ plan }: { plan: Plan }) {
               const px = toX(fp.minX + pi * mullionStep + mullionStep / 2);
               return (
                 <group key={`N-${pi}`}>
-                  <mesh castShadow position={[px, glassY, toZ(fp.maxY)]}>
-                    <boxGeometry args={[mullionStep - 0.03, glassH, 0.025]} />
-                    <primitive object={PREMIUM_GLASS_MAT} attach="material" />
-                  </mesh>
-                  <mesh position={[toX(fp.minX + pi * mullionStep), glassY, toZ(fp.maxY)]}>
-                    <boxGeometry args={[0.03, glassH, 0.04]} />
-                    <primitive object={PREMIUM_STEEL_MAT} attach="material" />
-                  </mesh>
+                  <mesh castShadow position={[px, glassY, toZ(fp.maxY)]} material={PREMIUM_GLASS_MAT}>
+          <boxGeometry args={[mullionStep - 0.03, glassH, 0.025]} />
+        </mesh>
+                  <mesh position={[toX(fp.minX + pi * mullionStep), glassY, toZ(fp.maxY)]} material={PREMIUM_STEEL_MAT}>
+          <boxGeometry args={[0.03, glassH, 0.04]} />
+        </mesh>
                 </group>
               );
             })}
@@ -291,10 +280,9 @@ function PremiumGlassHouseScene({ plan }: { plan: Plan }) {
               const pz = toZ(fp.minY + pi * mullionStep + mullionStep / 2);
               return (
                 <group key={`E-${pi}`}>
-                  <mesh castShadow position={[toX(fp.maxX), glassY, pz]}>
-                    <boxGeometry args={[0.025, glassH, mullionStep - 0.03]} />
-                    <primitive object={PREMIUM_GLASS_MAT} attach="material" />
-                  </mesh>
+                  <mesh castShadow position={[toX(fp.maxX), glassY, pz]} material={PREMIUM_GLASS_MAT}>
+          <boxGeometry args={[0.025, glassH, mullionStep - 0.03]} />
+        </mesh>
                 </group>
               );
             })}
@@ -304,17 +292,15 @@ function PremiumGlassHouseScene({ plan }: { plan: Plan }) {
               const pz = toZ(fp.minY + pi * mullionStep + mullionStep / 2);
               return (
                 <group key={`W-${pi}`}>
-                  <mesh castShadow position={[toX(fp.minX), glassY, pz]}>
-                    <boxGeometry args={[0.025, glassH, mullionStep - 0.03]} />
-                    <primitive object={PREMIUM_GLASS_MAT} attach="material" />
-                  </mesh>
+                  <mesh castShadow position={[toX(fp.minX), glassY, pz]} material={PREMIUM_GLASS_MAT}>
+          <boxGeometry args={[0.025, glassH, mullionStep - 0.03]} />
+        </mesh>
                   {/* Timber louvers for sun shading */}
                   <group position={[toX(fp.minX) - 0.2, glassY, pz]}>
                     {Array.from({ length: 4 }).map((_, li) => (
-                      <mesh key={`lvr-w-${li}`} castShadow position={[0, 0, -mullionStep/2 + (li + 0.5) * (mullionStep/4)]} rotation={[0, -Math.PI / 6, 0]}>
-                        <boxGeometry args={[0.25, glassH, 0.04]} />
-                        <primitive object={PREMIUM_WOOD_MAT} attach="material" />
-                      </mesh>
+                      <mesh key={`lvr-w-${li}`} castShadow position={[0, 0, -mullionStep/2 + (li + 0.5) * (mullionStep/4)]} rotation={[0, -Math.PI / 6, 0]} material={PREMIUM_WOOD_MAT}>
+          <boxGeometry args={[0.25, glassH, 0.04]} />
+        </mesh>
                     ))}
                   </group>
                 </group>
@@ -327,38 +313,32 @@ function PremiumGlassHouseScene({ plan }: { plan: Plan }) {
       {/* === FLOOR SLABS — polished marble each floor === */}
       {floors.map((fl) => (
         <mesh key={`slab-${fl}`} receiveShadow castShadow
-          position={[cx, fl * FLOOR_TO_FLOOR + 0.05, cz]}>
+          position={[cx, fl * FLOOR_TO_FLOOR + 0.05, cz]} material={PREMIUM_MARBLE_MAT}>
           <boxGeometry args={[W, 0.15, D]} />
-          <primitive object={PREMIUM_MARBLE_MAT} attach="material" />
         </mesh>
       ))}
 
       {/* === ROOF SLAB & SKYLIGHT === */}
       <group position={[cx, totalH + 0.075, cz]}>
-        <mesh castShadow receiveShadow>
+        <mesh castShadow receiveShadow material={PREMIUM_CONCRETE_MAT}>
           <boxGeometry args={[W, 0.15, D]} />
-          <primitive object={PREMIUM_CONCRETE_MAT} attach="material" />
         </mesh>
         
         {/* Large Architectural Skylight */}
         <group position={[0, 0.25, 0]}>
-          <mesh castShadow>
-            <boxGeometry args={[W * 0.4, 0.4, D * 0.4]} />
-            <primitive object={PREMIUM_GLASS_MAT} attach="material" />
-          </mesh>
-          <mesh position={[0, 0.2, 0]}>
-            <boxGeometry args={[W * 0.42, 0.06, D * 0.42]} />
-            <primitive object={PREMIUM_STEEL_MAT} attach="material" />
-          </mesh>
+          <mesh castShadow material={PREMIUM_GLASS_MAT}>
+          <boxGeometry args={[W * 0.4, 0.4, D * 0.4]} />
+        </mesh>
+          <mesh position={[0, 0.2, 0]} material={PREMIUM_STEEL_MAT}>
+          <boxGeometry args={[W * 0.42, 0.06, D * 0.42]} />
+        </mesh>
           {/* Internal steel mullions for skylight */}
-          <mesh position={[0, 0.1, 0]}>
-            <boxGeometry args={[W * 0.4, 0.04, 0.04]} />
-            <primitive object={PREMIUM_STEEL_MAT} attach="material" />
-          </mesh>
-          <mesh position={[0, 0.1, 0]}>
-            <boxGeometry args={[0.04, 0.04, D * 0.4]} />
-            <primitive object={PREMIUM_STEEL_MAT} attach="material" />
-          </mesh>
+          <mesh position={[0, 0.1, 0]} material={PREMIUM_STEEL_MAT}>
+          <boxGeometry args={[W * 0.4, 0.04, 0.04]} />
+        </mesh>
+          <mesh position={[0, 0.1, 0]} material={PREMIUM_STEEL_MAT}>
+          <boxGeometry args={[0.04, 0.04, D * 0.4]} />
+        </mesh>
         </group>
       </group>
 
@@ -384,10 +364,9 @@ function PremiumGlassHouseScene({ plan }: { plan: Plan }) {
             />
           </mesh>
           {/* Pool edge lighting (gold strip) */}
-          <mesh position={[0, 0.25, 0]}>
-            <boxGeometry args={[5.1, 0.05, Math.min(D - 1.8, 6.2)]} />
-            <primitive object={PREMIUM_GOLD_MAT} attach="material" />
-          </mesh>
+          <mesh position={[0, 0.25, 0]} material={PREMIUM_GOLD_MAT}>
+          <boxGeometry args={[5.1, 0.05, Math.min(D - 1.8, 6.2)]} />
+        </mesh>
         </group>
       )}
 
@@ -400,20 +379,18 @@ function PremiumGlassHouseScene({ plan }: { plan: Plan }) {
               cx - W * 0.25 + i * 0.05,
               i * (FLOOR_TO_FLOOR / 14) + 0.06,
               cz - i * 0.22,
-            ]}>
-            <boxGeometry args={[1.2, 0.04, 0.28]} />
-            <primitive object={PREMIUM_GOLD_MAT} attach="material" />
-          </mesh>
+            ]} material={PREMIUM_GOLD_MAT}>
+          <boxGeometry args={[1.2, 0.04, 0.28]} />
+        </mesh>
           {/* Stringer */}
           <mesh
             position={[
               cx - W * 0.25 + i * 0.05,
               i * (FLOOR_TO_FLOOR / 14) - 0.15,
               cz - i * 0.22,
-            ]}>
-            <boxGeometry args={[0.06, 0.3, 0.03]} />
-            <primitive object={PREMIUM_STEEL_MAT} attach="material" />
-          </mesh>
+            ]} material={PREMIUM_STEEL_MAT}>
+          <boxGeometry args={[0.06, 0.3, 0.03]} />
+        </mesh>
         </group>
       ))}
 
@@ -438,15 +415,13 @@ function PremiumGlassHouseScene({ plan }: { plan: Plan }) {
 
       {/* === BOUNDARY — low glass + steel parapet === */}
       {/* Front glass fence */}
-      <mesh position={[cx, 0.5, toZ(fp.minY) + 6]}>
-        <boxGeometry args={[W + 4, 1.0, 0.02]} />
-        <primitive object={PREMIUM_GLASS_MAT} attach="material" />
-      </mesh>
+      <mesh position={[cx, 0.5, toZ(fp.minY) + 6]} material={PREMIUM_GLASS_MAT}>
+          <boxGeometry args={[W + 4, 1.0, 0.02]} />
+        </mesh>
       {/* Top rail */}
-      <mesh position={[cx, 1.02, toZ(fp.minY) + 6]}>
-        <boxGeometry args={[W + 4, 0.04, 0.06]} />
-        <primitive object={PREMIUM_STEEL_MAT} attach="material" />
-      </mesh>
+      <mesh position={[cx, 1.02, toZ(fp.minY) + 6]} material={PREMIUM_STEEL_MAT}>
+          <boxGeometry args={[W + 4, 0.04, 0.06]} />
+        </mesh>
 
       {/* === LANDSCAPING — ornamental trees === */}
       {([
@@ -479,10 +454,9 @@ function PremiumGlassHouseScene({ plan }: { plan: Plan }) {
       ))}
 
       {/* === PARAPET CAP with gold trim === */}
-      <mesh position={[cx, totalH + 0.17, cz]}>
-        <boxGeometry args={[W + 0.1, 0.06, D + 0.1]} />
-        <primitive object={PREMIUM_GOLD_MAT} attach="material" />
-      </mesh>
+      <mesh position={[cx, totalH + 0.17, cz]} material={PREMIUM_GOLD_MAT}>
+          <boxGeometry args={[W + 0.1, 0.06, D + 0.1]} />
+        </mesh>
     </group>
   );
 }

@@ -7,6 +7,8 @@ from app.generator.designer import generate_plan
 from app.services.refine_service import parse_edits
 from app.services.rules import get_code_rules, get_vastu_rules
 from app.services.climate_service import get_climate_zone, get_orientation_advice
+from app.services.code_service import get_required_setbacks, buildable_envelope
+from app.services import geometry
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +74,33 @@ def optimize_plan(
         # Calculate combined score
         vastu_score = vastu.score
         
+        # Enforce strict local setbacks
+        state_code = plan.plot.state.value if hasattr(plan.plot.state, "value") else str(plan.plot.state)
+        req_setbacks = get_required_setbacks(state_code, plan.plot.area_sqm, code_rules)
+        env = buildable_envelope(
+            plan.plot.width_m, plan.plot.depth_m, facing_str,
+            req_setbacks["front_m"], req_setbacks["rear_m"], req_setbacks["side_m"]
+        )
+        
+        virtual_types = set(code_rules.classification().get("virtualRoomTypes", []))
+        real_rooms = [r for r in plan.rooms if r.type.value not in virtual_types]
+        
+        encroachers = []
+        for r in real_rooms:
+            out = geometry.outside_envelope_area(r.polygon, env)
+            if out > 1e-4:
+                encroachers.append(r)
+                
+        new_instructions = []
+        if encroachers:
+            vastu_score -= 50  # Huge penalty to reject this plan
+            logger.info(f"Code violation: {len(encroachers)} rooms cross setbacks. Penalizing score.")
+            new_instructions.extend([
+                "shrink front rooms",
+                "shrink rear rooms",
+                "shrink side rooms"
+            ])
+        
         # Keep track of the best plan
         if vastu_score > best_score:
             best_score = vastu_score
@@ -86,12 +115,10 @@ def optimize_plan(
                 best_meta["unmatchedEdits"] = result.unmatched
 
         # Step 2 & 3: Evaluate scores and generate synthetic instructions
-        # If score is perfectly 100 or >= 95, we can consider it optimized.
-        # The instructions say "If scores are below 95%, determine what is wrong".
-        if vastu_score >= 95.0:
+        # If score is perfectly 100 or >= 95, and no encroachers, we can consider it optimized.
+        if vastu_score >= 95.0 and not encroachers:
             break
             
-        new_instructions = []
         for room in vastu.rooms:
             if room.status != 'pass' and room.suggested_zones:
                 suggested_zone = room.suggested_zones[0]

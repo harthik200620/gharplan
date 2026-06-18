@@ -21,7 +21,7 @@ from pydantic import Field, field_validator
 from app import config
 from app.generator.designer import VARIANT_PROFILES, generate_options, generate_plan
 from app.models.base import CamelModel
-from app.models.enums import City, Facing, FinishTier, StateCode
+from app.models.enums import City, Facing, FinishTier, StateCode, FamilyProfile, PlotShape
 from app.models.plan import Plan, Plot
 from app.models.reports import CodeReport, VastuReport
 from app.services.refine_service import parse_edits
@@ -64,6 +64,8 @@ class GenerateRequest(CamelModel):
     floors: int = Field(default=1, ge=1, le=4)
     vastu_priority: bool = True
     budget_tier: Optional[FinishTier] = None
+    family_profile: FamilyProfile = Field(default=FamilyProfile.nuclear)
+    plot_shape: PlotShape = Field(default=PlotShape.regular)
 
     @field_validator("plot_width_m", "plot_depth_m")
     @classmethod
@@ -135,6 +137,8 @@ def _validated_plot(req: "GenerateRequest") -> Plot:
         state=req.state,
         city=_resolve_city(req.city, req.state),
         floors=req.floors,
+        family_profile=req.family_profile,
+        plot_shape=req.plot_shape,
     )
 
 
@@ -166,6 +170,8 @@ def plan_generate(req: GenerateRequest) -> GenerateResponse:
         state=req.state,
         city=_resolve_city(req.city, req.state),
         floors=req.floors,
+        family_profile=req.family_profile,
+        plot_shape=req.plot_shape,
     )
 
     try:

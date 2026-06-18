@@ -53,29 +53,32 @@ const PLINTH_H = 0.45; // projecting base course at ground level
 const CHAJJA_PROJ = 0.5; // sunshade projection past the wall face
 const CHAJJA_T = 0.08; // sunshade slab thickness
 
-// material colours — authentic warm Indian-render palette
-const PLASTER_EXT = "#f0e2c8"; // warm ochre exterior lime plaster
-const PLASTER_INT = "#f5f0e8"; // lighter interior cream
-const PLINTH_COL = "#7a6a58"; // laterite stone plinth
-const STONE_BAND = "#c4a882"; // sandstone accent banding
-const CONCRETE = "#d2cec4"; // RCC slabs / chajja
-const FRAME_COL = "#4a3828"; // dark teak window/door frame
-const GLASS_COL = "#a8d0e0"; // tinted glazing
-const DOOR_MAIN = "#5c3a1e"; // deep teak main door
-const DOOR_INT = "#b8996e"; // light internal door
-const TANK_COL = "#1a1a1e"; // black Sintex tank
-const MARBLE_COL = "#f0e8d8"; // polished living/dining marble
-const TEAK_COL = "#7a5038"; // warm teak joinery
-const SOFA_COL = "#6e7c9a"; // upholstered slate-blue
-const FABRIC_COL = "#d0bfa8"; // bed linen / soft furnishing
-const STEEL_COL = "#c8cdd4"; // appliances / steel
-const TILE_WET = "#d4dce4"; // glazed wet-room tile
-const GRASS_COL = "#5a9e3e"; // lush tropical lawn
-const PATH_COL = "#c8b894"; // paved approach
-const TERRA_COL = "#c85a38"; // Mangalore terracotta tile
-const TERRA_DARK = "#8a3820"; // deep terracotta ridge / shadow
-const LATERITE  = "#9e6440"; // laterite stone block courses
-const COLUMN_COL = "#e8d8b8"; // lime-washed column shaft
+// material colours — authentic luxury Indian architecture palette (research-verified)
+const PLASTER_EXT  = "#F5F0E8"; // warm lime white — exterior lime plaster
+const PLASTER_INT  = "#F2EDE4"; // interior warm ivory
+const PLINTH_COL   = "#B5652A"; // Kerala laterite stone
+const STONE_BAND   = "#C9A97A"; // buff sandstone cladding / band courses
+const CONCRETE     = "#BEBFBE"; // RCC slabs / chajja (cool grey)
+const FRAME_COL    = "#4A2810"; // dark teak window/door frame
+const GLASS_COL    = "#1A3A4A"; // deep tinted glazing (luxury Indian villa)
+const DOOR_MAIN    = "#3D1C02"; // carved teak main door
+const DOOR_INT     = "#8B6535"; // interior door warm teak
+const TANK_COL     = "#1a1a1e"; // black Sintex tank
+const MARBLE_COL   = "#F0EDE8"; // polished Calacatta marble — living/dining
+const TEAK_COL     = "#4A2810"; // dark oiled teak joinery
+const SOFA_COL     = "#5C6B7A"; // upholstered blue-grey
+const FABRIC_COL   = "#D4C8B0"; // bed linen / soft furnishing
+const STEEL_COL    = "#C8CDD4"; // appliances / steel
+const TILE_WET     = "#8A8C7A"; // Kota stone — wet room
+const GRASS_COL    = "#3A7D2C"; // lush tropical manicured lawn
+const PATH_COL     = "#9A9A92"; // grey granite driveway paving
+const TERRA_COL    = "#C1440E"; // Mangalore terracotta tile (authentic)
+const TERRA_DARK   = "#8B3A2A"; // deep terracotta — ridge / shadow side
+const LATERITE     = "#B5652A"; // laterite stone block courses
+const COLUMN_COL   = "#F5F0E8"; // lime-washed column shaft (will show detail separately)
+const BRASS_GOLD   = "#CFB53B"; // polished brass — Kalash, hardware, lanterns
+const SANDSTONE    = "#C9A97A"; // Jodhpur sandstone for pillars / jharokha
+
 
 // One-time low-power check: physical transmission + clearcoat is an expensive
 // per-fragment shader, so on machines with few logical cores (likely integrated
@@ -1619,9 +1622,9 @@ function Plinth({ fp, W, D }: { fp: Rect; W: number; D: number }) {
   );
 }
 
-/** Ornate Indian entrance porch with Kerala-style columns (turned wood/lime columns
- *  with capital block and stepped base plinth), Mangalore tiled canopy, and
- *  two broad granite steps. */
+/** Ornate Indian entrance porch (Poomukham) with authentic Kerala-style teak columns
+ *  resting on stone plinths, a proper 35° pitched hip roof canopy with terracotta tiles,
+ *  and an auspicious 3-step dark granite approach. */
 function EntrancePorch({ plan, W, D }: { plan: Plan; W: number; D: number }) {
   const fp = buildingFootprint(plan, 0);
   const entry =
@@ -1635,10 +1638,11 @@ function EntrancePorch({ plan, W, D }: { plan: Plan; W: number; D: number }) {
 
   const X = (px: number) => px - W / 2;
   const Z = (py: number) => D / 2 - py;
-  const proj = 1.8; // deeper porch projection
-  const w = Math.min(face === "N" || face === "S" ? r.w : r.h, 3.0);
-  const canopyY = FLOOR_Y + LINTEL + 0.3; // higher canopy
-  const colH = LINTEL + 0.25;
+  const proj = 2.2; // Generous 2.2m deep luxury porch
+  const w = Math.min(face === "N" || face === "S" ? r.w : r.h, 4.0);
+  
+  const colH = LINTEL + 0.35; // taller columns
+  const canopyBaseY = FLOOR_Y + colH;
   const along = face === "N" || face === "S";
 
   let wallCx: number, wallCz: number, dx = 0, dz = 0;
@@ -1649,79 +1653,142 @@ function EntrancePorch({ plan, W, D }: { plan: Plan; W: number; D: number }) {
 
   const outAt = (d: number): [number, number] => [X(wallCx + dx * d), Z(wallCz + dz * d)];
   const [slabX, slabZ] = outAt(proj / 2);
-  const [step1X, step1Z] = outAt(proj + 0.3);
-  const [step2X, step2Z] = outAt(proj + 0.6);
-  const colInset = w / 2 - 0.22;
-  const [colCx, colCz] = outAt(proj - 0.15);
+  const colInset = w / 2 - 0.3;
+  const [colCx, colCz] = outAt(proj - 0.2);
 
-  // Column helper: ornate Kerala-style column with stepped base, shaft, neck, and capital
+  // Helper for true hip roof canopy slopes
+  const buildSlope = (verts: [number,number,number][]): THREE.BufferGeometry => {
+    const geo = new THREE.BufferGeometry();
+    const pos = new Float32Array([...verts[0], ...verts[1], ...verts[2], ...verts[0], ...verts[2], ...verts[3]]);
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    geo.computeVertexNormals();
+    return geo;
+  };
+  const buildTri = (verts: [number,number,number][]): THREE.BufferGeometry => {
+    const geo = new THREE.BufferGeometry();
+    const pos = new Float32Array([...verts[0], ...verts[1], ...verts[2]]);
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    geo.computeVertexNormals();
+    return geo;
+  };
+
+  // Porch roof parameters (Pitch 35°)
+  const pOverhang = 0.5;
+  const pW = w + pOverhang * 2;
+  const pD = proj + pOverhang; // flush with wall on one side
+  const pitch = Math.tan(35 * Math.PI / 180); // ~0.7
+  const shortH = Math.min(pW, pD) / 2;
+  const pRise = shortH * pitch;
+  const pRidgeLen = Math.max(0.1, Math.max(pW, pD) - Math.min(pW, pD));
+  
+  // Orient canopy ridge
+  const ridgeAlongZ = along ? false : true;
+  const rL = (ridgeAlongZ ? pD : pW) / 2;
+  const rS = (ridgeAlongZ ? pW : pD) / 2;
+  const rR = pRidgeLen / 2;
+
+  // Authentic Kerala carved teak column
   const OrnateColumn = ({ px, pz }: { px: number; pz: number }) => (
     <group position={[px, FLOOR_Y, pz]}>
-      {/* Base pedestal (broad) */}
-      <mesh position={[0, 0.08, 0]} castShadow receiveShadow>
-        <boxGeometry args={[0.30, 0.16, 0.30]} />
-        <meshStandardMaterial color={STONE_BAND} roughness={0.85} />
+      {/* Stone Pedestal */}
+      <mesh position={[0, 0.1, 0]} castShadow receiveShadow>
+        <boxGeometry args={[0.32, 0.2, 0.32]} />
+        <meshStandardMaterial color={SANDSTONE} roughness={0.9} />
       </mesh>
-      {/* Base neck (slightly narrower) */}
-      <mesh position={[0, 0.21, 0]} castShadow>
-        <boxGeometry args={[0.24, 0.1, 0.24]} />
-        <meshStandardMaterial color={COLUMN_COL} roughness={0.8} />
+      {/* Brass decorative band at base */}
+      <mesh position={[0, 0.23, 0]} castShadow>
+        <cylinderGeometry args={[0.13, 0.15, 0.06, 12]} />
+        <meshStandardMaterial color={BRASS_GOLD} roughness={0.3} metalness={0.8} />
       </mesh>
-      {/* Shaft — octagonal for traditional look */}
-      <mesh position={[0, colH * 0.5 + 0.2, 0]} castShadow>
-        <cylinderGeometry args={[0.095, 0.115, colH - 0.4, 8]} />
-        <meshStandardMaterial color={COLUMN_COL} roughness={0.75} />
+      {/* Main Teak Shaft - Octagonal */}
+      <mesh position={[0, colH * 0.5, 0]} castShadow>
+        <cylinderGeometry args={[0.11, 0.12, colH - 0.5, 8]} />
+        <meshStandardMaterial color={TEAK_COL} roughness={0.8} />
       </mesh>
-      {/* Neck band */}
-      <mesh position={[0, colH - 0.05, 0]} castShadow>
-        <cylinderGeometry args={[0.105, 0.105, 0.06, 8]} />
-        <meshStandardMaterial color={STONE_BAND} roughness={0.8} />
+      {/* Carved teak rings (Thadam) */}
+      <mesh position={[0, colH * 0.75, 0]} castShadow>
+        <torusGeometry args={[0.12, 0.02, 8, 8]} />
+        <meshStandardMaterial color={TEAK_COL} roughness={0.8} />
       </mesh>
-      {/* Capital block (abacus) */}
-      <mesh position={[0, colH + 0.04, 0]} castShadow>
-        <boxGeometry args={[0.28, 0.1, 0.28]} />
-        <meshStandardMaterial color={STONE_BAND} roughness={0.75} />
+      <mesh position={[0, colH * 0.85, 0]} castShadow>
+        <torusGeometry args={[0.12, 0.02, 8, 8]} />
+        <meshStandardMaterial color={TEAK_COL} roughness={0.8} />
       </mesh>
-      {/* Echinus (rounded cap under abacus) */}
-      <mesh position={[0, colH - 0.04, 0]} castShadow>
-        <cylinderGeometry args={[0.14, 0.095, 0.08, 8]} />
-        <meshStandardMaterial color={COLUMN_COL} roughness={0.75} />
+      {/* Capital Block (Pothigai corbel) */}
+      <mesh position={[0, colH - 0.1, 0]} castShadow>
+        <cylinderGeometry args={[0.2, 0.11, 0.12, 8]} />
+        <meshStandardMaterial color={TEAK_COL} roughness={0.8} />
+      </mesh>
+      <mesh position={[0, colH, 0]} castShadow>
+        <boxGeometry args={[0.35, 0.08, 0.35]} />
+        <meshStandardMaterial color={TEAK_COL} roughness={0.8} />
       </mesh>
     </group>
   );
 
   return (
     <group>
-      {/* Tiled canopy slab with Mangalore tile color */}
-      <mesh position={[slabX, canopyY, slabZ]} castShadow receiveShadow>
-        <boxGeometry args={along ? [w + 0.5, CHAJJA_T * 2.5, proj + 0.3] : [proj + 0.3, CHAJJA_T * 2.5, w + 0.5]} />
-        <meshStandardMaterial color={TERRA_COL} roughness={0.88} />
-      </mesh>
-      {/* Ridge cap tile on canopy */}
-      <mesh position={along ? [slabX, canopyY + CHAJJA_T * 1.8, slabZ] : [slabX, canopyY + CHAJJA_T * 1.8, slabZ]} castShadow>
-        <boxGeometry args={along ? [w + 0.55, 0.06, 0.1] : [0.1, 0.06, w + 0.55]} />
-        <meshStandardMaterial color={TERRA_DARK} roughness={0.9} />
-      </mesh>
-      {/* Canopy fascia (projecting front band) */}
-      <mesh position={along ? [slabX, canopyY - CHAJJA_T * 0.5, outAt(proj)[1]] : [outAt(proj)[0], canopyY - CHAJJA_T * 0.5, slabZ]} castShadow>
-        <boxGeometry args={along ? [w + 0.5, CHAJJA_T * 1.5, 0.06] : [0.06, CHAJJA_T * 1.5, w + 0.5]} />
-        <meshStandardMaterial color={STONE_BAND} roughness={0.85} />
-      </mesh>
+      {/* Three auspicious entrance steps (Dark Granite) */}
+      {[1, 2, 3].map((step) => {
+        const d = proj + 0.3 * step;
+        const sh = 0.12;
+        const sy = FLOOR_Y + 0.15 - (step - 1) * sh;
+        const [sx, sz] = outAt(d);
+        const sw = w + 0.4 - step * 0.1;
+        return (
+          <mesh key={step} position={[sx, sy, sz]} castShadow receiveShadow>
+            <boxGeometry args={along ? [sw, sh, 0.3] : [0.3, sh, sw]} />
+            <meshStandardMaterial color="#2a2a2a" roughness={0.6} />
+          </mesh>
+        );
+      })}
+
       {/* Ornate columns at outer corners */}
       {[-colInset, colInset].map((off, i) => {
         const px = along ? colCx + off : colCx;
         const pz = along ? colCz : colCz + off;
         return <OrnateColumn key={i} px={px} pz={pz} />;
       })}
-      {/* Two granite entrance steps (wide) */}
-      <mesh position={[step1X, FLOOR_Y + 0.10, step1Z]} castShadow receiveShadow>
-        <boxGeometry args={along ? [w * 0.9, 0.20, 0.55] : [0.55, 0.20, w * 0.9]} />
-        <meshStandardMaterial color="#a89880" roughness={0.9} />
-      </mesh>
-      <mesh position={[step2X, FLOOR_Y + 0.04, step2Z]} castShadow receiveShadow>
-        <boxGeometry args={along ? [w * 1.0, 0.12, 0.55] : [0.55, 0.12, w * 1.0]} />
-        <meshStandardMaterial color="#b8a890" roughness={0.88} />
-      </mesh>
+
+      {/* Canopy Roof Group */}
+      <group position={[slabX, canopyBaseY, slabZ]}>
+        {/* Flat teak ceiling plane under the canopy */}
+        <mesh position={[0, 0.02, 0]} castShadow>
+          <boxGeometry args={along ? [w + 0.2, 0.04, proj + 0.2] : [proj + 0.2, 0.04, w + 0.2]} />
+          <meshStandardMaterial color={TEAK_COL} roughness={0.9} />
+        </mesh>
+        
+        {/* Hip roof slopes */}
+        <mesh castShadow receiveShadow>
+          {ridgeAlongZ ? (
+            <group>
+              <mesh geometry={buildSlope([[-rS, 0, rL], [-rS, 0, -rL], [0, pRise, -rR], [0, pRise, rR]])}><meshStandardMaterial color={TERRA_COL} roughness={0.88} side={THREE.DoubleSide} /></mesh>
+              <mesh geometry={buildSlope([[rS, 0, -rL], [rS, 0, rL], [0, pRise, rR], [0, pRise, -rR]])}><meshStandardMaterial color={TERRA_DARK} roughness={0.88} side={THREE.DoubleSide} /></mesh>
+              <mesh geometry={buildTri([[-rS, 0, -rL], [rS, 0, -rL], [0, pRise, -rR]])}><meshStandardMaterial color="#b84820" roughness={0.88} side={THREE.DoubleSide} /></mesh>
+              <mesh geometry={buildTri([[rS, 0, rL], [-rS, 0, rL], [0, pRise, rR]])}><meshStandardMaterial color="#b84820" roughness={0.88} side={THREE.DoubleSide} /></mesh>
+            </group>
+          ) : (
+            <group>
+              <mesh geometry={buildSlope([[-rL, 0, -rS], [rL, 0, -rS], [rR, pRise, 0], [-rR, pRise, 0]])}><meshStandardMaterial color={TERRA_COL} roughness={0.88} side={THREE.DoubleSide} /></mesh>
+              <mesh geometry={buildSlope([[rL, 0, rS], [-rL, 0, rS], [-rR, pRise, 0], [rR, pRise, 0]])}><meshStandardMaterial color={TERRA_DARK} roughness={0.88} side={THREE.DoubleSide} /></mesh>
+              <mesh geometry={buildTri([[rL, 0, -rS], [rL, 0, rS], [rR, pRise, 0]])}><meshStandardMaterial color="#b84820" roughness={0.88} side={THREE.DoubleSide} /></mesh>
+              <mesh geometry={buildTri([[-rL, 0, rS], [-rL, 0, -rS], [-rR, pRise, 0]])}><meshStandardMaterial color="#b84820" roughness={0.88} side={THREE.DoubleSide} /></mesh>
+            </group>
+          )}
+        </mesh>
+        
+        {/* Ridge beam & cap */}
+        <mesh position={[0, pRise + 0.05, 0]} rotation={ridgeAlongZ ? [Math.PI/2, 0, 0] : [0, 0, Math.PI/2]} castShadow>
+          <cylinderGeometry args={[0.07, 0.07, pRidgeLen + 0.1, 8]} />
+          <meshStandardMaterial color={TERRA_DARK} roughness={0.9} />
+        </mesh>
+
+        {/* Teak fascia board running around the perimeter */}
+        <mesh position={[0, -0.05, 0]}>
+          <boxGeometry args={ridgeAlongZ ? [pW+0.05, 0.15, pD+0.05] : [pD+0.05, 0.15, pW+0.05]} />
+          <meshStandardMaterial color={TEAK_COL} roughness={0.9} />
+        </mesh>
+      </group>
     </group>
   );
 }
@@ -1829,95 +1896,228 @@ function Slabs({ plan, W, D }: { plan: Plan; W: number; D: number }) {
         <ConcreteMat color={concrete} />
       </mesh>
 
-      {/* ===== GABLED MANGALORE TILED ROOF for Vastu/Traditional ===== */}
+      {/* ===== AUTHENTIC MANGALORE HIP ROOF for Vastu/Traditional ===== */}
       {isTraditional ? (() => {
-        // Proper gable roof: ridge runs along the longer plan axis
-        const roofPitch = 0.42; // ~23 deg. Good for Indian rainfall.
-        const eaveOver = 0.8; // deep eave overhang (authentic South Indian)
-        const rW = bW + eaveOver * 2; // roof plan width (incl. overhang)
-        const rD = bD + eaveOver * 2; // roof plan depth
-        // Ridge height above roof slab top
-        const halfSpan = rW / 2;
-        const ridgeH = halfSpan * roofPitch;
+        // True hip roof using BufferGeometry — no rotated boxes.
+        // A hip roof has: 4 trapezoidal/triangular slopes, a ridge beam at top.
+        // Pitch: 38° (tan ≈ 0.78) — authentic Kerala monsoon pitch
+        const eave = 1.0;            // 1.0m eave overhang — very generous, traditional
+        const rW  = bW + eave * 2;   // total roof width incl. overhangs
+        const rD  = bD + eave * 2;   // total roof depth incl. overhangs
+        const pitch = Math.tan((38 * Math.PI) / 180); // 0.781
+        // On a hip roof the ridge length = building_long_axis - 2 * hip_setback
+        // Hip setback = half_width / pitch_ratio (where pitch_ratio = rise/run = pitch)
+        // Actually for a standard hip: ridge_length = long_side - short_side
+        const longAxis  = Math.max(rW, rD);
+        const shortAxis = Math.min(rW, rD);
+        const ridgeLen  = Math.max(0.4, longAxis - shortAxis); // how long the ridge is
+        const riseH     = (shortAxis / 2) * pitch;             // height of ridge above eave
 
-        // Using 4 sloped box panels to approximate a hip roof
-        // Two long sides (slopes along Z), two gable ends (hip triangles)
-        const slopeAngle = Math.atan2(ridgeH, halfSpan);
-        const slopeLen = Math.sqrt(halfSpan * halfSpan + ridgeH * ridgeH);
-        const tileThick = 0.07;
+        // Orient ridge along the longer plot axis
+        const ridgeAlongZ = rD >= rW; // if depth>=width, ridge runs N-S
 
-        // Number of rafter lines (visual only)
-        const nRafters = Math.max(3, Math.round(rD / 1.4));
+        const halfL = (ridgeAlongZ ? rD : rW) / 2; // half of long axis
+        const halfS = (ridgeAlongZ ? rW : rD) / 2; // half of short axis
+        const halfR = ridgeLen / 2;
+
+        // Helper to build one quad slope (4 verts, 2 triangles) as BufferGeometry
+        // verts: [v0, v1, v2, v3] clockwise from outside
+        const buildSlope = (verts: [number,number,number][]): THREE.BufferGeometry => {
+          const geo = new THREE.BufferGeometry();
+          const pos = new Float32Array([
+            ...verts[0], ...verts[1], ...verts[2], // tri 1
+            ...verts[0], ...verts[2], ...verts[3], // tri 2
+          ]);
+          geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+          geo.computeVertexNormals();
+          return geo;
+        };
+
+        // Build triangle hip slope (end slopes) — 3 verts
+        const buildTriSlope = (verts: [number,number,number][]): THREE.BufferGeometry => {
+          const geo = new THREE.BufferGeometry();
+          const pos = new Float32Array([...verts[0], ...verts[1], ...verts[2]]);
+          geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+          geo.computeVertexNormals();
+          return geo;
+        };
+
+        // Eave corners (all at y=0 relative to roofTop):
+        // ridgeAlongZ: long axis = Z, short axis = X
+        // Ridge runs along Z at y=riseH, from (-ridgeLen/2) to (ridgeLen/2)
+
+        let slopeGeoms: { geo: THREE.BufferGeometry; color: string }[] = [];
+
+        if (ridgeAlongZ) {
+          // West slope (x = -halfS, to x = 0, y = riseH)
+          slopeGeoms.push({
+            color: TERRA_COL,
+            geo: buildSlope([
+              [-halfS, 0,  halfL], // SW corner
+              [-halfS, 0, -halfL], // NW corner
+              [     0, riseH, -halfR], // NW ridge end
+              [     0, riseH,  halfR], // SW ridge end
+            ])
+          });
+          // East slope
+          slopeGeoms.push({
+            color: TERRA_DARK,
+            geo: buildSlope([
+              [halfS, 0, -halfL], // NE corner
+              [halfS, 0,  halfL], // SE corner
+              [    0, riseH,  halfR], // SE ridge end
+              [    0, riseH, -halfR], // NE ridge end
+            ])
+          });
+          // North hip (triangle)
+          slopeGeoms.push({
+            color: '#b84820',
+            geo: buildTriSlope([
+              [-halfS, 0, -halfL], // NW corner
+              [ halfS, 0, -halfL], // NE corner
+              [     0, riseH, -halfR], // ridge N end
+            ])
+          });
+          // South hip (triangle)
+          slopeGeoms.push({
+            color: '#b84820',
+            geo: buildTriSlope([
+              [ halfS, 0,  halfL], // SE corner
+              [-halfS, 0,  halfL], // SW corner
+              [     0, riseH,  halfR], // ridge S end
+            ])
+          });
+        } else {
+          // Ridge along X — swap roles
+          slopeGeoms.push({
+            color: TERRA_COL,
+            geo: buildSlope([
+              [-halfL, 0, -halfS], // NW corner
+              [ halfL, 0, -halfS], // NE corner
+              [ halfR, riseH, 0],  // ridge E end
+              [-halfR, riseH, 0],  // ridge W end
+            ])
+          });
+          slopeGeoms.push({
+            color: TERRA_DARK,
+            geo: buildSlope([
+              [ halfL, 0,  halfS], // SE corner
+              [-halfL, 0,  halfS], // SW corner
+              [-halfR, riseH, 0],  // ridge W end
+              [ halfR, riseH, 0],  // ridge E end
+            ])
+          });
+          slopeGeoms.push({
+            color: '#b84820',
+            geo: buildTriSlope([
+              [ halfL, 0, -halfS], // NE
+              [ halfL, 0,  halfS], // SE
+              [ halfR, riseH, 0],  // ridge E
+            ])
+          });
+          slopeGeoms.push({
+            color: '#b84820',
+            geo: buildTriSlope([
+              [-halfL, 0,  halfS], // SW
+              [-halfL, 0, -halfS], // NW
+              [-halfR, riseH, 0],  // ridge W
+            ])
+          });
+        }
+
+        // Eave fascia boards (decorative teak board along each eave)
+        const fasciaH = 0.22;
+        const fasciaT = 0.08;
+        const eaveBoards = ridgeAlongZ ? [
+          { pos: [-halfS - fasciaT/2, -fasciaH/2, 0] as [number,number,number], size: [fasciaT, fasciaH, rD + 0.1] as [number,number,number] },
+          { pos: [ halfS + fasciaT/2, -fasciaH/2, 0] as [number,number,number], size: [fasciaT, fasciaH, rD + 0.1] as [number,number,number] },
+          { pos: [0, -fasciaH/2, -halfL - fasciaT/2] as [number,number,number], size: [rW + 0.1, fasciaH, fasciaT] as [number,number,number] },
+          { pos: [0, -fasciaH/2,  halfL + fasciaT/2] as [number,number,number], size: [rW + 0.1, fasciaH, fasciaT] as [number,number,number] },
+        ] : [
+          { pos: [0, -fasciaH/2, -halfS - fasciaT/2] as [number,number,number], size: [rW + 0.1, fasciaH, fasciaT] as [number,number,number] },
+          { pos: [0, -fasciaH/2,  halfS + fasciaT/2] as [number,number,number], size: [rW + 0.1, fasciaH, fasciaT] as [number,number,number] },
+          { pos: [-halfL - fasciaT/2, -fasciaH/2, 0] as [number,number,number], size: [fasciaT, fasciaH, rD + 0.1] as [number,number,number] },
+          { pos: [ halfL + fasciaT/2, -fasciaH/2, 0] as [number,number,number], size: [fasciaT, fasciaH, rD + 0.1] as [number,number,number] },
+        ];
+
+        // Wooden rafters — visible under eaves, authentic South Indian detail
+        const rafterCount = Math.max(4, Math.round((ridgeAlongZ ? rD : rW) / 1.2));
 
         return (
           <group position={[cx, roofTop, cz]}>
-            {/* West slope */}
-            <mesh castShadow receiveShadow
-              position={[-halfSpan / 2, ridgeH / 2, 0]}
-              rotation={[0, 0, slopeAngle]}>
-              <boxGeometry args={[slopeLen, tileThick, rD]} />
-              <meshStandardMaterial color={TERRA_COL} roughness={0.85} />
-            </mesh>
-            {/* East slope */}
-            <mesh castShadow receiveShadow
-              position={[halfSpan / 2, ridgeH / 2, 0]}
-              rotation={[0, 0, -slopeAngle]}>
-              <boxGeometry args={[slopeLen, tileThick, rD]} />
-              <meshStandardMaterial color={TERRA_DARK} roughness={0.88} />
-            </mesh>
-            {/* Gable walls (filled triangular north + south ends) */}
-            {[-rD / 2, rD / 2].map((gz, gi) => (
-              <mesh key={gi} castShadow receiveShadow position={[0, ridgeH / 2, gz]}>
-                <boxGeometry args={[rW, ridgeH, tileThick]} />
-                <meshStandardMaterial color={PLASTER_EXT} roughness={0.9} />
+            {/* Tile slopes */}
+            {slopeGeoms.map((s, i) => (
+              <mesh key={`slope${i}`} geometry={s.geo} castShadow receiveShadow>
+                <meshStandardMaterial color={s.color} roughness={0.88} side={THREE.DoubleSide} />
               </mesh>
             ))}
-            {/* Ridge beam */}
-            <mesh position={[0, ridgeH + 0.04, 0]} castShadow>
-              <boxGeometry args={[0.14, 0.1, rD + 0.1]} />
-              <meshStandardMaterial color={TERRA_DARK} roughness={0.88} />
+            {/* Ridge beam — thick teak timber */}
+            <mesh position={[0, riseH + 0.05, 0]}
+              rotation={ridgeAlongZ ? [0,0,0] : [0, Math.PI/2, 0]}
+              castShadow>
+              <boxGeometry args={[0.16, 0.14, ridgeLen + 0.1]} />
+              <meshStandardMaterial color="#4a2e14" roughness={0.9} />
             </mesh>
-            {/* Ridge cap tiles (rounded cylinder cap) */}
-            <mesh position={[0, ridgeH + 0.09, 0]} rotation={[Math.PI / 2, 0, 0]} castShadow>
-              <cylinderGeometry args={[0.08, 0.08, rD + 0.14, 8]} />
+            {/* Ridge cap round tiles (cylinder row) */}
+            <mesh position={[0, riseH + 0.13, 0]}
+              rotation={ridgeAlongZ ? [Math.PI/2, 0, 0] : [0, 0, Math.PI/2]}
+              castShadow>
+              <cylinderGeometry args={[0.09, 0.09, ridgeLen + 0.14, 10]} />
               <meshStandardMaterial color={TERRA_DARK} roughness={0.9} />
             </mesh>
-            {/* Eave fascia boards (North + South ends) */}
-            {[-rD / 2, rD / 2].map((gz, gi) => (
-              <mesh key={`ef${gi}`} castShadow position={[0, -0.05, gz]}>
-                <boxGeometry args={[rW + 0.12, 0.18, 0.06]} />
+            {/* Eave fascia boards */}
+            {eaveBoards.map((b, i) => (
+              <mesh key={`fascia${i}`} position={b.pos} castShadow>
+                <boxGeometry args={b.size} />
                 <TeakMat />
               </mesh>
             ))}
-            {/* Visible wooden rafters under eaves */}
-            {Array.from({ length: nRafters }).map((_, idx) => {
-              const rz = -rD / 2 + (idx + 0.5) * (rD / nRafters);
+            {/* Visible teak rafters — spaced evenly along the long axis */}
+            {Array.from({ length: rafterCount }).map((_, idx) => {
+              const t   = (idx + 0.5) / rafterCount;
+              const off = (ridgeAlongZ ? rD : rW) * (t - 0.5);
+              const rx  = ridgeAlongZ ? off : 0;
+              const rz  = ridgeAlongZ ? 0 : off;
               return (
-                <group key={idx}>
-                  {/* West rafter */}
-                  <mesh castShadow position={[-halfSpan / 2, ridgeH / 2 - 0.08, rz]} rotation={[0, 0, slopeAngle + 0.05]}>
-                    <boxGeometry args={[slopeLen - 0.1, 0.06, 0.08]} />
+                <group key={`raft${idx}`} position={[rx, 0, rz]}>
+                  {/* West/South rafter */}
+                  <mesh castShadow
+                    position={ridgeAlongZ ? [-halfS/2, riseH/2, 0] : [0, riseH/2, -halfS/2]}
+                    rotation={ridgeAlongZ ? [0, 0, Math.atan2(riseH, halfS)] : [Math.atan2(riseH, halfS), 0, 0]}>
+                    <boxGeometry args={[Math.sqrt(halfS*halfS+riseH*riseH)+0.05, 0.07, 0.09]} />
                     <TeakMat />
                   </mesh>
-                  {/* East rafter */}
-                  <mesh castShadow position={[halfSpan / 2, ridgeH / 2 - 0.08, rz]} rotation={[0, 0, -slopeAngle - 0.05]}>
-                    <boxGeometry args={[slopeLen - 0.1, 0.06, 0.08]} />
+                  {/* East/North rafter */}
+                  <mesh castShadow
+                    position={ridgeAlongZ ? [halfS/2, riseH/2, 0] : [0, riseH/2, halfS/2]}
+                    rotation={ridgeAlongZ ? [0, 0, -Math.atan2(riseH, halfS)] : [-Math.atan2(riseH, halfS), 0, 0]}>
+                    <boxGeometry args={[Math.sqrt(halfS*halfS+riseH*riseH)+0.05, 0.07, 0.09]} />
                     <TeakMat />
                   </mesh>
                 </group>
               );
             })}
-            {/* Eave bracket corbels at corners (decorative teak blocks) */}
-            {[[-rW / 2 + 0.2, -rD / 2], [rW / 2 - 0.2, -rD / 2],
-              [-rW / 2 + 0.2, rD / 2],  [rW / 2 - 0.2, rD / 2]].map(([bx, bz], bi) => (
-              <mesh key={`br${bi}`} castShadow position={[bx, -0.1, bz]}>
-                <boxGeometry args={[0.14, 0.22, 0.14]} />
-                <TeakMat />
-              </mesh>
+            {/* Decorative carved teak eave brackets at corners */}
+            {(ridgeAlongZ
+              ? [[-halfS,  halfL], [-halfS, -halfL], [halfS,  halfL], [halfS, -halfL]]
+              : [[-halfL,  halfS], [-halfL, -halfS], [halfL,  halfS], [halfL, -halfS]]
+            ).map(([bx, bz], bi) => (
+              <group key={`brk${bi}`} position={[bx, -0.08, bz]}>
+                <mesh castShadow>
+                  <boxGeometry args={[0.18, 0.28, 0.12]} />
+                  <TeakMat />
+                </mesh>
+                {/* Decorative notch */}
+                <mesh position={[0, 0.12, 0]} castShadow>
+                  <boxGeometry args={[0.14, 0.06, 0.14]} />
+                  <meshStandardMaterial color={STONE_BAND} roughness={0.8} />
+                </mesh>
+              </group>
             ))}
           </group>
         );
       })() : (
+
         /* Modern flat roof with jaali (Courtyard) or sleek parapet (modern/other) */
         <group>
           <ParapetSide start={[cx - (fp.w + 0.4) / 2, D / 2 - fp.y]} end={[cx + (fp.w + 0.4) / 2, D / 2 - fp.y]} yBase={roofTop} isTraditional={isCourtyard} horiz={true} />
@@ -2000,15 +2200,31 @@ function CompoundWall({ W, D }: { W: number; D: number }) {
           <boxGeometry args={[0.5, 0.12, 0.5]} />
           <meshStandardMaterial color={STONE_BAND} roughness={0.8} />
         </mesh>
-        {/* Pyramidal cap */}
+        {/* Pyramidal cap — terracotta tile color */}
         <mesh position={[0, PH - 0.03, 0]} castShadow>
-          <coneGeometry args={[0.28, 0.18, 4]} />
+          <coneGeometry args={[0.3, 0.22, 4]} />
           <meshStandardMaterial color={TERRA_COL} roughness={0.88} />
         </mesh>
-        {/* Kalash finial sphere */}
-        <mesh position={[0, PH + 0.12, 0]} castShadow>
-          <sphereGeometry args={[0.09, 12, 8]} />
-          <meshStandardMaterial color="#c8a040" metalness={0.6} roughness={0.3} />
+        {/* ── KALASH FINIAL (auspicious pot) ── */}
+        {/* Kumbha (pot body) — brass gold sphere */}
+        <mesh position={[0, PH + 0.16, 0]} castShadow>
+          <sphereGeometry args={[0.12, 14, 10]} />
+          <meshStandardMaterial color={BRASS_GOLD} metalness={0.9} roughness={0.18} />
+        </mesh>
+        {/* Neck (narrow connector below pot) */}
+        <mesh position={[0, PH + 0.04, 0]} castShadow>
+          <cylinderGeometry args={[0.045, 0.055, 0.12, 10]} />
+          <meshStandardMaterial color={BRASS_GOLD} metalness={0.9} roughness={0.18} />
+        </mesh>
+        {/* Mango leaf flare (wider disc above pot body) */}
+        <mesh position={[0, PH + 0.26, 0]} castShadow>
+          <cylinderGeometry args={[0.1, 0.08, 0.04, 12]} />
+          <meshStandardMaterial color={BRASS_GOLD} metalness={0.85} roughness={0.25} />
+        </mesh>
+        {/* Coconut top (small sphere on top) */}
+        <mesh position={[0, PH + 0.36, 0]} castShadow>
+          <sphereGeometry args={[0.065, 10, 8]} />
+          <meshStandardMaterial color={BRASS_GOLD} metalness={0.88} roughness={0.22} />
         </mesh>
       </group>
     );
@@ -2064,93 +2280,141 @@ function CompoundWall({ W, D }: { W: number; D: number }) {
   );
 }
 
-/** Coconut Palm tree — tall, slender trunk with feathery fronds.
- *  Authentic tropical South Indian garden element. */
+/** Coconut Palm tree — tall, proud, with 10 arching fronds and ring scars.
+ *  Authentic luxury South Indian garden element. Scale 1.0 = ~6.5m tall. */
 function CoconutPalm({ x, z, scale = 1 }: { x: number; z: number; scale?: number }) {
-  const trunkH = (4.5 + scale * 1.2) * scale;
-  const lean = 0.18 * scale; // slight lean
+  const trunkH = 6.5 * scale;
+  const lean   = 0.25 * scale;
+  const baseR  = 0.18 * scale;
+  const topR   = 0.08 * scale;
+  const frondLen = 2.2 * scale;
   return (
     <group position={[x, 0, z]}>
-      {/* Slender tapering trunk */}
-      <mesh castShadow position={[lean * 0.5, trunkH / 2, 0]}>
-        <cylinderGeometry args={[0.09 * scale, 0.16 * scale, trunkH, 8]} />
-        <meshStandardMaterial color="#7a5a30" roughness={0.95} />
+      {/* Main trunk — tapered */}
+      <mesh castShadow receiveShadow position={[lean * 0.4, trunkH / 2, 0]}>
+        <cylinderGeometry args={[topR, baseR, trunkH, 10]} />
+        <meshStandardMaterial color="#8a6535" roughness={0.97} />
       </mesh>
-      {/* Ring scars on trunk (characteristic of palms) */}
-      {Array.from({ length: 6 }).map((_, i) => (
-        <mesh key={i} castShadow position={[lean * (i / 6), (trunkH * (0.3 + i * 0.1)), 0]}>
-          <torusGeometry args={[0.115 * scale, 0.018 * scale, 6, 12]} />
-          <meshStandardMaterial color="#5a4020" roughness={0.98} />
-        </mesh>
-      ))}
-      {/* Frond crown — 8 arching fronds */}
-      {Array.from({ length: 8 }).map((_, i) => {
-        const angle = (i / 8) * Math.PI * 2;
-        const ax = Math.cos(angle) * 0.9 * scale;
-        const az = Math.sin(angle) * 0.9 * scale;
-        const tilt = 0.45 + Math.abs(Math.sin(angle)) * 0.2;
+      {/* Ring scars — classic palm detail */}
+      {Array.from({ length: 9 }).map((_, i) => {
+        const y = trunkH * (0.2 + i * 0.075);
+        const r = baseR + (topR - baseR) * (y / trunkH);
         return (
-          <group key={i} position={[lean, trunkH, 0]} rotation={[tilt, angle, 0]}>
-            <mesh castShadow position={[0, 0.8 * scale, 0]}>
-              <boxGeometry args={[0.06 * scale, 1.6 * scale, 0.04 * scale]} />
-              <meshStandardMaterial color="#3a7020" roughness={0.9} />
+          <mesh key={i} castShadow position={[lean * 0.4 * (y / trunkH), y, 0]}>
+            <torusGeometry args={[r + 0.01, 0.015 * scale, 5, 14]} />
+            <meshStandardMaterial color="#5a3e18" roughness={0.99} />
+          </mesh>
+        );
+      })}
+      {/* 10 arching fronds */}
+      {Array.from({ length: 10 }).map((_, i) => {
+        const angle = (i / 10) * Math.PI * 2;
+        const tilt  = 0.52 + (i % 3) * 0.07;
+        return (
+          <group key={i} position={[lean, trunkH + 0.05, 0]} rotation={[tilt, angle, 0]}>
+            <mesh castShadow position={[0, frondLen * 0.5, 0]}>
+              <boxGeometry args={[0.035 * scale, frondLen, 0.022 * scale]} />
+              <meshStandardMaterial color="#3a6818" roughness={0.9} />
             </mesh>
-            {/* Leaflets on each side of frond */}
-            {[-1, 1].map((side) => (
-              <mesh key={side} castShadow position={[side * 0.18 * scale, 0.9 * scale, 0]} rotation={[0, 0, side * 0.5]}>
-                <boxGeometry args={[0.22 * scale, 1.2 * scale, 0.015 * scale]} />
-                <meshStandardMaterial color="#4a8a28" roughness={0.92} />
-              </mesh>
-            ))}
+            {Array.from({ length: 6 }).map((_, j) => {
+              const frac = (j + 1) / 7;
+              const ly   = frondLen * frac;
+              const lLen = frondLen * 0.32 * (1 - frac * 0.45);
+              return (
+                <group key={j} position={[0, ly, 0]}>
+                  <mesh castShadow position={[lLen * 0.5, 0, 0]} rotation={[0, 0, -0.35]}>
+                    <boxGeometry args={[lLen, 0.022 * scale, 0.015 * scale]} />
+                    <meshStandardMaterial color="#4a8828" roughness={0.92} />
+                  </mesh>
+                  <mesh castShadow position={[-lLen * 0.5, 0, 0]} rotation={[0, 0, 0.35]}>
+                    <boxGeometry args={[lLen, 0.022 * scale, 0.015 * scale]} />
+                    <meshStandardMaterial color="#3a7818" roughness={0.92} />
+                  </mesh>
+                </group>
+              );
+            })}
           </group>
         );
       })}
       {/* Coconut cluster */}
-      {[0, 1.0, 2.1].map((angle, i) => (
-        <mesh key={i} castShadow position={[lean + Math.cos(angle) * 0.15 * scale, trunkH - 0.3, Math.sin(angle) * 0.15 * scale]}>
-          <sphereGeometry args={[0.18 * scale, 8, 6]} />
-          <meshStandardMaterial color="#5a7830" roughness={0.95} />
+      {[0, 1.1, 2.2, 3.3].map((ang, i) => (
+        <mesh key={i} castShadow
+          position={[lean + Math.cos(ang) * 0.18 * scale, trunkH - 0.35, Math.sin(ang) * 0.18 * scale]}>
+          <sphereGeometry args={[0.19 * scale, 8, 6]} />
+          <meshStandardMaterial color="#6a8830" roughness={0.95} />
         </mesh>
       ))}
     </group>
   );
 }
 
-/** Mango tree — broad spreading canopy, very common in Indian gardens. */
+
+/** Mango tree — broad majestic canopy for luxury Indian bungalow garden.
+ *  5 branches, 7 overlapping canopy spheres, ripe hanging mangoes. */
 function MangoTree({ x, z, scale = 1, isTraditional = false }: { x: number; z: number; scale?: number; isTraditional?: boolean }) {
-  const trunkH = 1.6 * scale;
+  const trunkH    = 2.2 * scale;
+  const canopyBase = trunkH + 0.2;
+  const dark  = isTraditional ? '#2e5814' : '#1e4a0c';
+  const mid   = isTraditional ? '#3e7020' : '#2e6018';
+  const light = isTraditional ? '#507a28' : '#3e7820';
   return (
     <group position={[x, 0, z]}>
-      {/* Short stout trunk */}
-      <mesh castShadow position={[0, trunkH / 2, 0]}>
-        <cylinderGeometry args={[0.14 * scale, 0.20 * scale, trunkH, 8]} />
-        <meshStandardMaterial color="#3a2510" roughness={0.95} />
+      {/* Stout gnarled trunk */}
+      <mesh castShadow receiveShadow position={[0, trunkH / 2, 0]}>
+        <cylinderGeometry args={[0.12 * scale, 0.22 * scale, trunkH, 10]} />
+        <meshStandardMaterial color="#3a2510" roughness={0.97} />
       </mesh>
-      {/* Three main branches */}
-      {[[0.35, 0.3, 0.4], [-0.3, 0.3, -0.3], [0.1, 0.4, -0.35]].map(([bx, by, bz], i) => (
-        <mesh key={i} castShadow position={[bx * scale, trunkH + by * scale, bz * scale]} rotation={[by * 0.6, i * 1.2, bx * 0.5]}>
-          <cylinderGeometry args={[0.06 * scale, 0.09 * scale, 1.0 * scale, 6]} />
-          <meshStandardMaterial color="#3a2510" roughness={0.95} />
-        </mesh>
-      ))}
-      {/* Large broad canopy — multiple overlapping spheres */}
-      <mesh castShadow position={[0, trunkH + 1.3 * scale, 0]}>
-        <sphereGeometry args={[1.2 * scale, 8, 6]} />
-        <meshStandardMaterial color={isTraditional ? "#3a6018" : "#285a12"} roughness={0.88} />
+      {/* 5 radiating main branches */}
+      {[[0.55, 0.4, 0.3], [-0.45, 0.4, 0.25], [0.15, 0.45, -0.5],
+        [-0.25, 0.35, -0.4], [0.5, 0.3, -0.25]].map(([bx, by, bz], i) => {
+        const blen = (0.85 + (i % 3) * 0.2) * scale;
+        const ang  = Math.atan2(bz, bx);
+        const elev = Math.atan2(by, Math.sqrt(bx * bx + bz * bz));
+        return (
+          <mesh key={i} castShadow
+            position={[bx * scale, canopyBase + by * scale, bz * scale]}
+            rotation={[elev * 0.6, ang, 0]}>
+            <cylinderGeometry args={[0.04 * scale, 0.08 * scale, blen, 6]} />
+            <meshStandardMaterial color="#3a2510" roughness={0.95} />
+          </mesh>
+        );
+      })}
+      {/* 7 canopy spheres for realistic silhouette */}
+      <mesh castShadow position={[0, canopyBase + 1.6 * scale, 0]}>
+        <sphereGeometry args={[1.4 * scale, 10, 7]} />
+        <meshStandardMaterial color={dark} roughness={0.9} />
       </mesh>
-      <mesh castShadow position={[0.5 * scale, trunkH + 1.4 * scale, 0.3 * scale]}>
-        <sphereGeometry args={[0.85 * scale, 8, 6]} />
-        <meshStandardMaterial color={isTraditional ? "#4a7828" : "#366820"} roughness={0.9} />
+      <mesh castShadow position={[0.75 * scale, canopyBase + 1.7 * scale, 0.4 * scale]}>
+        <sphereGeometry args={[1.05 * scale, 8, 6]} />
+        <meshStandardMaterial color={mid} roughness={0.88} />
       </mesh>
-      <mesh castShadow position={[-0.5 * scale, trunkH + 1.35 * scale, -0.4 * scale]}>
+      <mesh castShadow position={[-0.7 * scale, canopyBase + 1.55 * scale, -0.5 * scale]}>
+        <sphereGeometry args={[1.1 * scale, 8, 6]} />
+        <meshStandardMaterial color={dark} roughness={0.92} />
+      </mesh>
+      <mesh castShadow position={[0.3 * scale, canopyBase + 2.2 * scale, -0.45 * scale]}>
         <sphereGeometry args={[0.9 * scale, 8, 6]} />
-        <meshStandardMaterial color={isTraditional ? "#2a5010" : "#1e4a0c"} roughness={0.92} />
+        <meshStandardMaterial color={light} roughness={0.88} />
       </mesh>
-      {/* Hanging mango fruits (yellow-green) */}
-      {[[0.3, -0.1, 0.2], [-0.2, -0.2, -0.3], [0.0, -0.1, -0.2]].map(([fx, fy, fz], i) => (
-        <mesh key={i} castShadow position={[fx * scale, trunkH + 1.0 * scale + fy * scale, fz * scale]}>
-          <sphereGeometry args={[0.06 * scale, 6, 5]} />
-          <meshStandardMaterial color="#c8b820" roughness={0.7} />
+      <mesh castShadow position={[-0.5 * scale, canopyBase + 1.9 * scale, 0.65 * scale]}>
+        <sphereGeometry args={[0.95 * scale, 8, 6]} />
+        <meshStandardMaterial color={mid} roughness={0.9} />
+      </mesh>
+      <mesh castShadow position={[0.9 * scale, canopyBase + 1.25 * scale, -0.3 * scale]}>
+        <sphereGeometry args={[0.7 * scale, 8, 6]} />
+        <meshStandardMaterial color={light} roughness={0.85} />
+      </mesh>
+      <mesh castShadow position={[-0.85 * scale, canopyBase + 1.35 * scale, 0.25 * scale]}>
+        <sphereGeometry args={[0.75 * scale, 8, 6]} />
+        <meshStandardMaterial color={dark} roughness={0.92} />
+      </mesh>
+      {/* Ripe mangoes in clusters */}
+      {[[0.4, 0.8, 0.3], [-0.3, 0.9, -0.4], [0.2, 0.75, -0.3],
+        [-0.5, 0.85, 0.3], [0.6, 0.7, -0.2]].map(([fx, fy, fz], i) => (
+        <mesh key={i} castShadow
+          position={[fx * scale, canopyBase + fy * scale, fz * scale]}>
+          <sphereGeometry args={[0.07 * scale, 7, 5]} />
+          <meshStandardMaterial color={i % 2 === 0 ? '#e8a820' : '#d4881a'} roughness={0.65} />
         </mesh>
       ))}
     </group>
@@ -2493,11 +2757,10 @@ function Scene({ plan, structure, mepMode, finishTier }: { plan: Plan; structure
         </>
       )}
 
-      {/* earth slab under the lawn — warm Indian soil color */}
-      {/* earth slab under the lawn — warm Indian soil color */}
+      {/* earth slab — dark tropical Indian soil under the lawn */}
       <mesh position={[0, -0.05, 0]} receiveShadow>
         <boxGeometry args={[W + 0.3, 0.12, D + 0.3]} />
-        <meshStandardMaterial color="#c8a87a" roughness={1} />
+        <meshStandardMaterial color="#3B2309" roughness={1} />
       </mesh>
       <SiteLandscape plan={plan} W={W} D={D} />
 

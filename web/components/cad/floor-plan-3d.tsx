@@ -135,14 +135,6 @@ function PremiumGlassHouseScene({ plan }: { plan: Plan }) {
   const totalFloors = floors.length;
   const totalH = totalFloors * FLOOR_TO_FLOOR;
 
-  // Steel column positions at corners and midpoints
-  const colPositions: [number, number][] = [
-    [fp.minX, fp.minY], [fp.maxX, fp.minY],
-    [fp.minX, fp.maxY], [fp.maxX, fp.maxY],
-    [fp.minX + W/2, fp.minY], [fp.minX + W/2, fp.maxY],
-    [fp.minX, fp.minY + D/2], [fp.maxX, fp.minY + D/2],
-  ];
-
   // Convert plan coords to world coords (centered at origin)
   const plotW = plan.plot.widthM;
   const plotD = plan.plot.depthM;
@@ -155,88 +147,196 @@ function PremiumGlassHouseScene({ plan }: { plan: Plan }) {
 
   return (
     <group>
-      {/* === GROUND PLANE — Polished concrete approach === */}
-      <mesh receiveShadow position={[0, -0.01, 0]}>
-          <boxGeometry args={[plotW + 20, 0.05, plotD + 20]} />
-          <PremiumConcreteMat />
-        </mesh>
-
-      {/* === LANDSCAPING GRASS === */}
-      <mesh receiveShadow position={[0, 0, 0]}>
-        <boxGeometry args={[plotW + 16, 0.04, plotD + 16]} />
-        <meshStandardMaterial color="#4a7c3f" roughness={0.9} />
+      {/* === 1. LANDSCAPED PLINTH & DRIVEWAY === */}
+      {/* Large pebble bed base */}
+      <mesh receiveShadow position={[cx, 0.01, cz]}>
+        <boxGeometry args={[W + 6, 0.02, D + 6]} />
+        <meshStandardMaterial color="#22252a" roughness={0.9} />
       </mesh>
 
-      {/* === STRUCTURAL STEEL COLUMNS === */}
-      {colPositions.map(([x, y], i) => (
+      {/* Main architectural concrete plinth */}
+      <mesh receiveShadow castShadow position={[cx, 0.1, cz]}>
+        <boxGeometry args={[W + 2, 0.2, D + 2]} />
+        <PremiumConcreteMat />
+      </mesh>
+
+      {/* === 2. TIMBER DECK & GROUND INFINITY POOL === */}
+      {/* Teak Wood Decking */}
+      <mesh receiveShadow position={[toX(fp.maxX) + 2.5, 0.11, cz]}>
+        <boxGeometry args={[4, 0.08, D + 2]} />
+        <PremiumWoodMat />
+      </mesh>
+
+      {/* Ground-Level Infinity Pool */}
+      <group position={[toX(fp.maxX) + 2.5, 0.05, cz]}>
+        {/* Pool Water */}
+        <mesh position={[0, 0.05, 0]}>
+          <boxGeometry args={[3.2, 0.02, D - 1]} />
+          <meshPhysicalMaterial
+            color="#0ea5e9"
+            roughness={0.05}
+            transmission={0.8}
+            transparent
+            opacity={0.8}
+            envMapIntensity={2.0}
+          />
+        </mesh>
+        {/* Pool Border (Gold Accent Trim) */}
+        <mesh position={[0, 0.062, 0]}>
+          <boxGeometry args={[3.4, 0.01, D - 0.8]} />
+          <PremiumGoldMat />
+        </mesh>
+      </group>
+
+      {/* Luxury Lounger Chairs on the Deck */}
+      <group position={[toX(fp.maxX) + 2.0, 0.16, cz - 1.2]} rotation={[0, -Math.PI / 2, 0]}>
+        <mesh castShadow position={[0, 0, 0]}>
+          <boxGeometry args={[1.6, 0.04, 0.6]} />
+          <PremiumSteelMat />
+        </mesh>
+        <mesh castShadow position={[0, 0.03, 0]}>
+          <boxGeometry args={[1.5, 0.04, 0.55]} />
+          <meshStandardMaterial color="#f8fafc" roughness={0.7} />
+        </mesh>
+        <mesh castShadow position={[-0.5, 0.12, 0]} rotation={[0, 0, -0.3]}>
+          <boxGeometry args={[0.6, 0.03, 0.55]} />
+          <meshStandardMaterial color="#f8fafc" roughness={0.7} />
+        </mesh>
+      </group>
+
+      <group position={[toX(fp.maxX) + 2.0, 0.16, cz + 1.2]} rotation={[0, -Math.PI / 2, 0]}>
+        <mesh castShadow position={[0, 0, 0]}>
+          <boxGeometry args={[1.6, 0.04, 0.6]} />
+          <PremiumSteelMat />
+        </mesh>
+        <mesh castShadow position={[0, 0.03, 0]}>
+          <boxGeometry args={[1.5, 0.04, 0.55]} />
+          <meshStandardMaterial color="#f8fafc" roughness={0.7} />
+        </mesh>
+        <mesh castShadow position={[-0.5, 0.12, 0]} rotation={[0, 0, -0.3]}>
+          <boxGeometry args={[0.6, 0.03, 0.55]} />
+          <meshStandardMaterial color="#f8fafc" roughness={0.7} />
+        </mesh>
+      </group>
+
+      {/* === 3. ENTRANCE REFLECTING POND & STEPPING PATHWAY === */}
+      <group position={[cx, 0.05, toZ(fp.minY) + 3.2]}>
+        {/* Pond Water */}
+        <mesh receiveShadow position={[0, 0.05, 0]}>
+          <boxGeometry args={[W, 0.02, 2.5]} />
+          <meshPhysicalMaterial
+            color="#14b8a6"
+            roughness={0.01}
+            transmission={0.9}
+            transparent
+            opacity={0.85}
+            envMapIntensity={2.2}
+          />
+        </mesh>
+        {/* Floating Concrete Steps */}
+        {[-1.5, 0, 1.5].map((offsetX, idx) => (
+          <mesh key={`pond-step-${idx}`} castShadow receiveShadow position={[offsetX, 0.08, 0]}>
+            <boxGeometry args={[0.8, 0.05, 1.2]} />
+            <PremiumConcreteMat />
+          </mesh>
+        ))}
+      </group>
+
+      {/* === 4. MASSIVE ARCHITECTURAL CONCRETE SHEAR WALLS === */}
+      {/* Internal structural concrete mass (stairwell core) */}
+      <mesh castShadow receiveShadow position={[cx - W * 0.22, totalH / 2 + 0.1, cz + D * 0.2]}>
+        <boxGeometry args={[2.0, totalH, 2.5]} />
+        <PremiumConcreteMat />
+      </mesh>
+
+      {/* Western board-formed concrete privacy feature wall */}
+      <mesh castShadow receiveShadow position={[toX(fp.minX) - 0.05, totalH / 2 + 0.1, cz - D * 0.1]}>
+        <boxGeometry args={[0.15, totalH, D * 0.55]} />
+        <PremiumConcreteMat />
+      </mesh>
+
+      {/* === 5. STRUCTURAL STEEL COLUMNS === */}
+      {[
+        [fp.minX, fp.minY], [fp.maxX, fp.minY],
+        [fp.minX, fp.maxY], [fp.maxX, fp.maxY],
+        [fp.minX + W/2, fp.minY], [fp.minX + W/2, fp.maxY],
+        [fp.minX, fp.minY + D/2], [fp.maxX, fp.minY + D/2],
+      ].map(([x, y], i) => (
         <mesh key={`col-${i}`} castShadow receiveShadow
-          position={[toX(x), totalH / 2, toZ(y)]}>
-          <boxGeometry args={[0.12, totalH, 0.12]} />
+          position={[toX(x), totalH / 2 + 0.1, toZ(y)]}>
+          <boxGeometry args={[0.14, totalH, 0.14]} />
           <PremiumSteelMat />
         </mesh>
       ))}
 
-      {/* === HORIZONTAL STEEL BEAMS at each floor === */}
-      {floors.map((fl) => {
-        const beamY = fl * FLOOR_TO_FLOOR + FLOOR_TO_FLOOR;
-        return (
-          <group key={`beam-fl${fl}`}>
-            {/* N edge */}
-            <mesh castShadow position={[cx, beamY, toZ(fp.maxY)]}>
-          <boxGeometry args={[W, 0.15, 0.12]} />
-          <PremiumSteelMat />
+      {/* === 6. FLOORS & ROOF CANTILEVERED SLABS === */}
+      {/* Marble floor plates with projections */}
+      {floors.map((fl) => (
+        <mesh key={`slab-${fl}`} receiveShadow castShadow
+          position={[cx, fl * FLOOR_TO_FLOOR + 0.15, cz]}>
+          <boxGeometry args={[W + 1.0, 0.12, D + 1.0]} />
+          <PremiumMarbleMat />
         </mesh>
-            {/* S edge */}
-            <mesh castShadow position={[cx, beamY, toZ(fp.minY)]}>
-          <boxGeometry args={[W, 0.15, 0.12]} />
-          <PremiumSteelMat />
-        </mesh>
-            {/* E edge */}
-            <mesh castShadow position={[toX(fp.maxX), beamY, cz]}>
-          <boxGeometry args={[0.12, 0.15, D]} />
-          <PremiumSteelMat />
-        </mesh>
-            {/* W edge */}
-            <mesh castShadow position={[toX(fp.minX), beamY, cz]}>
-          <boxGeometry args={[0.12, 0.15, D]} />
-          <PremiumSteelMat />
-        </mesh>
-          </group>
-        );
-      })}
+      ))}
 
-      {/* === GLASS CURTAIN WALLS — all 4 facades, all floors === */}
+      {/* Projecting roof slab (cantilevers for deep shadow lines) */}
+      <mesh receiveShadow castShadow position={[cx, totalH + 0.16, cz]}>
+        <boxGeometry args={[W + 1.5, 0.15, D + 1.5]} />
+        <PremiumConcreteMat />
+      </mesh>
+
+      {/* Brushed gold fascia trim on the roof slab */}
+      <mesh position={[cx, totalH + 0.22, cz]}>
+        <boxGeometry args={[W + 1.53, 0.03, D + 1.53]} />
+        <PremiumGoldMat />
+      </mesh>
+
+      {/* Large architectural glass skylight */}
+      <group position={[cx, totalH + 0.25, cz]}>
+        <mesh castShadow>
+          <boxGeometry args={[W * 0.35, 0.2, D * 0.35]} />
+          <PremiumGlassMat />
+        </mesh>
+        <mesh position={[0, 0.1, 0]}>
+          <boxGeometry args={[W * 0.37, 0.04, D * 0.37]} />
+          <PremiumSteelMat />
+        </mesh>
+      </group>
+
+      {/* === 7. ELEVATIONS (GLASS FACADES, BRASS MULLIONS, LOUVERS) === */}
       {floors.map((fl) => {
         const flY = fl * FLOOR_TO_FLOOR;
-        const glassH = FLOOR_TO_FLOOR - 0.2;
-        const glassY = flY + glassH / 2 + 0.1;
+        const glassH = FLOOR_TO_FLOOR - 0.15;
+        const glassY = flY + glassH / 2 + 0.2;
         const nPanelsW = Math.max(1, Math.floor(W / mullionStep));
         const nPanelsD = Math.max(1, Math.floor(D / mullionStep));
 
         return (
-          <group key={`glass-fl${fl}`}>
-            {/* South facade — full glass panels */}
+          <group key={`facade-fl${fl}`}>
+            {/* South facade — front curtain wall */}
             {Array.from({ length: nPanelsW }).map((_, pi) => {
               const px = toX(fp.minX + pi * mullionStep + mullionStep / 2);
               return (
                 <group key={`S-${pi}`}>
                   <mesh castShadow position={[px, glassY, toZ(fp.minY)]}>
-          <boxGeometry args={[mullionStep - 0.03, glassH, 0.025]} />
-          <PremiumGlassMat />
-        </mesh>
+                    <boxGeometry args={[mullionStep - 0.04, glassH, 0.03]} />
+                    <PremiumGlassMat />
+                  </mesh>
                   <mesh position={[toX(fp.minX + pi * mullionStep), glassY, toZ(fp.minY)]}>
-          <boxGeometry args={[0.03, glassH, 0.04]} />
-          <PremiumSteelMat />
-        </mesh>
-                  {/* Timber louvers for sun shading */}
-                  <group position={[px, glassY, toZ(fp.minY) + 0.2]}>
-                    {Array.from({ length: 4 }).map((_, li) => (
-                      <mesh key={`lvr-${li}`} castShadow position={[-mullionStep/2 + (li + 0.5) * (mullionStep/4), 0, 0]} rotation={[0, Math.PI / 6, 0]}>
-          <boxGeometry args={[0.04, glassH, 0.25]} />
-          <PremiumWoodMat />
-        </mesh>
-                    ))}
-                  </group>
+                    <boxGeometry args={[0.04, glassH, 0.05]} />
+                    <PremiumGoldMat />
+                  </mesh>
+                  {/* Decorative screen panels on select segments */}
+                  {pi % 3 === 0 && (
+                    <group position={[px, glassY, toZ(fp.minY) - 0.12]}>
+                      {Array.from({ length: 5 }).map((_, li) => (
+                        <mesh key={`slat-s-${li}`} castShadow position={[-mullionStep/2 + (li + 0.5) * (mullionStep/5), 0, 0]}>
+                          <boxGeometry args={[0.03, glassH, 0.08]} />
+                          <PremiumWoodMat />
+                        </mesh>
+                      ))}
+                    </group>
+                  )}
                 </group>
               );
             })}
@@ -247,46 +347,50 @@ function PremiumGlassHouseScene({ plan }: { plan: Plan }) {
               return (
                 <group key={`N-${pi}`}>
                   <mesh castShadow position={[px, glassY, toZ(fp.maxY)]}>
-          <boxGeometry args={[mullionStep - 0.03, glassH, 0.025]} />
-          <PremiumGlassMat />
-        </mesh>
+                    <boxGeometry args={[mullionStep - 0.04, glassH, 0.03]} />
+                    <PremiumGlassMat />
+                  </mesh>
                   <mesh position={[toX(fp.minX + pi * mullionStep), glassY, toZ(fp.maxY)]}>
-          <boxGeometry args={[0.03, glassH, 0.04]} />
-          <PremiumSteelMat />
-        </mesh>
+                    <boxGeometry args={[0.04, glassH, 0.05]} />
+                    <PremiumGoldMat />
+                  </mesh>
                 </group>
               );
             })}
 
-            {/* East facade */}
+            {/* East facade — facing the water feature */}
             {Array.from({ length: nPanelsD }).map((_, pi) => {
               const pz = toZ(fp.minY + pi * mullionStep + mullionStep / 2);
               return (
                 <group key={`E-${pi}`}>
                   <mesh castShadow position={[toX(fp.maxX), glassY, pz]}>
-          <boxGeometry args={[0.025, glassH, mullionStep - 0.03]} />
-          <PremiumGlassMat />
-        </mesh>
+                    <boxGeometry args={[0.03, glassH, mullionStep - 0.04]} />
+                    <PremiumGlassMat />
+                  </mesh>
+                  <mesh position={[toX(fp.maxX), glassY, toZ(fp.minY + pi * mullionStep)]}>
+                    <boxGeometry args={[0.05, glassH, 0.04]} />
+                    <PremiumGoldMat />
+                  </mesh>
                 </group>
               );
             })}
 
-            {/* West facade */}
+            {/* West facade — heavy timber louvered shading */}
             {Array.from({ length: nPanelsD }).map((_, pi) => {
               const pz = toZ(fp.minY + pi * mullionStep + mullionStep / 2);
               return (
                 <group key={`W-${pi}`}>
                   <mesh castShadow position={[toX(fp.minX), glassY, pz]}>
-          <boxGeometry args={[0.025, glassH, mullionStep - 0.03]} />
-          <PremiumGlassMat />
-        </mesh>
-                  {/* Timber louvers for sun shading */}
-                  <group position={[toX(fp.minX) - 0.2, glassY, pz]}>
+                    <boxGeometry args={[0.03, glassH, mullionStep - 0.04]} />
+                    <PremiumGlassMat />
+                  </mesh>
+                  {/* Angled louvers to shade afternoon sun */}
+                  <group position={[toX(fp.minX) - 0.15, glassY, pz]}>
                     {Array.from({ length: 4 }).map((_, li) => (
-                      <mesh key={`lvr-w-${li}`} castShadow position={[0, 0, -mullionStep/2 + (li + 0.5) * (mullionStep/4)]} rotation={[0, -Math.PI / 6, 0]}>
-          <boxGeometry args={[0.25, glassH, 0.04]} />
-          <PremiumWoodMat />
-        </mesh>
+                      <mesh key={`slat-w-${li}`} castShadow position={[0, 0, -mullionStep/2 + (li + 0.5) * (mullionStep/4)]} rotation={[0, Math.PI / 4, 0]}>
+                        <boxGeometry args={[0.02, glassH, 0.18]} />
+                        <PremiumWoodMat />
+                      </mesh>
                     ))}
                   </group>
                 </group>
@@ -296,168 +400,106 @@ function PremiumGlassHouseScene({ plan }: { plan: Plan }) {
         );
       })}
 
-      {/* === FLOOR SLABS — polished marble each floor === */}
-      {floors.map((fl) => (
-        <mesh key={`slab-${fl}`} receiveShadow castShadow
-          position={[cx, fl * FLOOR_TO_FLOOR + 0.05, cz]}>
-          <boxGeometry args={[W, 0.15, D]} />
-          <PremiumMarbleMat />
+      {/* === 8. INTERIOR FURNITURE & DETAILS === */}
+      <group position={[cx + 1, 0.22, cz - 0.8]} rotation={[0, -Math.PI / 4, 0]}>
+        {/* Minimalist Sectional Sofa */}
+        <mesh castShadow position={[0, 0.1, 0]}>
+          <boxGeometry args={[2.0, 0.2, 0.85]} />
+          <meshStandardMaterial color="#ebebed" roughness={0.85} />
         </mesh>
-      ))}
-
-      {/* === ROOF SLAB & SKYLIGHT === */}
-      <group position={[cx, totalH + 0.075, cz]}>
-        <mesh castShadow receiveShadow>
-          <boxGeometry args={[W, 0.15, D]} />
-          <PremiumConcreteMat />
+        <mesh castShadow position={[0, 0.32, -0.36]}>
+          <boxGeometry args={[2.0, 0.3, 0.16]} />
+          <meshStandardMaterial color="#ebebed" roughness={0.85} />
         </mesh>
-        
-        {/* Large Architectural Skylight */}
-        <group position={[0, 0.25, 0]}>
-          <mesh castShadow>
-          <boxGeometry args={[W * 0.4, 0.4, D * 0.4]} />
-          <PremiumGlassMat />
+        <mesh castShadow position={[0.7, 0.1, 0.7]}>
+          <boxGeometry args={[0.6, 0.2, 1.1]} />
+          <meshStandardMaterial color="#ebebed" roughness={0.85} />
         </mesh>
-          <mesh position={[0, 0.2, 0]}>
-          <boxGeometry args={[W * 0.42, 0.06, D * 0.42]} />
-          <PremiumSteelMat />
+        {/* Teak coffee table */}
+        <mesh castShadow position={[-0.2, 0.08, 0.8]}>
+          <boxGeometry args={[0.9, 0.05, 0.5]} />
+          <PremiumWoodMat />
         </mesh>
-          {/* Internal steel mullions for skylight */}
-          <mesh position={[0, 0.1, 0]}>
-          <boxGeometry args={[W * 0.4, 0.04, 0.04]} />
-          <PremiumSteelMat />
-        </mesh>
-          <mesh position={[0, 0.1, 0]}>
-          <boxGeometry args={[0.04, 0.04, D * 0.4]} />
-          <PremiumSteelMat />
-        </mesh>
-        </group>
       </group>
 
-      {/* === INFINITY POOL on roof (if 2+ floors) === */}
-      {totalFloors >= 2 && (
-        <group position={[toX(fp.maxX) - 2, totalH + 0.25, cz]}>
-          {/* Pool basin */}
-          <mesh castShadow>
-            <boxGeometry args={[5, 0.5, Math.min(D - 2, 6)]} />
-            <meshStandardMaterial color="#1e4060" roughness={0.3} />
-          </mesh>
-          {/* Water surface */}
-          <mesh position={[0, 0.22, 0]}>
-            <boxGeometry args={[4.8, 0.04, Math.min(D - 2.2, 5.8)]} />
-            <meshPhysicalMaterial
-              color={PREMIUM_POOL}
-              roughness={0.02}
-              metalness={0.1}
-              transmission={0.5}
-              transparent
-              opacity={0.85}
-              envMapIntensity={1.5}
-            />
-          </mesh>
-          {/* Pool edge lighting (gold strip) */}
-          <mesh position={[0, 0.25, 0]}>
-          <boxGeometry args={[5.1, 0.05, Math.min(D - 1.8, 6.2)]} />
-          <PremiumGoldMat />
-        </mesh>
-        </group>
-      )}
-
-      {/* === STEEL FLOATING STAIRCASE === */}
+      {/* Floating internal gold-plated staircase */}
       {Array.from({ length: 14 }).map((_, i) => (
-        <group key={`step-${i}`}>
-          {/* Tread */}
-          <mesh castShadow
-            position={[
-              cx - W * 0.25 + i * 0.05,
-              i * (FLOOR_TO_FLOOR / 14) + 0.06,
-              cz - i * 0.22,
-            ]}>
-          <boxGeometry args={[1.2, 0.04, 0.28]} />
+        <mesh key={`stair-${i}`} castShadow
+          position={[cx - W * 0.25 + i * 0.08, 0.22 + i * 0.2, cz + D * 0.05]}>
+          <boxGeometry args={[0.9, 0.04, 0.28]} />
           <PremiumGoldMat />
         </mesh>
-          {/* Stringer */}
-          <mesh
-            position={[
-              cx - W * 0.25 + i * 0.05,
-              i * (FLOOR_TO_FLOOR / 14) - 0.15,
-              cz - i * 0.22,
-            ]}>
-          <boxGeometry args={[0.06, 0.3, 0.03]} />
-          <PremiumSteelMat />
-        </mesh>
-        </group>
       ))}
 
-      {/* === WATER FEATURE / REFLECTING POND at entry === */}
-      <group position={[cx, 0.15, toZ(fp.minY) + 4]}>
-        <mesh receiveShadow>
-          <boxGeometry args={[W * 0.5, 0.3, 3]} />
-          <meshStandardMaterial color="#1a3040" roughness={0.1} />
-        </mesh>
-        <mesh position={[0, 0.14, 0]}>
-          <boxGeometry args={[W * 0.5 - 0.1, 0.04, 2.9]} />
-          <meshPhysicalMaterial
-            color="#2a6090"
-            roughness={0.01}
-            transmission={0.6}
-            transparent
-            opacity={0.9}
-            envMapIntensity={2}
-          />
-        </mesh>
-      </group>
-
-      {/* === BOUNDARY — low glass + steel parapet === */}
-      {/* Front glass fence */}
-      <mesh position={[cx, 0.5, toZ(fp.minY) + 6]}>
-          <boxGeometry args={[W + 4, 1.0, 0.02]} />
-          <PremiumGlassMat />
-        </mesh>
-      {/* Top rail */}
-      <mesh position={[cx, 1.02, toZ(fp.minY) + 6]}>
-          <boxGeometry args={[W + 4, 0.04, 0.06]} />
-          <PremiumSteelMat />
-        </mesh>
-
-      {/* === LANDSCAPING — ornamental trees === */}
+      {/* === 9. ORGANIC LANDSCAPING (SCULPTURAL ACACIA TREES) === */}
       {([
-        [toX(fp.minX) - 2, 0, toZ(fp.minY) + 2],
-        [toX(fp.maxX) + 2, 0, toZ(fp.minY) + 2],
-        [toX(fp.minX) - 3, 0, cz],
-        [toX(fp.maxX) + 3, 0, cz],
-        [toX(fp.minX) - 2, 0, toZ(fp.maxY) - 2],
-        [toX(fp.maxX) + 2, 0, toZ(fp.maxY) - 2],
+        [toX(fp.minX) - 3, 0.1, toZ(fp.minY) + 1],
+        [toX(fp.maxX) + 4, 0.1, toZ(fp.minY) + 2],
+        [toX(fp.minX) - 4, 0.1, cz],
+        [toX(fp.maxX) + 4, 0.1, cz],
+        [toX(fp.minX) - 3, 0.1, toZ(fp.maxY) - 2],
+        [toX(fp.maxX) + 3, 0.1, toZ(fp.maxY) - 1],
       ] as [number, number, number][]).map(([tx, ty, tz], i) => (
         <group key={`tree-${i}`} position={[tx, ty, tz]}>
-          <mesh castShadow position={[0, 1.2, 0]}>
-            <cylinderGeometry args={[0.1, 0.15, 2.4, 8]} />
-            <meshStandardMaterial color="#4a3728" roughness={0.9} />
+          {/* Main trunk */}
+          <mesh castShadow position={[0, 1.0, 0]}>
+            <cylinderGeometry args={[0.08, 0.14, 2.0, 8]} />
+            <meshStandardMaterial color="#2d1f18" roughness={0.95} />
           </mesh>
-          <mesh castShadow position={[0, 3.2, 0]}>
-            <sphereGeometry args={[1.2, 12, 12]} />
-            <meshStandardMaterial color="#2d6a2d" roughness={0.8} />
+          {/* Branches */}
+          <mesh castShadow position={[0.3, 2.1, 0.2]} rotation={[0.3, 0, 0.4]}>
+            <cylinderGeometry args={[0.04, 0.07, 1.1, 6]} />
+            <meshStandardMaterial color="#2d1f18" roughness={0.95} />
           </mesh>
+          <mesh castShadow position={[-0.4, 2.2, -0.3]} rotation={[-0.4, 0, -0.5]}>
+            <cylinderGeometry args={[0.04, 0.07, 1.2, 6]} />
+            <meshStandardMaterial color="#2d1f18" roughness={0.95} />
+          </mesh>
+          {/* Layered Foliage Clusters */}
+          <mesh castShadow position={[0, 2.7, 0]}>
+            <dodecahedronGeometry args={[1.1, 1]} />
+            <meshStandardMaterial color="#274c20" roughness={0.85} />
+          </mesh>
+          <mesh castShadow position={[0.4, 2.8, 0.3]}>
+            <dodecahedronGeometry args={[0.75, 1]} />
+            <meshStandardMaterial color="#355e2d" roughness={0.8} />
+          </mesh>
+          <mesh castShadow position={[-0.5, 3.0, -0.4]}>
+            <dodecahedronGeometry args={[0.85, 1]} />
+            <meshStandardMaterial color="#1f3d19" roughness={0.9} />
+          </mesh>
+
+          {/* Landscape Uplight at tree base */}
+          <group position={[0, 0.02, 0.2]}>
+            <mesh>
+              <cylinderGeometry args={[0.04, 0.06, 0.1, 8]} />
+              <PremiumGoldMat />
+            </mesh>
+            <spotLight
+              position={[0, 0.08, 0]}
+              angle={Math.PI / 5}
+              penumbra={0.5}
+              intensity={4}
+              color="#ffe2a0"
+              distance={6}
+              castShadow
+            />
+          </group>
         </group>
       ))}
 
-      {/* === DRAMATIC ACCENT LIGHTING STRIPS (gold trim) === */}
+      {/* === 10. DRAMATIC ACCENT LIGHTING STRIPS === */}
       {floors.map((fl) => (
         <mesh key={`ledN-${fl}`}
-          position={[cx, fl * FLOOR_TO_FLOOR + FLOOR_TO_FLOOR - 0.02, toZ(fp.maxY) - 0.02]}>
-          <boxGeometry args={[W, 0.03, 0.03]} />
-          <meshStandardMaterial color="#ffd700" emissive="#ffd700" emissiveIntensity={2.0} />
+          position={[cx, fl * FLOOR_TO_FLOOR + FLOOR_TO_FLOOR + 0.1, toZ(fp.maxY) - 0.02]}>
+          <boxGeometry args={[W + 0.8, 0.02, 0.02]} />
+          <meshStandardMaterial color="#ffd700" emissive="#ffd700" emissiveIntensity={2.5} />
         </mesh>
       ))}
-
-      {/* === PARAPET CAP with gold trim === */}
-      <mesh position={[cx, totalH + 0.17, cz]}>
-          <boxGeometry args={[W + 0.1, 0.06, D + 0.1]} />
-          <PremiumGoldMat />
-        </mesh>
     </group>
   );
 }
+
 
 // ---- shared PBR materials (declared as render helpers so the look is consistent) ----
 // Tinted architectural glazing: low roughness + clearcoat read as real glass; a touch

@@ -1824,6 +1824,7 @@ def _build_plan(
     env: tuple[float, float, float, float],
     project_name: str,
     edits: Optional["EditOverrides"] = None,
+    variant: Optional["VariantProfile"] = None,
 ) -> Plan:
     rooms = [
         Room(
@@ -1832,7 +1833,7 @@ def _build_plan(
         )
         for p in placed
     ]
-    doors, windows = _make_openings(placed, env, edits)
+    doors, windows = _make_openings(placed, env, edits, variant)
     return Plan(
         project=Project(id="gen", name=project_name, created_at=None),
         plot=plot,
@@ -2705,7 +2706,7 @@ def _layout_floor(
                     continue
                 all_dropped = result.dropped + cov_dropped
                 ess_drop = sum(1 for d in all_dropped if prio.get(d, 0) >= ESS)
-                plan, vastu, code = _score_candidate(_build_plan(list(result.placed), plot, env, "floor"))
+                plan, vastu, code = _score_candidate(_build_plan(list(result.placed), plot, env, "floor", edits=None, variant=None))
                 kd_bad = 0 if _kitchen_dining_adjacent(result.placed) else 1
                 aspect_bad = _aspect_bad(result.placed)
                 worst_asp = _worst_aspect(result.placed)
@@ -2814,7 +2815,7 @@ def _generate_multifloor(
     name = project_name or (
         f"Generated {tier} G+{floors - 1} — {plot.facing.value}-facing ({plot.state.value})"
     )
-    plan = _build_plan(placed, plot, env, name, edits)
+    plan = _build_plan(placed, plot, env, name, edits, variant)
     site_meta = _add_site_utilization(plan, env, cars=(edits.parking_cars if edits else None))
     plan, vastu, code = _score_candidate(plan)
     cov_ratio = round(min(1.0, sum(p.area for p in g_placed) / footprint), 2) if footprint else 0.0
@@ -2940,7 +2941,7 @@ def generate_plan(
             _enforce_coverage(placed, env, plot_area, max_cov, {p.id: 10 for p in placed}, 5)
             _assert_no_overlap(placed)
             _assert_inside(placed, env)
-            plan = _build_plan(placed, plot, env, name, edits)
+            plan = _build_plan(placed, plot, env, name, edits, variant)
             plan, vastu, code = _score_candidate(plan)
             key = (code.summary.fail_count, -round(vastu.score))
             if best_studio is None or key < best_studio.score_key:
@@ -3070,7 +3071,7 @@ def generate_plan(
             all_dropped = result.dropped + cov_dropped
             _assert_no_overlap(result.placed)
             _assert_inside(result.placed, env)
-            plan = _build_plan(result.placed, plot, env, name, edits)
+            plan = _build_plan(result.placed, plot, env, name, edits, variant)
             plan, vastu, code = _score_candidate(plan)
             # Ranking (best = smallest): correctness first — never sacrifice an
             # essential room, then minimise code fails — then quality per the

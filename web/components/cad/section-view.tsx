@@ -54,11 +54,23 @@ export function SectionView({ plan, className }: { plan: Plan; className?: strin
             <pattern id="earth" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
               <line x1="0" y1="0" x2="0" y2="7" stroke="#9b8d77" strokeWidth="0.6" />
             </pattern>
+            <pattern id="concrete" width="10" height="10" patternUnits="userSpaceOnUse">
+              <path d="M 0 10 L 10 0 M -2 2 L 2 -2 M 8 12 L 12 8" stroke="#cbd5e1" strokeWidth="1" />
+              <circle cx="3" cy="7" r="0.8" fill="#cbd5e1" />
+              <circle cx="7" cy="3" r="1.2" fill="#cbd5e1" />
+            </pattern>
           </defs>
 
           {/* foundation footings under the two ends */}
           {[x0, x1].map((cx, i) => (
-            <rect key={i} x={cx - wallPx * 1.6} y={Y(-LEVELS.PLINTH)} width={wallPx * 3.2} height={Y(bottom) - Y(-LEVELS.PLINTH)} fill="url(#earth)" stroke={WALL} strokeWidth={1.2} />
+            <g key={i}>
+              <rect x={cx - wallPx * 1.6} y={Y(-LEVELS.PLINTH)} width={wallPx * 3.2} height={Y(bottom) - Y(-LEVELS.PLINTH)} fill="url(#earth)" stroke={WALL} strokeWidth={1.2} />
+              <text x={cx} y={Y(bottom) + 12} textAnchor="middle" fontSize={6} fill={INK} fontFamily="var(--font-mono), monospace">1.2M FOUNDATION</text>
+              {/* column section marker at ground */}
+              <rect x={cx - wallPx / 2} y={groundY - wallPx} width={wallPx} height={wallPx} fill="url(#concrete)" stroke={WALL} strokeWidth={1.5} />
+              <line x1={cx - wallPx / 2} y1={groundY - wallPx} x2={cx + wallPx / 2} y2={groundY} stroke={WALL} strokeWidth={0.8} />
+              <line x1={cx + wallPx / 2} y1={groundY - wallPx} x2={cx - wallPx / 2} y2={groundY} stroke={WALL} strokeWidth={0.8} />
+            </g>
           ))}
           {/* earth ground line */}
           <line x1={x0 - 28} y1={groundY} x2={x1 + 18} y2={groundY} stroke={INK} strokeWidth={2.6} />
@@ -70,10 +82,13 @@ export function SectionView({ plan, className }: { plan: Plan; className?: strin
           {m.floors.map((f) => {
             const ffl = f * LEVELS.FLOOR_TO_FLOOR;
             return (
-              <rect key={`s${f}`} x={x0 - 2} y={Y(ffl)} width={x1 - x0 + 4} height={LEVELS.SLAB_STRUCT * S} fill={SLAB} stroke={WALL} strokeWidth={1} />
+              <g key={`s${f}`}>
+                <rect x={x0 - 2} y={Y(ffl)} width={x1 - x0 + 4} height={LEVELS.SLAB_STRUCT * S} fill="url(#concrete)" stroke={WALL} strokeWidth={1.5} />
+                <rect x={x0 - 2} y={Y(ffl) - 2} width={x1 - x0 + 4} height={2} fill="#e2e8f0" stroke={WALL} strokeWidth={0.5} /> {/* floor finish */}
+              </g>
             );
           })}
-          <rect x={x0 - 2} y={Y(roof)} width={x1 - x0 + 4} height={LEVELS.SLAB_STRUCT * S} fill={SLAB} stroke={WALL} strokeWidth={1.2} />
+          <rect x={x0 - 2} y={Y(roof)} width={x1 - x0 + 4} height={LEVELS.SLAB_STRUCT * S} fill="url(#concrete)" stroke={WALL} strokeWidth={1.5} />
 
           {/* perimeter walls full height (poché) */}
           <rect x={x0 - wallPx} y={Y(top)} width={wallPx} height={groundY - Y(top)} fill={WALL} />
@@ -82,6 +97,31 @@ export function SectionView({ plan, className }: { plan: Plan; className?: strin
           <rect x={x0 - wallPx} y={Y(top)} width={wallPx} height={(top - roof) * S} fill={WALL} />
           <rect x={x1} y={Y(top)} width={wallPx} height={(top - roof) * S} fill={WALL} />
 
+          {/* interior partitions per floor (FFL..ceiling) */}
+          {m.cells.length > 0 && (() => {
+             const c = m.cells[Math.floor(m.cells.length / 2)];
+             const sx = X(c.u0) + 10;
+             const sy_base = Y(0) - 2;
+             const risers = 16;
+             const rH = (Y(0) - Y(LEVELS.FLOOR_TO_FLOOR)) / risers;
+             const rW = (X(c.u1) - X(c.u0) - 20) / risers;
+             if(rW > 0) {
+               const pts = [`${sx},${sy_base}`];
+               for(let i=1; i<=risers; i++) {
+                 pts.push(`${sx + (i-1)*rW},${sy_base - i*rH}`);
+                 pts.push(`${sx + i*rW},${sy_base - i*rH}`);
+               }
+               pts.push(`${sx + risers*rW},${sy_base}`);
+               return (
+                 <g>
+                   <polyline points={pts.join(" ")} fill="#f1f5f9" stroke={INK} strokeWidth={1} strokeLinejoin="round" />
+                   <text x={sx + 10} y={sy_base - 8} fontSize={6} fill={INK} transform={`rotate(-30 ${sx + 10} ${sy_base - 8})`}>UP {risers}R</text>
+                 </g>
+               );
+             }
+             return null;
+          })()}
+          
           {/* interior partitions per floor (FFL..ceiling) */}
           {partitions.map((p, i) => {
             const ffl = p.floor * LEVELS.FLOOR_TO_FLOOR;
@@ -94,9 +134,14 @@ export function SectionView({ plan, className }: { plan: Plan; className?: strin
             const cx = (X(c.u0) + X(c.u1)) / 2;
             const cy = Y(ffl + LEVELS.CEIL / 2);
             return (
-              <text key={i} x={cx} y={cy} textAnchor="middle" fontSize={9} fill="#1f2937" fontFamily="ui-sans-serif, system-ui">
-                {c.label}
-              </text>
+              <g key={i}>
+                <text x={cx} y={cy - 4} textAnchor="middle" fontSize={9} fontWeight="700" fill="#1f2937" fontFamily="ui-sans-serif, system-ui">
+                  {c.label}
+                </text>
+                <text x={cx} y={cy + 8} textAnchor="middle" fontSize={7} fill="#64748b" fontFamily="var(--font-mono), monospace">
+                  CH: 2.75m
+                </text>
+              </g>
             );
           })}
 

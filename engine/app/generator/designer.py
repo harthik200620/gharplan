@@ -2594,11 +2594,29 @@ def _upper_program(tier, env_w, env_d, min_habitable, min_toilet, vastu, variant
     # the upper living — the bedrooms are what the user asked to be large.
     prog: list[ProgramRoom] = [
         ProgramRoom("u_living", RoomType.living, u_living_target,
-                    z("living"), 8, min_area_floor=max(11.0, min_habitable)),
-        ProgramRoom("u_master", RoomType.master_bedroom, master_bed_min * 1.25 + master_bath_min,
-                    z("master_bedroom"), 10, attach_bath=True, bath_min_sqm=master_bath_min,
-                    bedroom_min_sqm=master_bed_min, bath_id="toilet_u_master"),
+                    z("living"), 8, min_area_floor=max(18.0, min_habitable),
+                    design_logic="Upper floor family living area, minimum 18 sqm."),
     ]
+    if variant and variant.multi_gen:
+        # Master is downstairs, so put a guest / rental master here
+        prog.append(
+            ProgramRoom("u_guest", RoomType.bedroom, master_bed_min * 1.25 + master_bath_min,
+                        z("bedroom"), 10, attach_bath=True, bath_min_sqm=master_bath_min,
+                        bedroom_min_sqm=master_bed_min, bath_id="toilet_u_guest",
+                        design_logic="Secondary master/guest suite for multi-generational living.")
+        )
+        prog.append(
+            ProgramRoom("u_study", RoomType.study, max(11.0, min_habitable),
+                        z("study"), 8, design_logic="Study/workspace on private upper floor.")
+        )
+    else:
+        prog.append(
+            ProgramRoom("u_master", RoomType.master_bedroom, master_bed_min * 1.25 + master_bath_min,
+                        z("master_bedroom"), 10, attach_bath=True, bath_min_sqm=master_bath_min,
+                        bedroom_min_sqm=master_bed_min, bath_id="toilet_u_master",
+                        design_logic="Primary master suite, minimum 14 sqm plus attached bath.")
+        )
+
     sec_specs = [("u_kids", RoomType.childrens_bedroom, "childrens_bedroom")]
     for i in range(2, upper_bedrooms):
         sec_specs.append((f"u_bedroom{i}", RoomType.bedroom, "bedroom"))
@@ -2606,12 +2624,13 @@ def _upper_program(tier, env_w, env_d, min_habitable, min_toilet, vastu, variant
         prog.append(
             ProgramRoom(rid, rtype, sec_bed_min * 1.2 + bath_min, z(zkey), 7,
                         attach_bath=True, bath_min_sqm=bath_min,
-                        bedroom_min_sqm=sec_bed_min, bath_id=f"toilet_{rid}")
+                        bedroom_min_sqm=sec_bed_min, bath_id=f"toilet_{rid}",
+                        design_logic="Secondary bedroom with attached bath.")
         )
     # Owner brief: no common WC upstairs either — the master and every bedroom are
     # ensuite, and the upper family living uses the nearest bedroom's attached bath.
     prog.append(
-        ProgramRoom("u_stair", RoomType.staircase, max(0.05 * env_area, 3.4), z("staircase"), 6)
+        ProgramRoom("u_stair", RoomType.staircase, max(0.05 * env_area, 3.4), z("staircase"), 6, design_logic="Vertical circulation core.")
     )
     return prog
 

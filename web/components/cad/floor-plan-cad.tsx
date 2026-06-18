@@ -88,6 +88,7 @@ export function FloorPlanCad({
   );
 
   const [vb, setVb] = React.useState(base);
+  const [vastuGrid, setVastuGrid] = React.useState(showVastuGrid);
   React.useEffect(() => setVb(base), [base]);
 
   const svgRef = React.useRef<SVGSVGElement>(null);
@@ -320,7 +321,7 @@ export function FloorPlanCad({
           })}
 
         {/* VASTU GRID */}
-        {showVastuGrid && (
+        {vastuGrid && (
           <g pointerEvents="none">
             {[1, 2].map((i) => (
               <line key={`v-${i}`} x1={0} y1={sy((D / 3) * i)} x2={W} y2={sy((D / 3) * i)} stroke="#6366f1" strokeWidth={0.8} strokeDasharray="4 4" opacity={0.4} />
@@ -419,6 +420,13 @@ export function FloorPlanCad({
             title="Fit"
           >
             <Maximize2 className="h-4 w-4" />
+          </button>
+          <div className="w-px h-4 bg-slate-300 mx-1" />
+          <button
+            onClick={() => setVastuGrid(v => !v)}
+            className={cn("px-2 h-7 rounded-md text-[11px] font-semibold transition-colors", vastuGrid ? "bg-indigo-100 text-indigo-700" : "text-slate-600 hover:bg-slate-100")}
+          >
+            VASTU
           </button>
         </div>
       )}

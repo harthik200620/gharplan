@@ -40,6 +40,42 @@ types in `packages/shared/src/plan.ts`.
 
 ---
 
+## Architecture Intelligence
+
+GharPlan is not just a layout generator—it approaches residential design with the logic of a 10-year experienced architect, integrating environmental, cultural, and practical constraints simultaneously.
+
+### 1. The 5 Design Variants
+The system supports five distinct architectural typologies, each with its own spatial logic and design narrative:
+- **VASTU_FIRST**: A deeply traditional plan rooted in the classical Vastu texts (Manasara and Mayamata). Adheres strictly to the 9x9 Vastu Purusha Mandala, ensuring perfect elemental alignment.
+- **CLIMATE_FIRST**: An aggressively climate-responsive design. Massing and fenestration are shaped by solar geometry and prevailing wind patterns to minimize mechanical cooling loads.
+- **COURTYARD**: The traditional South Indian tiled courtyard house (Nalukettu) adapted for modern living. The central void acts as the climate engine of the house, driving stack ventilation.
+- **MODERN_OPEN**: A fluid, structural-frame approach with boundary-less spatial transitions. Relies on large-format glazing and structural clarity to merge indoor and outdoor spaces.
+- **MULTI_GEN**: Designed for the complexities of the modern Indian joint family. Balances collective gathering spaces with absolute acoustic and visual privacy for individual family units.
+
+### 2. The Climate Zone System (NBC)
+Designs are tuned to the 5 National Building Code (NBC) climate zones of India:
+- **Hot-Dry**: Focuses on thermal mass and small, shaded fenestrations.
+- **Warm-Humid**: Maximizes cross-ventilation, deep overhangs, and breathable walls.
+- **Composite**: Balances shading for summer and thermal retention for winter.
+- **Cold / Temperate**: Focuses on solar heat gain and insulation.
+
+### 3. Classical Vastu Implementation
+Our Vastu engine doesn't just do basic checklist checks; it uses a strict Manasara-based approach:
+- Central Brahmasthan kept free of heavy columns and walls.
+- Mathematical mapping of the plot to determine exact elemental zones (Agni, Jal, Vayu).
+- Evaluates spatial allocation from the NE pooja to the SW master suite based on weight, height, and energy flow.
+
+### 4. The BOQ Geometry System
+Unlike standard CAD estimators, GharPlan generates its Bill of Quantities directly from the canonical Plan schema's geometry:
+- Extracts exact wall lengths, perimeters, and room areas to compute finish quantities (flooring, plaster, skirting, ceiling).
+- Automatically deducts doors/windows from masonry and plaster quantities based on precise 2D coordinates.
+- Maps generated geometry directly to a GST-aware rate database for localized costing.
+
+### 5. Architectural Approach
+The system replicates an expert architect's workflow by simultaneously holding multiple constraints in tension: Vastu rules, NBC code compliances (setbacks, FAR), spatial flow, structural load paths, and cost. It packages these into a professional client presentation, ensuring every output is not just structurally and legally feasible, but also beautiful and theoretically sound.
+
+---
+
 ## Quick start
 
 ### Engine (the runnable, tested core) — Python 3.11+

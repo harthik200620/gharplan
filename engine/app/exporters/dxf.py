@@ -29,6 +29,9 @@ from app.services.cad_geom import (
     place_openings,
     room_center,
 )
+from app.services.design_narrative_service import get_design_narrative
+from app.services.vastu_service import check_vastu
+from app.services.rules import get_vastu_rules
 from app.services.elevations import elevation_openings, roof_level, section_model
 from app.services.mep_model import build_mep_model
 
@@ -317,6 +320,50 @@ def _draw_mep(msp, doc, plan: Plan, floor: Optional[int], dx: float, dy: float):
 # --------------------------------------------------------------------------- #
 
 
+def _draw_general_notes(msp, doc, plan: Plan, dx: float, dy: float):
+    _ensure(doc, "GENERAL_NOTES", 7)
+    
+    bhk = len([r for r in plan.rooms if r.type.value == "Bedroom"])
+    narrative = get_design_narrative(plan.variant_id or "vastu", {"width": plan.plot.width_m}, "Composite", bhk)
+    vastu = check_vastu(plan, get_vastu_rules())
+    
+    lines = ["GENERAL NOTES"]
+    lines.append("")
+    lines.append("1. PROJECT INFO:")
+    lines.append(f"   Project: {plan.project.name}")
+    lines.append(f"   Plot: {plan.plot.width_m}x{plan.plot.depth_m}m ({plan.plot.facing.value})")
+    lines.append(f"   BHK: {bhk}")
+    lines.append("")
+    lines.append("2. DESIGN CONCEPT:")
+    lines.append(f"   {narrative['concept_title']}")
+    # wrap text simply by splitting, or just rely on MText width wrapping if supported?
+    # MText does not auto-wrap unless we set width, so we will just put it as a single line and let CAD users wrap,
+    # or manually wrap it loosely.
+    import textwrap
+    wrapped_concept = textwrap.wrap(narrative['concept_statement'], width=60)
+    for line in wrapped_concept:
+        lines.append(f"   {line}")
+    lines.append("")
+    lines.append("3. VASTU SUMMARY:")
+    lines.append(f"   Score: {vastu.score}/100 ({vastu.grade})")
+    wrapped_vastu = textwrap.wrap(narrative['vastu_approach'], width=60)
+    for line in wrapped_vastu:
+        lines.append(f"   {line}")
+    lines.append("")
+    lines.append("4. MATERIAL NOTES:")
+    wrapped_mat = textwrap.wrap(narrative['material_palette'], width=60)
+    for line in wrapped_mat:
+        lines.append(f"   {line}")
+    lines.append("")
+    lines.append("5. STANDARD DISCLAIMERS:")
+    wrapped_disc = textwrap.wrap(DISCLAIMER_EXPORT, width=60)
+    for line in wrapped_disc:
+        lines.append(f"   {line}")
+
+    body = _ascii("\\P".join(lines))
+    mt = msp.add_mtext(body, dxfattribs={"layer": "GENERAL_NOTES", "char_height": 0.22})
+    mt.set_location((dx, dy), attachment_point=7)  # 7 = top-left
+
 def _draw_schedules(msp, doc, plan: Plan, code: Optional[CodeReport], dx: float, dy: float):
     _ensure(doc, "SCHEDULE", 7)
     lines = ["DOOR & WINDOW SCHEDULE", "Mark  Type     Size WxH mm    Qty"]
@@ -387,6 +434,8 @@ def build_dxf(plan: Plan, code: Optional[CodeReport] = None) -> bytes:
 
     # --- schedules, to the right of the MEP overlay ---
     _draw_schedules(msp, doc, plan, code, mep_x + w + 4.0, d)
+    _draw_general_notes(msp, doc, plan, mep_x + w + 4.0, d - 10.0)
+
 
     stream = io.StringIO()
     doc.write(stream)

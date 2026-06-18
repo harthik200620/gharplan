@@ -14,7 +14,19 @@ import {
   useBounds,
 } from "@react-three/drei";
 import type { Plan as SharedPlan, Room, StructureReport } from "@gharplan/shared";
-type Plan = SharedPlan & { variant?: string; id?: string };
+type Plan = SharedPlan & { variantId?: string; variant?: string; id?: string };
+
+function getCleanVariant(variant?: string, plan?: Plan): string {
+  const vStr = variant || plan?.variantId || plan?.variant || '';
+  if (!vStr) return '';
+  const v = vStr.toLowerCase();
+  if (v === 'vastu' || v === 'vastu_first') return 'vastu';
+  if (v === 'courtyard') return 'courtyard';
+  if (v === 'climate' || v === 'climate_first') return 'climate';
+  if (v === 'modern' || v === 'modern_open') return 'modern';
+  if (v === 'multigen' || v === 'multi_gen') return 'multigen';
+  return v;
+}
 import {
   bounds,
   buildingFootprint,
@@ -138,7 +150,7 @@ function PremiumGlassHouseScene({ plan }: { plan: Plan }) {
   const toX = (px: number) => px - W / 2;
   const toZ = (py: number) => D / 2 - py;
 
-  const isTraditional = plan.variant === 'VASTU_FIRST' || plan.variant === 'COURTYARD';
+  const isTraditional = getCleanVariant(plan.variant) === 'vastu' || getCleanVariant(plan.variant) === 'courtyard';
   const totalH = floors.length * FLOOR_TO_FLOOR;
 
   return (
@@ -255,7 +267,7 @@ function PremiumGlassHouseScene({ plan }: { plan: Plan }) {
                           </mesh>
                         </group>
                       ) : (
-                        <Window3D part={g} W={W} D={D} />
+                        <Window3D part={g} W={W} D={D} variant={plan.variantId} />
                       )}
                     </group>
                   );
@@ -267,7 +279,7 @@ function PremiumGlassHouseScene({ plan }: { plan: Plan }) {
                 ))}
 
                 {/* Furniture */}
-                <Furniture3D room={room} W={W} D={D} isTopFloor={f === floors[floors.length - 1]} />
+                <Furniture3D room={room} W={W} D={D} isTopFloor={f === floors[floors.length - 1]} variant={plan.variantId} />
 
                 {/* Wooden pillars for balconies/porches */}
                 {isTraditional && (room.type === "sitout" || room.type === "balcony" || room.type === "entrance") && (
@@ -488,7 +500,7 @@ const TileMat = ({ color = TILE_WET }: { color?: string }) => (
 
 // Traditional and Modern Window shading Chajjas
 function Chajja3D({ part, variant, px, headY, pz, span }: { part: GlassPart; variant?: string; px: number; headY: number; pz: number; span: number }) {
-  const isTraditional = variant === 'VASTU_FIRST' || variant === 'COURTYARD';
+  const isTraditional = getCleanVariant(variant) === 'vastu' || getCleanVariant(variant) === 'courtyard';
   const outDir = part.horiz ? Math.sign(pz) || 1 : Math.sign(px) || 1;
   const hingeOff = WALL_T / 2;
   
@@ -1025,7 +1037,7 @@ function Furniture3D({ room, W, D, isTopFloor = false, variant }: { room: Room; 
   if (t === "parking") return <Car cx={cx} cz={cz} along={r.h >= r.w} />;
   
   // Traditional Courtyard Tulsi Vrindavan
-  if (t === "courtyard" && (variant === "VASTU_FIRST" || variant === "COURTYARD")) {
+  if (t === "courtyard" && (getCleanVariant(variant) === "vastu" || getCleanVariant(variant) === "courtyard")) {
     return (
       <group position={[cx, FLOOR_Y, cz]}>
         {/* Plinth Base */}
@@ -1075,7 +1087,7 @@ function Furniture3D({ room, W, D, isTopFloor = false, variant }: { room: Room; 
     const rad = Math.min(r.w, r.h);
     const scale = Math.min(Math.max(rad * 0.35, 0.6), 1.1);
     const trunkH = 1.2 * scale;
-    const isTraditional = variant === "VASTU_FIRST" || variant === "COURTYARD";
+    const isTraditional = getCleanVariant(variant) === "vastu" || getCleanVariant(variant) === "courtyard";
     return (
       <group position={[cx, FLOOR_Y, cz]}>
         <mesh castShadow position={[0, trunkH / 2, 0]}>
@@ -1430,7 +1442,7 @@ function FloorGroup({
   const exterior = floor === 0; // plinth + exterior render only on ground storey faces
   const allFloors = floorsOf(plan);
   const isTopFloor = floor === allFloors[allFloors.length - 1]; // no slab void above
-  const isTraditional = plan.variant === 'VASTU_FIRST' || plan.variant === 'COURTYARD';
+  const isTraditional = getCleanVariant(undefined, plan) === 'vastu' || getCleanVariant(undefined, plan) === 'courtyard';
   
   return (
     <group position={[0, floor * FLOOR_TO_FLOOR, 0]}>
@@ -1447,11 +1459,12 @@ function FloorGroup({
         // Dynamic style colors based on variant
         let wallCol = hasExt ? PLASTER_EXT : PLASTER_INT;
         if (hasExt) {
-          if (plan.variant === 'VASTU_FIRST' || plan.variant === 'COURTYARD') {
+          const cv = getCleanVariant(undefined, plan);
+          if (cv === 'vastu' || cv === 'courtyard') {
             wallCol = '#eedfc2'; // warm mud-plaster yellow
-          } else if (plan.variant === 'CLIMATE_FIRST' || plan.variant === 'MODERN_OPEN') {
+          } else if (cv === 'climate' || cv === 'modern') {
             wallCol = '#cbd5e1'; // raw concrete/slate grey
-          } else if (plan.variant === 'MULTI_GEN') {
+          } else if (cv === 'multigen') {
             wallCol = '#eae5db'; // warm off-white
           }
         }
@@ -1491,12 +1504,12 @@ function FloorGroup({
               </mesh>
             ))}
             {glass.map((g, i) => (
-              <Window3D key={`g${i}`} part={g} W={W} D={D} variant={plan.variant} />
+              <Window3D key={`g${i}`} part={g} W={W} D={D} variant={plan.variantId} />
             ))}
             {doors.map((d, i) => (
               <Door3D key={`d${i}`} part={d} W={W} D={D} />
             ))}
-            <Furniture3D room={room} W={W} D={D} isTopFloor={isTopFloor} variant={plan.variant} />
+            <Furniture3D room={room} W={W} D={D} isTopFloor={isTopFloor} variant={plan.variantId} />
             {isTraditional && (room.type === "sitout" || room.type === "balcony" || room.type === "entrance") && (
               <group position={[cx, 0, cz]}>
                 {[
@@ -1636,8 +1649,8 @@ function Slabs({ plan, W, D }: { plan: Plan; W: number; D: number }) {
   const roofY = topFloor * FLOOR_TO_FLOOR + WALL_H + SLAB / 2;
   const roofTop = roofY + SLAB / 2; // walking surface of the roof
   const concrete = CONCRETE;
-  const isVastuFirst = plan.variant === 'VASTU_FIRST';
-  const isCourtyard = plan.variant === 'COURTYARD';
+  const isVastuFirst = getCleanVariant(undefined, plan) === 'vastu';
+  const isCourtyard = getCleanVariant(undefined, plan) === 'courtyard';
   const bW = fp.w;
   const bD = fp.h;
 
@@ -1940,7 +1953,7 @@ function SiteLandscape({ plan, W, D }: { plan: Plan; W: number; D: number }) {
   });
 
   const trees = validTreeSpots.slice(0, treeCfg.count);
-  const isTraditional = plan.variant === 'VASTU_FIRST' || plan.variant === 'COURTYARD';
+  const isTraditional = getCleanVariant(undefined, plan) === 'vastu' || getCleanVariant(undefined, plan) === 'courtyard';
 
   // shrubs scale with the back-wall length (one roughly every ~1.8 m), capped.
   const nShrub = Math.max(2, Math.min(7, Math.round((D - 0.8) / 1.8)));

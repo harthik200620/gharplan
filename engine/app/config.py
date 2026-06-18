@@ -34,7 +34,10 @@ FEATURE_GENERATOR = os.getenv("FEATURE_GENERATOR", "true").lower() in {"1", "tru
 
 # CORS
 CORS_ORIGINS = [
-    o.strip() for o in os.getenv("ENGINE_CORS_ORIGINS", "http://localhost:3000").split(",") if o.strip()
+    o.strip() for o in os.getenv(
+        "ENGINE_CORS_ORIGINS",
+        "http://localhost:3000,http://localhost:3001,http://localhost:3002,http://localhost:3003"
+    ).split(",") if o.strip()
 ]
 
 # Legal framing strings — reused in UI copy and every export.

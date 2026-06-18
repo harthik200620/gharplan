@@ -53,24 +53,29 @@ const PLINTH_H = 0.45; // projecting base course at ground level
 const CHAJJA_PROJ = 0.5; // sunshade projection past the wall face
 const CHAJJA_T = 0.08; // sunshade slab thickness
 
-// material colours — warm Indian-render palette
-const PLASTER_EXT = "#efe7d6"; // warm off-white exterior render
-const PLASTER_INT = "#f5f2ec"; // lighter interior
-const PLINTH_COL = "#8d8175"; // darker plinth / base course
-const CONCRETE = "#d6d2c8"; // RCC slabs / chajja
-const FRAME_COL = "#5a5550"; // window/door frame (dark anodised)
-const GLASS_COL = "#9fc6d4"; // tinted glazing
-const DOOR_MAIN = "#6e4a2b"; // teak main door
-const DOOR_INT = "#c7b299"; // light internal door
-const TANK_COL = "#1f1f22"; // black Sintex tank
-const MARBLE_COL = "#ece5d8"; // polished living/dining marble
-const TEAK_COL = "#6e4a2b"; // warm teak joinery
-const SOFA_COL = "#7d8aa3"; // upholstered slate-blue
-const FABRIC_COL = "#cdbfa6"; // bed linen / soft furnishing
-const STEEL_COL = "#c7ccd2"; // appliances / steel
-const TILE_WET = "#d7dde3"; // glazed wet-room tile
-const GRASS_COL = "#7fae5a"; // lawn / planting
-const PATH_COL = "#cabfa6"; // paved approach
+// material colours — authentic warm Indian-render palette
+const PLASTER_EXT = "#f0e2c8"; // warm ochre exterior lime plaster
+const PLASTER_INT = "#f5f0e8"; // lighter interior cream
+const PLINTH_COL = "#7a6a58"; // laterite stone plinth
+const STONE_BAND = "#c4a882"; // sandstone accent banding
+const CONCRETE = "#d2cec4"; // RCC slabs / chajja
+const FRAME_COL = "#4a3828"; // dark teak window/door frame
+const GLASS_COL = "#a8d0e0"; // tinted glazing
+const DOOR_MAIN = "#5c3a1e"; // deep teak main door
+const DOOR_INT = "#b8996e"; // light internal door
+const TANK_COL = "#1a1a1e"; // black Sintex tank
+const MARBLE_COL = "#f0e8d8"; // polished living/dining marble
+const TEAK_COL = "#7a5038"; // warm teak joinery
+const SOFA_COL = "#6e7c9a"; // upholstered slate-blue
+const FABRIC_COL = "#d0bfa8"; // bed linen / soft furnishing
+const STEEL_COL = "#c8cdd4"; // appliances / steel
+const TILE_WET = "#d4dce4"; // glazed wet-room tile
+const GRASS_COL = "#5a9e3e"; // lush tropical lawn
+const PATH_COL = "#c8b894"; // paved approach
+const TERRA_COL = "#c85a38"; // Mangalore terracotta tile
+const TERRA_DARK = "#8a3820"; // deep terracotta ridge / shadow
+const LATERITE  = "#9e6440"; // laterite stone block courses
+const COLUMN_COL = "#e8d8b8"; // lime-washed column shaft
 
 // One-time low-power check: physical transmission + clearcoat is an expensive
 // per-fragment shader, so on machines with few logical cores (likely integrated
@@ -1541,99 +1546,181 @@ function FloorGroup({
       })}
       {/* darker projecting plinth course around the ground-floor footprint */}
       {exterior && <Plinth fp={fp} W={W} D={D} />}
+      {/* Sandstone band molding at lintel height — runs around the exterior footprint
+          This is a signature Indian architectural element (Chettinad / Kerala / North Indian) */}
+      {fp && (() => {
+        const fcx = fp.x + fp.w / 2 - W / 2;
+        const fcz = D / 2 - (fp.y + fp.h / 2);
+        const out = 0.06;
+        const bT = WALL_T + 2 * out; // band thickness (projects slightly)
+        const bH = 0.08; // band height
+        const bandY = FLOOR_Y + LINTEL + 0.04; // just above lintel
+        const bandBands: Box[] = [
+          { pos: [fcx, bandY, D / 2 - fp.y], size: [fp.w + 2 * out, bH, bT] },
+          { pos: [fcx, bandY, D / 2 - (fp.y + fp.h)], size: [fp.w + 2 * out, bH, bT] },
+          { pos: [fp.x - W / 2, bandY, fcz], size: [bT, bH, fp.h + 2 * out] },
+          { pos: [fp.x + fp.w - W / 2, bandY, fcz], size: [bT, bH, fp.h + 2 * out] },
+        ];
+        return (
+          <>
+            {bandBands.map((b, i) => (
+              <mesh key={`band${i}`} position={b.pos} castShadow receiveShadow>
+                <boxGeometry args={b.size} />
+                <meshStandardMaterial color={STONE_BAND} roughness={0.8} />
+              </mesh>
+            ))}
+          </>
+        );
+      })()}
     </group>
+
   );
 }
 
-/** Darker, slightly-projecting plinth/base course around the ground footprint. */
+/** Laterite stone plinth with a sandstone molding cap band — authentic South Indian base. */
 function Plinth({ fp, W, D }: { fp: Rect; W: number; D: number }) {
   const cx = fp.x + fp.w / 2 - W / 2;
   const cz = D / 2 - (fp.y + fp.h / 2);
-  const out = 0.06; // projection past the wall face
+  const out = 0.08; // projection past the wall face — wider for Indian plinth
   const t = WALL_T + 2 * out;
-  const yc = FLOOR_Y + PLINTH_H / 2;
-  const bands: Box[] = [
-    { pos: [cx, yc, D / 2 - fp.y], size: [fp.w + 2 * out, PLINTH_H, t] }, // S
-    { pos: [cx, yc, D / 2 - (fp.y + fp.h)], size: [fp.w + 2 * out, PLINTH_H, t] }, // N
-    { pos: [fp.x - W / 2, yc, cz], size: [t, PLINTH_H, fp.h + 2 * out] }, // W
-    { pos: [fp.x + fp.w - W / 2, yc, cz], size: [t, PLINTH_H, fp.h + 2 * out] }, // E
+  const baseCourse = PLINTH_H * 0.65;
+  const topMold = PLINTH_H * 0.35;
+  // Four sides of base laterite plinth
+  const baseBands: Box[] = [
+    { pos: [cx, FLOOR_Y + baseCourse / 2, D / 2 - fp.y], size: [fp.w + 2 * out, baseCourse, t] },
+    { pos: [cx, FLOOR_Y + baseCourse / 2, D / 2 - (fp.y + fp.h)], size: [fp.w + 2 * out, baseCourse, t] },
+    { pos: [fp.x - W / 2, FLOOR_Y + baseCourse / 2, cz], size: [t, baseCourse, fp.h + 2 * out] },
+    { pos: [fp.x + fp.w - W / 2, FLOOR_Y + baseCourse / 2, cz], size: [t, baseCourse, fp.h + 2 * out] },
+  ];
+  // Sandstone molding cap band above plinth
+  const capOut = out + 0.025;
+  const capT = WALL_T + 2 * capOut;
+  const capBands: Box[] = [
+    { pos: [cx, FLOOR_Y + baseCourse + topMold / 2, D / 2 - fp.y], size: [fp.w + 2 * capOut, topMold, capT] },
+    { pos: [cx, FLOOR_Y + baseCourse + topMold / 2, D / 2 - (fp.y + fp.h)], size: [fp.w + 2 * capOut, topMold, capT] },
+    { pos: [fp.x - W / 2, FLOOR_Y + baseCourse + topMold / 2, cz], size: [capT, topMold, fp.h + 2 * capOut] },
+    { pos: [fp.x + fp.w - W / 2, FLOOR_Y + baseCourse + topMold / 2, cz], size: [capT, topMold, fp.h + 2 * capOut] },
   ];
   return (
     <>
-      {bands.map((b, i) => (
-        <mesh key={i} position={b.pos} castShadow receiveShadow>
+      {baseBands.map((b, i) => (
+        <mesh key={`bp${i}`} position={b.pos} castShadow receiveShadow>
           <boxGeometry args={b.size} />
-          <meshPhysicalMaterial color={PLINTH_COL} roughness={0.8} metalness={0.1} clearcoat={0.2} />
+          <meshStandardMaterial color={LATERITE} roughness={0.95} />
+        </mesh>
+      ))}
+      {capBands.map((b, i) => (
+        <mesh key={`cp${i}`} position={b.pos} castShadow receiveShadow>
+          <boxGeometry args={b.size} />
+          <meshStandardMaterial color={STONE_BAND} roughness={0.8} />
         </mesh>
       ))}
     </>
   );
 }
 
-/** Projecting entrance porch: a canopy slab on two slim columns + a step,
- *  set just outside the entrance/sit-out room's exterior face. */
+/** Ornate Indian entrance porch with Kerala-style columns (turned wood/lime columns
+ *  with capital block and stepped base plinth), Mangalore tiled canopy, and
+ *  two broad granite steps. */
 function EntrancePorch({ plan, W, D }: { plan: Plan; W: number; D: number }) {
   const fp = buildingFootprint(plan, 0);
-  // prefer the explicit entrance; else the sit-out; else the front-most room
   const entry =
     plan.rooms.find((r) => r.type === "entrance" && (r.floor ?? 0) === 0) ??
     plan.rooms.find((r) => r.type === "sitout" && (r.floor ?? 0) === 0);
   if (!entry) return null;
   const r = bounds(entry.polygon);
   const ext = exteriorEdges(r, fp);
-  // pick the exterior face the porch projects from (prefer the road / +x East side)
   const face: Edge | null = ext.E ? "E" : ext.S ? "S" : ext.W ? "W" : ext.N ? "N" : null;
   if (!face) return null;
 
   const X = (px: number) => px - W / 2;
   const Z = (py: number) => D / 2 - py;
-  const proj = 1.4; // how far the canopy reaches out
-  const w = Math.min(face === "N" || face === "S" ? r.w : r.h, 2.6); // canopy width along the wall
-  const canopyY = FLOOR_Y + LINTEL + 0.15;
-  const colH = LINTEL + 0.1;
+  const proj = 1.8; // deeper porch projection
+  const w = Math.min(face === "N" || face === "S" ? r.w : r.h, 3.0);
+  const canopyY = FLOOR_Y + LINTEL + 0.3; // higher canopy
+  const colH = LINTEL + 0.25;
+  const along = face === "N" || face === "S";
 
-  // centre of the wall face, and the outward unit direction
   let wallCx: number, wallCz: number, dx = 0, dz = 0;
-  if (face === "S") {
-    wallCx = r.x + r.w / 2; wallCz = r.y; dz = -1;
-  } else if (face === "N") {
-    wallCx = r.x + r.w / 2; wallCz = r.y + r.h; dz = 1;
-  } else if (face === "W") {
-    wallCx = r.x; wallCz = r.y + r.h / 2; dx = -1;
-  } else {
-    wallCx = r.x + r.w; wallCz = r.y + r.h / 2; dx = 1;
-  }
-  // step "outward" in plan coords. Note Z(py) flips sign, so a +y move is -z in world.
-  const outAt = (d: number): [number, number] => [X(wallCx + dx * d), Z(wallCz + dz * d)];
-  const along = face === "N" || face === "S"; // canopy spans x
+  if (face === "S") { wallCx = r.x + r.w / 2; wallCz = r.y; dz = -1; }
+  else if (face === "N") { wallCx = r.x + r.w / 2; wallCz = r.y + r.h; dz = 1; }
+  else if (face === "W") { wallCx = r.x; wallCz = r.y + r.h / 2; dx = -1; }
+  else { wallCx = r.x + r.w; wallCz = r.y + r.h / 2; dx = 1; }
 
+  const outAt = (d: number): [number, number] => [X(wallCx + dx * d), Z(wallCz + dz * d)];
   const [slabX, slabZ] = outAt(proj / 2);
-  const [stepX, stepZ] = outAt(proj + 0.25);
-  const colInset = w / 2 - 0.18;
-  const [colCx, colCz] = outAt(proj - 0.1);
+  const [step1X, step1Z] = outAt(proj + 0.3);
+  const [step2X, step2Z] = outAt(proj + 0.6);
+  const colInset = w / 2 - 0.22;
+  const [colCx, colCz] = outAt(proj - 0.15);
+
+  // Column helper: ornate Kerala-style column with stepped base, shaft, neck, and capital
+  const OrnateColumn = ({ px, pz }: { px: number; pz: number }) => (
+    <group position={[px, FLOOR_Y, pz]}>
+      {/* Base pedestal (broad) */}
+      <mesh position={[0, 0.08, 0]} castShadow receiveShadow>
+        <boxGeometry args={[0.30, 0.16, 0.30]} />
+        <meshStandardMaterial color={STONE_BAND} roughness={0.85} />
+      </mesh>
+      {/* Base neck (slightly narrower) */}
+      <mesh position={[0, 0.21, 0]} castShadow>
+        <boxGeometry args={[0.24, 0.1, 0.24]} />
+        <meshStandardMaterial color={COLUMN_COL} roughness={0.8} />
+      </mesh>
+      {/* Shaft — octagonal for traditional look */}
+      <mesh position={[0, colH * 0.5 + 0.2, 0]} castShadow>
+        <cylinderGeometry args={[0.095, 0.115, colH - 0.4, 8]} />
+        <meshStandardMaterial color={COLUMN_COL} roughness={0.75} />
+      </mesh>
+      {/* Neck band */}
+      <mesh position={[0, colH - 0.05, 0]} castShadow>
+        <cylinderGeometry args={[0.105, 0.105, 0.06, 8]} />
+        <meshStandardMaterial color={STONE_BAND} roughness={0.8} />
+      </mesh>
+      {/* Capital block (abacus) */}
+      <mesh position={[0, colH + 0.04, 0]} castShadow>
+        <boxGeometry args={[0.28, 0.1, 0.28]} />
+        <meshStandardMaterial color={STONE_BAND} roughness={0.75} />
+      </mesh>
+      {/* Echinus (rounded cap under abacus) */}
+      <mesh position={[0, colH - 0.04, 0]} castShadow>
+        <cylinderGeometry args={[0.14, 0.095, 0.08, 8]} />
+        <meshStandardMaterial color={COLUMN_COL} roughness={0.75} />
+      </mesh>
+    </group>
+  );
 
   return (
     <group>
-      {/* canopy slab */}
+      {/* Tiled canopy slab with Mangalore tile color */}
       <mesh position={[slabX, canopyY, slabZ]} castShadow receiveShadow>
-        <boxGeometry args={along ? [w + 0.3, CHAJJA_T * 1.6, proj + 0.2] : [proj + 0.2, CHAJJA_T * 1.6, w + 0.3]} />
-        <meshStandardMaterial color={CONCRETE} roughness={0.95} />
+        <boxGeometry args={along ? [w + 0.5, CHAJJA_T * 2.5, proj + 0.3] : [proj + 0.3, CHAJJA_T * 2.5, w + 0.5]} />
+        <meshStandardMaterial color={TERRA_COL} roughness={0.88} />
       </mesh>
-      {/* two slim columns at the outer corners */}
+      {/* Ridge cap tile on canopy */}
+      <mesh position={along ? [slabX, canopyY + CHAJJA_T * 1.8, slabZ] : [slabX, canopyY + CHAJJA_T * 1.8, slabZ]} castShadow>
+        <boxGeometry args={along ? [w + 0.55, 0.06, 0.1] : [0.1, 0.06, w + 0.55]} />
+        <meshStandardMaterial color={TERRA_DARK} roughness={0.9} />
+      </mesh>
+      {/* Canopy fascia (projecting front band) */}
+      <mesh position={along ? [slabX, canopyY - CHAJJA_T * 0.5, outAt(proj)[1]] : [outAt(proj)[0], canopyY - CHAJJA_T * 0.5, slabZ]} castShadow>
+        <boxGeometry args={along ? [w + 0.5, CHAJJA_T * 1.5, 0.06] : [0.06, CHAJJA_T * 1.5, w + 0.5]} />
+        <meshStandardMaterial color={STONE_BAND} roughness={0.85} />
+      </mesh>
+      {/* Ornate columns at outer corners */}
       {[-colInset, colInset].map((off, i) => {
         const px = along ? colCx + off : colCx;
         const pz = along ? colCz : colCz + off;
-        return (
-          <mesh key={i} position={[px, FLOOR_Y + colH / 2, pz]} castShadow>
-            <boxGeometry args={[0.16, colH, 0.16]} />
-            <meshStandardMaterial color={PLASTER_EXT} roughness={0.9} />
-          </mesh>
-        );
+        return <OrnateColumn key={i} px={px} pz={pz} />;
       })}
-      {/* one entrance step */}
-      <mesh position={[stepX, FLOOR_Y + 0.09, stepZ]} castShadow receiveShadow>
-        <boxGeometry args={along ? [w * 0.8, 0.18, 0.5] : [0.5, 0.18, w * 0.8]} />
-        <meshStandardMaterial color="#bcae9a" roughness={0.95} />
+      {/* Two granite entrance steps (wide) */}
+      <mesh position={[step1X, FLOOR_Y + 0.10, step1Z]} castShadow receiveShadow>
+        <boxGeometry args={along ? [w * 0.9, 0.20, 0.55] : [0.55, 0.20, w * 0.9]} />
+        <meshStandardMaterial color="#a89880" roughness={0.9} />
+      </mesh>
+      <mesh position={[step2X, FLOOR_Y + 0.04, step2Z]} castShadow receiveShadow>
+        <boxGeometry args={along ? [w * 1.0, 0.12, 0.55] : [0.55, 0.12, w * 1.0]} />
+        <meshStandardMaterial color="#b8a890" roughness={0.88} />
       </mesh>
     </group>
   );
@@ -1651,6 +1738,7 @@ function Slabs({ plan, W, D }: { plan: Plan; W: number; D: number }) {
   const concrete = CONCRETE;
   const isVastuFirst = getCleanVariant(undefined, plan) === 'vastu';
   const isCourtyard = getCleanVariant(undefined, plan) === 'courtyard';
+  const isTraditional = isVastuFirst || isCourtyard;
   const bW = fp.w;
   const bD = fp.h;
 
@@ -1735,55 +1823,102 @@ function Slabs({ plan, W, D }: { plan: Plan; W: number; D: number }) {
           </group>
         );
       })}
-      {/* roof slab */}
+      {/* Roof slab — flat RCC base for all types */}
       <mesh position={[cx, roofY, cz]} receiveShadow castShadow>
         <boxGeometry args={[fp.w + 0.4, SLAB, fp.h + 0.4]} />
         <ConcreteMat color={concrete} />
       </mesh>
-      
-      {/* Traditional sloped tiled roof above the flat slab for Vastu-First */}
-      {isVastuFirst ? (
-        <group position={[cx, roofTop, cz]}>
-          <group rotation={[0, 0, 0.32]}>
-            <mesh castShadow receiveShadow position={[-bW * 0.27, 0.45, 0]}>
-              <boxGeometry args={[bW * 0.62, 0.08, bD + 1.2]} />
-              <meshStandardMaterial color="#b2533e" roughness={0.85} />
+
+      {/* ===== GABLED MANGALORE TILED ROOF for Vastu/Traditional ===== */}
+      {isTraditional ? (() => {
+        // Proper gable roof: ridge runs along the longer plan axis
+        const roofPitch = 0.42; // ~23 deg. Good for Indian rainfall.
+        const eaveOver = 0.8; // deep eave overhang (authentic South Indian)
+        const rW = bW + eaveOver * 2; // roof plan width (incl. overhang)
+        const rD = bD + eaveOver * 2; // roof plan depth
+        // Ridge height above roof slab top
+        const halfSpan = rW / 2;
+        const ridgeH = halfSpan * roofPitch;
+
+        // Using 4 sloped box panels to approximate a hip roof
+        // Two long sides (slopes along Z), two gable ends (hip triangles)
+        const slopeAngle = Math.atan2(ridgeH, halfSpan);
+        const slopeLen = Math.sqrt(halfSpan * halfSpan + ridgeH * ridgeH);
+        const tileThick = 0.07;
+
+        // Number of rafter lines (visual only)
+        const nRafters = Math.max(3, Math.round(rD / 1.4));
+
+        return (
+          <group position={[cx, roofTop, cz]}>
+            {/* West slope */}
+            <mesh castShadow receiveShadow
+              position={[-halfSpan / 2, ridgeH / 2, 0]}
+              rotation={[0, 0, slopeAngle]}>
+              <boxGeometry args={[slopeLen, tileThick, rD]} />
+              <meshStandardMaterial color={TERRA_COL} roughness={0.85} />
             </mesh>
-            {/* Wooden rafters support details */}
-            {Array.from({ length: Math.max(3, Math.round(bD / 1.5)) }).map((_, idx) => {
-              const rz = -bD / 2 + (idx * bD) / (Math.max(3, Math.round(bD / 1.5)) - 1 || 1);
+            {/* East slope */}
+            <mesh castShadow receiveShadow
+              position={[halfSpan / 2, ridgeH / 2, 0]}
+              rotation={[0, 0, -slopeAngle]}>
+              <boxGeometry args={[slopeLen, tileThick, rD]} />
+              <meshStandardMaterial color={TERRA_DARK} roughness={0.88} />
+            </mesh>
+            {/* Gable walls (filled triangular north + south ends) */}
+            {[-rD / 2, rD / 2].map((gz, gi) => (
+              <mesh key={gi} castShadow receiveShadow position={[0, ridgeH / 2, gz]}>
+                <boxGeometry args={[rW, ridgeH, tileThick]} />
+                <meshStandardMaterial color={PLASTER_EXT} roughness={0.9} />
+              </mesh>
+            ))}
+            {/* Ridge beam */}
+            <mesh position={[0, ridgeH + 0.04, 0]} castShadow>
+              <boxGeometry args={[0.14, 0.1, rD + 0.1]} />
+              <meshStandardMaterial color={TERRA_DARK} roughness={0.88} />
+            </mesh>
+            {/* Ridge cap tiles (rounded cylinder cap) */}
+            <mesh position={[0, ridgeH + 0.09, 0]} rotation={[Math.PI / 2, 0, 0]} castShadow>
+              <cylinderGeometry args={[0.08, 0.08, rD + 0.14, 8]} />
+              <meshStandardMaterial color={TERRA_DARK} roughness={0.9} />
+            </mesh>
+            {/* Eave fascia boards (North + South ends) */}
+            {[-rD / 2, rD / 2].map((gz, gi) => (
+              <mesh key={`ef${gi}`} castShadow position={[0, -0.05, gz]}>
+                <boxGeometry args={[rW + 0.12, 0.18, 0.06]} />
+                <TeakMat />
+              </mesh>
+            ))}
+            {/* Visible wooden rafters under eaves */}
+            {Array.from({ length: nRafters }).map((_, idx) => {
+              const rz = -rD / 2 + (idx + 0.5) * (rD / nRafters);
               return (
-                <mesh key={idx} position={[-bW * 0.27, 0.38, rz]} castShadow>
-                  <boxGeometry args={[bW * 0.6, 0.06, 0.08]} />
-                  <TeakMat />
-                </mesh>
+                <group key={idx}>
+                  {/* West rafter */}
+                  <mesh castShadow position={[-halfSpan / 2, ridgeH / 2 - 0.08, rz]} rotation={[0, 0, slopeAngle + 0.05]}>
+                    <boxGeometry args={[slopeLen - 0.1, 0.06, 0.08]} />
+                    <TeakMat />
+                  </mesh>
+                  {/* East rafter */}
+                  <mesh castShadow position={[halfSpan / 2, ridgeH / 2 - 0.08, rz]} rotation={[0, 0, -slopeAngle - 0.05]}>
+                    <boxGeometry args={[slopeLen - 0.1, 0.06, 0.08]} />
+                    <TeakMat />
+                  </mesh>
+                </group>
               );
             })}
+            {/* Eave bracket corbels at corners (decorative teak blocks) */}
+            {[[-rW / 2 + 0.2, -rD / 2], [rW / 2 - 0.2, -rD / 2],
+              [-rW / 2 + 0.2, rD / 2],  [rW / 2 - 0.2, rD / 2]].map(([bx, bz], bi) => (
+              <mesh key={`br${bi}`} castShadow position={[bx, -0.1, bz]}>
+                <boxGeometry args={[0.14, 0.22, 0.14]} />
+                <TeakMat />
+              </mesh>
+            ))}
           </group>
-          <group rotation={[0, 0, -0.32]}>
-            <mesh castShadow receiveShadow position={[bW * 0.27, 0.45, 0]}>
-              <boxGeometry args={[bW * 0.62, 0.08, bD + 1.2]} />
-              <meshStandardMaterial color="#b2533e" roughness={0.85} />
-            </mesh>
-            {/* Wooden rafters support details */}
-            {Array.from({ length: Math.max(3, Math.round(bD / 1.5)) }).map((_, idx) => {
-              const rz = -bD / 2 + (idx * bD) / (Math.max(3, Math.round(bD / 1.5)) - 1 || 1);
-              return (
-                <mesh key={idx} position={[bW * 0.27, 0.38, rz]} castShadow>
-                  <boxGeometry args={[bW * 0.6, 0.06, 0.08]} />
-                  <TeakMat />
-                </mesh>
-              );
-            })}
-          </group>
-          {/* Ridge cap tile */}
-          <mesh position={[0, 0.45 + bW * 0.088, 0]} rotation={[Math.PI / 2, 0, 0]} castShadow>
-            <cylinderGeometry args={[0.11, 0.11, bD + 1.28, 8]} />
-            <meshStandardMaterial color="#943422" roughness={0.9} />
-          </mesh>
-        </group>
-      ) : (
-        /* parapet ring for Courtyard (traditional jaali) and Modern/other (sleek concrete) */
+        );
+      })() : (
+        /* Modern flat roof with jaali (Courtyard) or sleek parapet (modern/other) */
         <group>
           <ParapetSide start={[cx - (fp.w + 0.4) / 2, D / 2 - fp.y]} end={[cx + (fp.w + 0.4) / 2, D / 2 - fp.y]} yBase={roofTop} isTraditional={isCourtyard} horiz={true} />
           <ParapetSide start={[cx - (fp.w + 0.4) / 2, D / 2 - (fp.y + fp.h)]} end={[cx + (fp.w + 0.4) / 2, D / 2 - (fp.y + fp.h)]} yBase={roofTop} isTraditional={isCourtyard} horiz={true} />
@@ -1816,174 +1951,337 @@ function Slabs({ plan, W, D }: { plan: Plan; W: number; D: number }) {
   );
 }
 
-/** Low compound wall around the plot perimeter with a gate gap on the East (road) side. */
+/** Ornate Indian compound wall with tall gate pillars capped with Kalash finials.
+ *  The wall has laterite base, plastered body, and stone coping.
+ *  Four corner pillars + two gate pillars. Gate on the East side. */
 function CompoundWall({ W, D }: { W: number; D: number }) {
-  const H = 1.0;
-  const T = 0.15;
-  const yc = H / 2;
+  const WallH = 1.2;
+  const T = 0.18;
   const hx = W / 2;
   const hz = D / 2;
-  const gate = Math.min(D * 0.35, 3.0); // gate opening width on the East run
-  const segLen = (D - gate) / 2; // each East-side segment beside the gate
+  const gate = Math.min(D * 0.32, 3.2); // gate opening
+  const segLen = (D - gate) / 2;
 
-  const segs: Box[] = [
-    // West run (full)
-    { pos: [-hx, yc, 0], size: [T, H, D] },
-    // North run (full)
-    { pos: [0, yc, -hz], size: [W, H, T] },
-    // South run (full)
-    { pos: [0, yc, hz], size: [W, H, T] },
-    // East run split into two, leaving the gate gap centred
-    { pos: [hx, yc, -(gate / 2 + segLen / 2)], size: [T, H, segLen] },
-    { pos: [hx, yc, gate / 2 + segLen / 2], size: [T, H, segLen] },
+  // Three-layer wall: laterite base + plaster body + sandstone coping
+  const baseH = 0.35; const bodyH = WallH - baseH - 0.08; const copingH = 0.08;
+
+  const wallSegs: [number, number, number, number][] = [
+    // [cx, cz, sx, sz] for each segment
+    [-hx, 0, T, D],                            // West full
+    [0, -hz, W, T],                            // North full
+    [0, hz, W, T],                             // South full
+    [hx, -(gate / 2 + segLen / 2), T, segLen], // East N half
+    [hx, gate / 2 + segLen / 2, T, segLen],    // East S half
   ];
 
-  // two gate pillars flanking the opening
-  const pillars: [number, number, number][] = [
-    [hx, H * 0.6, -gate / 2],
-    [hx, H * 0.6, gate / 2],
-  ];
+
+  // Ornate gate pillar with stepped body, cap, and Kalash finial
+  const GatePillar = ({ px, pz }: { px: number; pz: number }) => {
+    const PH = WallH * 1.9; // gate pillar much taller than wall
+    return (
+      <group position={[px, 0, pz]}>
+        {/* Laterite base block */}
+        <mesh position={[0, baseH / 2, 0]} castShadow receiveShadow>
+          <boxGeometry args={[0.52, baseH, 0.52]} />
+          <meshStandardMaterial color={LATERITE} roughness={0.95} />
+        </mesh>
+        {/* Sandstone transition molding */}
+        <mesh position={[0, baseH + 0.035, 0]} castShadow>
+          <boxGeometry args={[0.48, 0.07, 0.48]} />
+          <meshStandardMaterial color={STONE_BAND} roughness={0.8} />
+        </mesh>
+        {/* Plastered pillar body */}
+        <mesh position={[0, baseH + 0.07 + (PH - baseH - 0.07 - 0.18) / 2, 0]} castShadow receiveShadow>
+          <boxGeometry args={[0.42, PH - baseH - 0.07 - 0.18, 0.42]} />
+          <meshStandardMaterial color={PLASTER_EXT} roughness={0.88} />
+        </mesh>
+        {/* Cap molding block */}
+        <mesh position={[0, PH - 0.15, 0]} castShadow>
+          <boxGeometry args={[0.5, 0.12, 0.5]} />
+          <meshStandardMaterial color={STONE_BAND} roughness={0.8} />
+        </mesh>
+        {/* Pyramidal cap */}
+        <mesh position={[0, PH - 0.03, 0]} castShadow>
+          <coneGeometry args={[0.28, 0.18, 4]} />
+          <meshStandardMaterial color={TERRA_COL} roughness={0.88} />
+        </mesh>
+        {/* Kalash finial sphere */}
+        <mesh position={[0, PH + 0.12, 0]} castShadow>
+          <sphereGeometry args={[0.09, 12, 8]} />
+          <meshStandardMaterial color="#c8a040" metalness={0.6} roughness={0.3} />
+        </mesh>
+      </group>
+    );
+  };
+
+  // Corner post (shorter, simpler)
+  const CornerPost = ({ px, pz }: { px: number; pz: number }) => (
+    <group position={[px, 0, pz]}>
+      <mesh position={[0, WallH * 0.6, 0]} castShadow receiveShadow>
+        <boxGeometry args={[0.38, WallH * 1.2, 0.38]} />
+        <meshStandardMaterial color={PLINTH_COL} roughness={0.9} />
+      </mesh>
+      <mesh position={[0, WallH * 1.25, 0]} castShadow>
+        <boxGeometry args={[0.42, 0.08, 0.42]} />
+        <meshStandardMaterial color={STONE_BAND} roughness={0.8} />
+      </mesh>
+      <mesh position={[0, WallH * 1.32, 0]} castShadow>
+        <coneGeometry args={[0.22, 0.14, 4]} />
+        <meshStandardMaterial color={TERRA_COL} roughness={0.88} />
+      </mesh>
+    </group>
+  );
 
   return (
     <group>
-      {segs.map((s, i) => (
-        <mesh key={i} position={s.pos} castShadow receiveShadow>
-          <boxGeometry args={s.size} />
-          <meshStandardMaterial color={PLASTER_EXT} roughness={0.95} />
-        </mesh>
+      {wallSegs.map(([cx, cz, sx, sz], i) => (
+        <group key={i}>
+          {/* Laterite base */}
+          <mesh position={[cx, baseH / 2, cz]} castShadow receiveShadow>
+            <boxGeometry args={[sx, baseH, sz]} />
+            <meshStandardMaterial color={LATERITE} roughness={0.95} />
+          </mesh>
+          {/* Plastered body */}
+          <mesh position={[cx, baseH + bodyH / 2, cz]} castShadow receiveShadow>
+            <boxGeometry args={[sx, bodyH, sz]} />
+            <meshStandardMaterial color={PLASTER_EXT} roughness={0.9} />
+          </mesh>
+          {/* Stone coping cap */}
+          <mesh position={[cx, baseH + bodyH + copingH / 2, cz]} castShadow>
+            <boxGeometry args={[Number(sx) + 0.04, copingH, Number(sz) + 0.04]} />
+            <meshStandardMaterial color={STONE_BAND} roughness={0.8} />
+          </mesh>
+        </group>
       ))}
-      {pillars.map((p, i) => (
-        <mesh key={`p${i}`} position={p} castShadow receiveShadow>
-          <boxGeometry args={[0.3, H * 1.2, 0.3]} />
-          <meshStandardMaterial color={PLINTH_COL} roughness={0.95} />
-        </mesh>
-      ))}
+      {/* Gate pillars */}
+      <GatePillar px={hx} pz={-gate / 2} />
+      <GatePillar px={hx} pz={gate / 2} />
+      {/* Corner posts */}
+      <CornerPost px={-hx} pz={-hz} />
+      <CornerPost px={hx} pz={-hz} />
+      <CornerPost px={-hx} pz={hz} />
     </group>
   );
 }
 
-/** Trunk + layered canopy spheres — reads as a small ornamental tree. */
-/** Branching Acacia Tree — authentic Indian garden look with cylindrical trunk, angular branches, and dodecahedron leaf clusters. */
-function Tree({ x, z, scale = 1, isTraditional = false }: { x: number; z: number; scale?: number; isTraditional?: boolean }) {
-  const trunkH = 1.8 * scale;
-  const baseThickness = 0.08 * scale;
-  const topThickness = 0.12 * scale;
+/** Coconut Palm tree — tall, slender trunk with feathery fronds.
+ *  Authentic tropical South Indian garden element. */
+function CoconutPalm({ x, z, scale = 1 }: { x: number; z: number; scale?: number }) {
+  const trunkH = (4.5 + scale * 1.2) * scale;
+  const lean = 0.18 * scale; // slight lean
   return (
     <group position={[x, 0, z]}>
-      {/* Main Trunk */}
-      <mesh castShadow position={[0, trunkH / 2, 0]}>
-        <cylinderGeometry args={[baseThickness, topThickness, trunkH, 8]} />
-        <meshStandardMaterial color="#2d1f18" roughness={0.95} />
+      {/* Slender tapering trunk */}
+      <mesh castShadow position={[lean * 0.5, trunkH / 2, 0]}>
+        <cylinderGeometry args={[0.09 * scale, 0.16 * scale, trunkH, 8]} />
+        <meshStandardMaterial color="#7a5a30" roughness={0.95} />
       </mesh>
-      {/* Angular Branch A */}
-      <mesh castShadow position={[0.25 * scale, trunkH * 0.9, 0.15 * scale]} rotation={[0.3, 0, 0.4]}>
-        <cylinderGeometry args={[baseThickness * 0.5, topThickness * 0.6, trunkH * 0.55, 6]} />
-        <meshStandardMaterial color="#2d1f18" roughness={0.95} />
-      </mesh>
-      {/* Angular Branch B */}
-      <mesh castShadow position={[-0.3 * scale, trunkH * 0.95, -0.2 * scale]} rotation={[-0.4, 0, -0.5]}>
-        <cylinderGeometry args={[baseThickness * 0.5, topThickness * 0.6, trunkH * 0.6, 6]} />
-        <meshStandardMaterial color="#2d1f18" roughness={0.95} />
-      </mesh>
-      {/* Central leaf cluster */}
-      <mesh castShadow position={[0, trunkH * 1.25, 0]}>
-        <dodecahedronGeometry args={[0.9 * scale, 1]} />
-        <meshStandardMaterial color={isTraditional ? "#3b5c23" : "#224c1e"} roughness={0.85} />
-      </mesh>
-      {/* Side leaf cluster A */}
-      <mesh castShadow position={[0.3 * scale, trunkH * 1.3, 0.25 * scale]}>
-        <dodecahedronGeometry args={[0.65 * scale, 1]} />
-        <meshStandardMaterial color={isTraditional ? "#4a7431" : "#305f28"} roughness={0.8} />
-      </mesh>
-      {/* Side leaf cluster B */}
-      <mesh castShadow position={[-0.4 * scale, trunkH * 1.4, -0.3 * scale]}>
-        <dodecahedronGeometry args={[0.75 * scale, 1]} />
-        <meshStandardMaterial color={isTraditional ? "#2b4618" : "#1a3915"} roughness={0.9} />
-      </mesh>
+      {/* Ring scars on trunk (characteristic of palms) */}
+      {Array.from({ length: 6 }).map((_, i) => (
+        <mesh key={i} castShadow position={[lean * (i / 6), (trunkH * (0.3 + i * 0.1)), 0]}>
+          <torusGeometry args={[0.115 * scale, 0.018 * scale, 6, 12]} />
+          <meshStandardMaterial color="#5a4020" roughness={0.98} />
+        </mesh>
+      ))}
+      {/* Frond crown — 8 arching fronds */}
+      {Array.from({ length: 8 }).map((_, i) => {
+        const angle = (i / 8) * Math.PI * 2;
+        const ax = Math.cos(angle) * 0.9 * scale;
+        const az = Math.sin(angle) * 0.9 * scale;
+        const tilt = 0.45 + Math.abs(Math.sin(angle)) * 0.2;
+        return (
+          <group key={i} position={[lean, trunkH, 0]} rotation={[tilt, angle, 0]}>
+            <mesh castShadow position={[0, 0.8 * scale, 0]}>
+              <boxGeometry args={[0.06 * scale, 1.6 * scale, 0.04 * scale]} />
+              <meshStandardMaterial color="#3a7020" roughness={0.9} />
+            </mesh>
+            {/* Leaflets on each side of frond */}
+            {[-1, 1].map((side) => (
+              <mesh key={side} castShadow position={[side * 0.18 * scale, 0.9 * scale, 0]} rotation={[0, 0, side * 0.5]}>
+                <boxGeometry args={[0.22 * scale, 1.2 * scale, 0.015 * scale]} />
+                <meshStandardMaterial color="#4a8a28" roughness={0.92} />
+              </mesh>
+            ))}
+          </group>
+        );
+      })}
+      {/* Coconut cluster */}
+      {[0, 1.0, 2.1].map((angle, i) => (
+        <mesh key={i} castShadow position={[lean + Math.cos(angle) * 0.15 * scale, trunkH - 0.3, Math.sin(angle) * 0.15 * scale]}>
+          <sphereGeometry args={[0.18 * scale, 8, 6]} />
+          <meshStandardMaterial color="#5a7830" roughness={0.95} />
+        </mesh>
+      ))}
     </group>
   );
 }
 
-/** Site/landscaping: a paved approach path from the gate to the entrance, lawn
- *  inside the compound, low planting along the wall, and a few corner trees.
- *  Everything is procedural so it always renders offline. */
+/** Mango tree — broad spreading canopy, very common in Indian gardens. */
+function MangoTree({ x, z, scale = 1, isTraditional = false }: { x: number; z: number; scale?: number; isTraditional?: boolean }) {
+  const trunkH = 1.6 * scale;
+  return (
+    <group position={[x, 0, z]}>
+      {/* Short stout trunk */}
+      <mesh castShadow position={[0, trunkH / 2, 0]}>
+        <cylinderGeometry args={[0.14 * scale, 0.20 * scale, trunkH, 8]} />
+        <meshStandardMaterial color="#3a2510" roughness={0.95} />
+      </mesh>
+      {/* Three main branches */}
+      {[[0.35, 0.3, 0.4], [-0.3, 0.3, -0.3], [0.1, 0.4, -0.35]].map(([bx, by, bz], i) => (
+        <mesh key={i} castShadow position={[bx * scale, trunkH + by * scale, bz * scale]} rotation={[by * 0.6, i * 1.2, bx * 0.5]}>
+          <cylinderGeometry args={[0.06 * scale, 0.09 * scale, 1.0 * scale, 6]} />
+          <meshStandardMaterial color="#3a2510" roughness={0.95} />
+        </mesh>
+      ))}
+      {/* Large broad canopy — multiple overlapping spheres */}
+      <mesh castShadow position={[0, trunkH + 1.3 * scale, 0]}>
+        <sphereGeometry args={[1.2 * scale, 8, 6]} />
+        <meshStandardMaterial color={isTraditional ? "#3a6018" : "#285a12"} roughness={0.88} />
+      </mesh>
+      <mesh castShadow position={[0.5 * scale, trunkH + 1.4 * scale, 0.3 * scale]}>
+        <sphereGeometry args={[0.85 * scale, 8, 6]} />
+        <meshStandardMaterial color={isTraditional ? "#4a7828" : "#366820"} roughness={0.9} />
+      </mesh>
+      <mesh castShadow position={[-0.5 * scale, trunkH + 1.35 * scale, -0.4 * scale]}>
+        <sphereGeometry args={[0.9 * scale, 8, 6]} />
+        <meshStandardMaterial color={isTraditional ? "#2a5010" : "#1e4a0c"} roughness={0.92} />
+      </mesh>
+      {/* Hanging mango fruits (yellow-green) */}
+      {[[0.3, -0.1, 0.2], [-0.2, -0.2, -0.3], [0.0, -0.1, -0.2]].map(([fx, fy, fz], i) => (
+        <mesh key={i} castShadow position={[fx * scale, trunkH + 1.0 * scale + fy * scale, fz * scale]}>
+          <sphereGeometry args={[0.06 * scale, 6, 5]} />
+          <meshStandardMaterial color="#c8b820" roughness={0.7} />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
+/** Legacy alias — used in garden/courtyard furniture renderer. */
+function Tree({ x, z, scale = 1, isTraditional = false }: { x: number; z: number; scale?: number; isTraditional?: boolean }) {
+  return <MangoTree x={x} z={z} scale={scale} isTraditional={isTraditional} />;
+}
+
+/** Site/landscaping: a paved approach path from the gate to the entrance, rich tropical
+ *  lawn inside the compound, flowering shrubs along the walls, coconut palms + mango
+ *  trees in appropriate spots. Procedural so it always renders offline. */
 function SiteLandscape({ plan, W, D }: { plan: Plan; W: number; D: number }) {
   const fp = footprint(plan.rooms);
   const hx = W / 2;
   const hz = D / 2;
-  // lawn fills the plot inside the compound, just above the yard slab
-  // approach path: a paved strip from the East gate toward the building front
-  const fpEast = fp ? fp.x + fp.w : W * 0.7; // building's East face (plan-x)
-  const pathPlanX0 = fpEast; // from building face
-  const pathPlanX1 = W; // to the East boundary (gate)
+  const fpEast = fp ? fp.x + fp.w : W * 0.7;
+  const pathPlanX0 = fpEast;
+  const pathPlanX1 = W;
   const pathCx = (pathPlanX0 + pathPlanX1) / 2 - hx;
   const pathLen = Math.max(pathPlanX1 - pathPlanX0, 0.5);
 
-  // Greenery scaled to plot area so it isn't out of proportion on small plots:
   const area = W * D;
-  const treeCfg =
-    area < 110
-      ? { count: Math.min(2, Math.max(1, Math.round(area / 70))), scale: 0.7 }
-      : area <= 300
-        ? { count: area < 200 ? 3 : 4, scale: 1.0 }
-        : { count: 5, scale: 1.35 };
+  // Coconut palms in corners and sides
+  const palmScale = area < 150 ? 0.65 : area < 300 ? 0.85 : 1.0;
+  // Mango trees for the back/sides
+  const mangoScale = area < 150 ? 0.7 : area < 300 ? 0.9 : 1.1;
 
-  // candidate spots along the back/side strips (in world coords)
-  const treeSpots: [number, number][] = [
-    [-hx + 0.9, -hz + 1.0],
-    [-hx + 0.9, hz - 1.0],
-    [hx - 1.1, -hz + 1.1],
-    [-hx + 0.9, 0],
-    [hx - 1.1, hz - 1.1],
-    [0, -hz + 1.0],
-    [0, hz - 1.0],
-    [-hx + 0.9, hz / 2],
-    [hx - 1.1, -hz / 2],
-  ];
-
-  // Filter out tree spots that collide with the building footprint (with a 1.5m buffer)
-  const validTreeSpots = treeSpots.filter(([tx, tz]) => {
-    if (!fp) return true;
-    const tpx = tx + W / 2;
-    const tpy = D / 2 - tz;
-    const collisionBuffer = 1.5;
-    const inX = tpx >= fp.x - collisionBuffer && tpx <= fp.x + fp.w + collisionBuffer;
-    const inY = tpy >= fp.y - collisionBuffer && tpy <= fp.y + fp.h + collisionBuffer;
-    return !(inX && inY);
-  });
-
-  const trees = validTreeSpots.slice(0, treeCfg.count);
   const isTraditional = getCleanVariant(undefined, plan) === 'vastu' || getCleanVariant(undefined, plan) === 'courtyard';
 
-  // shrubs scale with the back-wall length (one roughly every ~1.8 m), capped.
-  const nShrub = Math.max(2, Math.min(7, Math.round((D - 0.8) / 1.8)));
-  const plantZs = Array.from({ length: nShrub }).map(
-    (_, i) => -hz + 0.4 + ((i + 0.5) * (D - 0.8)) / nShrub,
+  // Tree spots (world coords). Coconut palms at front/corner; mango at back.
+  const treeData: { type: 'coconut' | 'mango'; x: number; z: number }[] = [
+    { type: 'coconut', x: -hx + 1.0, z: -hz + 1.2 },
+    { type: 'coconut', x: -hx + 1.0, z:  hz - 1.2 },
+    { type: 'mango',   x: -hx + 1.2, z:  0 },
+    { type: 'mango',   x:  0,         z: -hz + 1.2 },
+    { type: 'coconut', x:  0,         z:  hz - 1.2 },
+    { type: 'mango',   x: -hx + 1.2, z: -hz / 2 },
+    { type: 'coconut', x: -hx + 1.0, z:  hz / 2 },
+  ];
+  const maxTrees = area < 110 ? 2 : area < 200 ? 3 : area < 350 ? 4 : 6;
+
+  // Filter out tree spots that collide with the building footprint (with a buffer)
+  const validTrees = treeData.filter(({ x, z }) => {
+    if (!fp) return true;
+    const tpx = x + W / 2;
+    const tpy = D / 2 - z;
+    const buf = 2.0;
+    const inX = tpx >= fp.x - buf && tpx <= fp.x + fp.w + buf;
+    const inY = tpy >= fp.y - buf && tpy <= fp.y + fp.h + buf;
+    return !(inX && inY);
+  }).slice(0, maxTrees);
+
+  // Flowering shrub Z positions along the West wall
+  const nShrub = Math.max(2, Math.min(8, Math.round((D - 0.8) / 1.5)));
+  const shrubZs = Array.from({ length: nShrub }).map(
+    (_, i) => -hz + 0.5 + ((i + 0.5) * (D - 1.0)) / nShrub,
   );
+  // Also along North wall
+  const nShrubN = Math.max(1, Math.min(5, Math.round((W - 0.8) / 2.0)));
+  const shrubNXs = Array.from({ length: nShrubN }).map(
+    (_, i) => -hx + 0.5 + ((i + 0.5) * (W - 1.0)) / nShrubN,
+  );
+
+  // Paver pattern for approach path: alternating lighter/darker blocks
+  const nPavers = Math.max(3, Math.round(pathLen / 0.55));
+  const paverW = pathLen / nPavers;
+  const pathWidth = Math.min(D * 0.22, 2.2);
 
   return (
     <group>
-      {/* lawn */}
+      {/* Rich tropical lawn — slightly textured dark green */}
       <mesh position={[0, 0.0, 0]} receiveShadow>
         <boxGeometry args={[W - 0.1, 0.04, D - 0.1]} />
         <meshStandardMaterial color={GRASS_COL} roughness={1} />
       </mesh>
-      {/* paved approach path to the entrance */}
-      <mesh position={[pathCx, 0.03, 0]} receiveShadow>
-        <boxGeometry args={[pathLen, 0.06, Math.min(D * 0.22, 2.0)]} />
-        <meshPhysicalMaterial color={PATH_COL} roughness={0.7} metalness={0} clearcoat={0.2} />
+      {/* Paved approach path with individual pavers */}
+      <mesh position={[pathCx, 0.025, 0]} receiveShadow>
+        <boxGeometry args={[pathLen, 0.05, pathWidth]} />
+        <meshStandardMaterial color="#c4b090" roughness={0.85} />
       </mesh>
-      {/* trees scaled + counted to the plot area, filtered for collisions */}
-      {trees.map(([tx, tz], i) => (
-        <Tree key={i} x={tx} z={tz} scale={treeCfg.scale * (i % 2 ? 0.9 : 1)} isTraditional={isTraditional} />
-      ))}
-      {/* low shrubs along the West wall */}
-      {plantZs.map((z, i) => (
-        <mesh key={i} position={[-hx + 0.4, 0.22, z]} castShadow receiveShadow>
-          <sphereGeometry args={[0.26, 10, 8]} />
-          <meshStandardMaterial color="#5b8f38" roughness={1} />
+      {Array.from({ length: nPavers }).map((_, i) => (
+        <mesh key={`pv${i}`} position={[pathCx - pathLen / 2 + paverW * (i + 0.5), 0.03, 0]} receiveShadow>
+          <boxGeometry args={[paverW - 0.04, 0.04, pathWidth - 0.1]} />
+          <meshStandardMaterial color={i % 2 === 0 ? "#d4c8a8" : "#b8a880"} roughness={0.88} />
         </mesh>
       ))}
+      {/* Trees: coconut palms + mango */}
+      {validTrees.map(({ type, x, z }, i) =>
+        type === 'coconut'
+          ? <CoconutPalm key={i} x={x} z={z} scale={palmScale * (i % 2 ? 0.88 : 1)} />
+          : <MangoTree   key={i} x={x} z={z} scale={mangoScale * (i % 2 ? 0.92 : 1)} isTraditional={isTraditional} />
+      )}
+      {/* Flowering shrubs along West wall — bouganvillea / hibiscus look */}
+      {shrubZs.map((z, i) => (
+        <group key={`sw${i}`} position={[-hx + 0.45, 0, z]}>
+          <mesh position={[0, 0.28, 0]} castShadow receiveShadow>
+            <sphereGeometry args={[0.28, 8, 6]} />
+            <meshStandardMaterial color="#5a8f30" roughness={0.95} />
+          </mesh>
+          {/* Flower clusters — alternate pink / white / red */}
+          {[0, 1, 2].map((fi) => (
+            <mesh key={fi} position={[Math.cos(fi * 2.1) * 0.18, 0.38, Math.sin(fi * 2.1) * 0.18]} castShadow>
+              <sphereGeometry args={[0.10, 6, 5]} />
+              <meshStandardMaterial color={["#e04878", "#f0d060", "#e83030"][fi % 3]} roughness={0.9} />
+            </mesh>
+          ))}
+        </group>
+      ))}
+      {/* Low shrubs along North wall */}
+      {shrubNXs.map((x, i) => (
+        <mesh key={`sn${i}`} position={[x, 0.22, -hz + 0.45]} castShadow receiveShadow>
+          <sphereGeometry args={[0.24, 8, 6]} />
+          <meshStandardMaterial color="#4a8028" roughness={0.95} />
+        </mesh>
+      ))}
+      {/* Small water feature/kolam near entrance */}
+      {fp && (
+        <group position={[pathCx + pathLen * 0.3, 0, 0]}>
+          <mesh position={[0, 0.04, 0]} receiveShadow>
+            <cylinderGeometry args={[0.5, 0.55, 0.08, 12]} />
+            <meshStandardMaterial color={STONE_BAND} roughness={0.85} />
+          </mesh>
+          <mesh position={[0, 0.07, 0]}>
+            <cylinderGeometry args={[0.42, 0.42, 0.02, 12]} />
+            <meshPhysicalMaterial color="#1a90c8" roughness={0.08} transmission={0.85} transparent opacity={0.8} />
+          </mesh>
+        </group>
+      )}
     </group>
   );
 }
@@ -2169,33 +2467,37 @@ function Scene({ plan, structure, mepMode, finishTier }: { plan: Plan; structure
           <pointLight position={[0, 0.5, 0]} intensity={0.8} color="#ffd080" distance={W * 3} decay={2} />
         </>
       ) : (
+        // Standard/Basic — warm Indian midday sun + warm hemisphere
         <>
-          <hemisphereLight args={["#fdf6e8", "#b8bdc8", 0.45]} />
-          <ambientLight intensity={0.18} />
+          {/* Warm sky above + warm earth below — authentic Indian sun quality */}
+          <hemisphereLight args={["#fdf6e8", "#c4a878", 0.52]} />
+          <ambientLight intensity={0.22} color="#ffe8c0" />
           <directionalLight
-            position={[W * 1.5, 12, -D * 0.8]}
-            intensity={2.2}
-            color="#ffd7a0"
+            position={[W * 1.5, 14, -D * 0.5]}
+            intensity={2.6}
+            color="#ffcc80"
             castShadow
             shadow-mapSize-width={2048}
             shadow-mapSize-height={2048}
-            shadow-camera-left={-W}
-            shadow-camera-right={W}
-            shadow-camera-top={D}
-            shadow-camera-bottom={-D}
+            shadow-camera-left={-W * 1.4}
+            shadow-camera-right={W * 1.4}
+            shadow-camera-top={D * 1.4}
+            shadow-camera-bottom={-D * 1.4}
             shadow-camera-near={0.5}
-            shadow-camera-far={80}
+            shadow-camera-far={90}
             shadow-bias={-0.0004}
             shadow-normalBias={0.02}
           />
+          {/* Warm fill from the front-left (simulates south-facing scatter) */}
+          <directionalLight position={[-W * 0.8, 6, D * 0.6]} intensity={0.5} color="#ffecd8" />
         </>
       )}
 
-      {/* earth slab under the lawn (kept thin; lawn sits just above it) */}
+      {/* earth slab under the lawn — warm Indian soil color */}
       {!isPremium && (
         <mesh position={[0, -0.05, 0]} receiveShadow>
           <boxGeometry args={[W + 0.3, 0.12, D + 0.3]} />
-          <meshStandardMaterial color="#b7a98f" roughness={1} />
+          <meshStandardMaterial color="#c8a87a" roughness={1} />
         </mesh>
       )}
       {!isPremium && <SiteLandscape plan={plan} W={W} D={D} />}
@@ -2256,7 +2558,7 @@ export function FloorPlan3D({ plan, structure, className, mepMode: controlledMep
         dpr={[1, 1.8]}
         camera={{ position: [W * 0.85, dist * 1.0 + h, D * 1.2 + h * 0.4], fov: 38, near: 0.1, far: 240 }}
         gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.15 }}
-        style={{ background: finishTier === 'premium' ? "linear-gradient(180deg,#0a0a1a 0%,#1a1a2e 40%,#2d1a0a 100%)" : "linear-gradient(180deg,#cfe0f2 0%,#e8edf3 100%)" }}
+        style={{ background: finishTier === 'premium' ? "linear-gradient(180deg,#0a0a1a 0%,#1a1a2e 40%,#2d1a0a 100%)" : "linear-gradient(180deg,#5b8ec4 0%,#88b8d8 35%,#d8c090 70%,#c8a870 100%)" }}
       >
         <Scene plan={plan} structure={structure} mepMode={mepMode} finishTier={finishTier} />
       </Canvas>

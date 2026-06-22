@@ -472,7 +472,7 @@ export default function TirupatiLandSelector() {
         </div>
       </div>
 
-      <style>{`
+      <style dangerouslySetInnerHTML={{ __html: `
         .tirupati-page {
           display: flex;
           flex-direction: column;
@@ -988,7 +988,7 @@ export default function TirupatiLandSelector() {
           line-height: 1.5;
           margin: 0;
         }
-      `}</style>
+      `}} />
     </div>
   );
 }

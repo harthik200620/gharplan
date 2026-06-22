@@ -1,189 +1,164 @@
-# GharPlan
+# 🏛️ GharPlan — an AI Architect OS for Indian homes
 
-**A Vastu- & building-code-aware Design-to-Cost copilot for Indian residential design/build.**
+> Describe a plot and a brief, and GharPlan reasons like an architect: it lays out a Vastu-compliant, building-code-aware floor plan, draws the full 2D CAD set, walks you through it in real-time 3D, and prices it down to the Bill of Quantities.
 
-Draw a plot or room layout → GharPlan checks it against **Vastu** rules and the **National
-Building Code / local bylaws**, auto-generates an itemized **GST'd Bill of Quantities
-directly from the room geometry**, and exports a client-ready **proposal (PDF)** and a
-**CAD file (DXF)**. Built for independent interior designers and small (3–15 person)
-design-build / turnkey studios.
-
-> The moat is the **integration through one canonical Plan schema**: the BOQ is generated
-> from plan geometry, not typed by hand. Modules stay cleanly separated but wired through
-> the single `Plan` contract.
+![Next.js](https://img.shields.io/badge/Next.js-14-black?logo=next.js)
+![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)
+![React Three Fiber](https://img.shields.io/badge/React%20Three%20Fiber-three.js-000000?logo=three.js&logoColor=white)
+![Tailwind CSS](https://img.shields.io/badge/Tailwind%20CSS-3-38B2AC?logo=tailwindcss&logoColor=white)
+![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.1-009688?logo=fastapi&logoColor=white)
+![pytest](https://img.shields.io/badge/tested%20with-pytest-0A9EDC?logo=pytest&logoColor=white)
 
 ---
 
-## Architecture
+## ✨ What it does
+
+- **Vastu-compliant auto-layout** — a constraint solver places rooms to honour the Vastu Purusha Mandala (NE pooja, SW master, a clear central Brahmasthan) instead of just checklist-scoring a plan you drew by hand.
+- **NBC building-code checks** — plot coverage, FAR, setbacks, minimum room areas/dimensions, ventilation and stair widths are validated against National Building Code / local-bylaw rules.
+- **2D CAD drawing set** — generates floor plans, four elevations and a building section with layers, dimensions, labels, a north arrow and a title block; exports to DXF.
+- **Live 3D walkthrough** — a real-time React Three Fiber (three.js) scene renders the generated home with hip/gable roofs, columns, compound walls and landscaping, orbit-controlled in the browser.
+- **MEP coordination** — a coordination pass models electrical/plumbing routing over the plan geometry.
+- **BOQ & cost estimate** — an itemized, GST-aware Bill of Quantities is computed *directly from room geometry* (wall lengths, areas, door/window deductions), priced against a rate database.
+- **Client-ready exports** — a branded proposal PDF, the DXF CAD file and an XLSX BOQ, ready to hand to a client.
+- **Multi-region rule packs** — Karnataka, Telangana and Andhra Pradesh (KA / TG / AP), each with its own code and rate data.
+
+---
+
+## 📸 Screenshots
+
+> _(add screenshots / GIFs here)_ — the routes worth capturing:
+
+| Route | Capture | File |
+|---|---|---|
+| `/` | Landing page | `docs/screenshots/landing.png` |
+| `/studio` | AI design wizard | `docs/screenshots/studio.png` |
+| `/3d-preview` | Real-time 3D walkthrough | `docs/screenshots/3d.png` |
 
 ```
- Browser ─┬─ Supabase (Auth · Postgres · Storage)        ← auth + project CRUD
-          └─ Next.js /web ─┬─ Supabase (server)            ← gating, branding, billing
-                           └─ /engine (FastAPI)            ← compute: vastu, code, BOQ, exports
-                                  └─ /fixtures (rules + rates)   ← editable domain data
- Payments: Razorpay (credits + subscription, gated server-side)
+docs/screenshots/landing.png
+docs/screenshots/studio.png
+docs/screenshots/3d.png
 ```
 
-| Path | What | Status |
-|------|------|--------|
-| `engine/` | Python 3.11+ FastAPI compute core (validate, **Vastu**, code, **BOQ-from-geometry**, DXF/PDF/XLSX, generator) | **runs + 84 tests green** |
-| `packages/shared/` | Canonical Plan/BOQ/report **TS types** + generated **JSON Schema** + constants | done |
-| `fixtures/` | Sample plans, **seed rates**, Vastu / code / BOQ **rule data**, generator templates | done |
-| `web/` | Next.js 14 app — auth, dashboard, **5-step wizard** (canvas + table), live overlays, editable BOQ, exports, billing | authored |
-| `supabase/schema.sql` | Postgres schema + RLS + RPCs | done |
-| `docker-compose.yml`, `engine/Dockerfile`, `web/Dockerfile` | container parity | done |
+---
 
-The canonical **Plan schema** (coords in metres, origin = plot SW corner, `+x`=East,
-`+y`=North) is defined once as pydantic models in `engine/app/models/plan.py`, exported to
-`packages/shared/plan.schema.json` (`python scripts/export_schema.py`), and mirrored as TS
-types in `packages/shared/src/plan.ts`.
+## 🏗️ Architecture
+
+```
+                        ┌──────────────────────────────────────────────┐
+   Browser  ───────────▶│  Next.js web  (App Router · TS · Tailwind)    │
+   /  /studio           │  /  · /studio · /3d-preview · dashboard       │
+   /3d-preview          │  React Three Fiber 3D · SVG canvas · exports  │
+                        └───────────────────────┬──────────────────────┘
+                                                │  proxied at 127.0.0.1:8000
+                                                ▼
+                        ┌──────────────────────────────────────────────┐
+                        │  FastAPI engine  (Python 3.11)                │
+                        │  layout solver · Vastu · NBC code · BOQ       │
+                        │  MEP · elevations/section · DXF/PDF/XLSX       │
+                        └───────────────────────┬──────────────────────┘
+                                                │
+                                                ▼
+                        ┌──────────────────────────────────────────────┐
+                        │  Shared type contract                         │
+                        │  packages/shared  ·  pydantic ⇄ TS ⇄ JSON     │
+                        │  one canonical Plan schema, both sides typed   │
+                        └──────────────────────────────────────────────┘
+```
+
+The interesting engineering is the layout solver in `engine/app/generator/designer.py`. Rather than emit one plan, it **sweeps a space of candidate layouts** — varying room bands and placements — and places rooms to satisfy *simultaneous* constraints: Vastu zones (pooja in the NE, master in the SW, a free Brahmasthan), building-code limits (setbacks, FAR, minimum areas), and real-world adjacencies (kitchen next to dining, living at the entrance, ensuite baths in auspicious zones). Each candidate is scored by `_score_candidate`, and the solver keeps the **best** one via a lexicographic ranking tuple — no dropped essential rooms first, then no code failures, then Vastu quality — so the output is the most feasible plan rather than the first one found.
+
+Coordinates are canonical throughout (metres, origin at the plot SW corner, `+x` = East, `+y` = North). The `Plan` schema is defined once as pydantic models in the engine, exported to JSON Schema, and mirrored as TypeScript types in `packages/shared` — so the BOQ is generated from geometry, never typed by hand, and both ends of the stack share one contract.
 
 ---
 
-## Architecture Intelligence
+## 🧰 Tech stack
 
-GharPlan is not just a layout generator—it approaches residential design with the logic of a 10-year experienced architect, integrating environmental, cultural, and practical constraints simultaneously.
+**Frontend**
+- Next.js 14 (App Router) · React 18 · TypeScript
+- Tailwind CSS · Radix UI · `lucide-react` · `sonner`
+- Zustand (state) · SVG drag/resize plan canvas
 
-### 1. The 5 Design Variants
-The system supports five distinct architectural typologies, each with its own spatial logic and design narrative:
-- **VASTU_FIRST**: A deeply traditional plan rooted in the classical Vastu texts (Manasara and Mayamata). Adheres strictly to the 9x9 Vastu Purusha Mandala, ensuring perfect elemental alignment.
-- **CLIMATE_FIRST**: An aggressively climate-responsive design. Massing and fenestration are shaped by solar geometry and prevailing wind patterns to minimize mechanical cooling loads.
-- **COURTYARD**: The traditional South Indian tiled courtyard house (Nalukettu) adapted for modern living. The central void acts as the climate engine of the house, driving stack ventilation.
-- **MODERN_OPEN**: A fluid, structural-frame approach with boundary-less spatial transitions. Relies on large-format glazing and structural clarity to merge indoor and outdoor spaces.
-- **MULTI_GEN**: Designed for the complexities of the modern Indian joint family. Balances collective gathering spaces with absolute acoustic and visual privacy for individual family units.
+**3D**
+- React Three Fiber (`@react-three/fiber`) + `@react-three/drei`
+- three.js — real-time orbit-controlled scene
 
-### 2. The Climate Zone System (NBC)
-Designs are tuned to the 5 National Building Code (NBC) climate zones of India:
-- **Hot-Dry**: Focuses on thermal mass and small, shaded fenestrations.
-- **Warm-Humid**: Maximizes cross-ventilation, deep overhangs, and breathable walls.
-- **Composite**: Balances shading for summer and thermal retention for winter.
-- **Cold / Temperate**: Focuses on solar heat gain and insulation.
+**Backend**
+- Python 3.11 · FastAPI · pydantic
+- Custom constraint-ranking layout solver (computational geometry)
+- `ezdxf` (DXF) · PDF / XLSX exporters · `Decimal` money math (ROUND_HALF_UP)
 
-### 3. Classical Vastu Implementation
-Our Vastu engine doesn't just do basic checklist checks; it uses a strict Manasara-based approach:
-- Central Brahmasthan kept free of heavy columns and walls.
-- Mathematical mapping of the plot to determine exact elemental zones (Agni, Jal, Vayu).
-- Evaluates spatial allocation from the NE pooja to the SW master suite based on weight, height, and energy flow.
-
-### 4. The BOQ Geometry System
-Unlike standard CAD estimators, GharPlan generates its Bill of Quantities directly from the canonical Plan schema's geometry:
-- Extracts exact wall lengths, perimeters, and room areas to compute finish quantities (flooring, plaster, skirting, ceiling).
-- Automatically deducts doors/windows from masonry and plaster quantities based on precise 2D coordinates.
-- Maps generated geometry directly to a GST-aware rate database for localized costing.
-
-### 5. Architectural Approach
-The system replicates an expert architect's workflow by simultaneously holding multiple constraints in tension: Vastu rules, NBC code compliances (setbacks, FAR), spatial flow, structural load paths, and cost. It packages these into a professional client presentation, ensuring every output is not just structurally and legally feasible, but also beautiful and theoretically sound.
+**Tooling**
+- pytest (100+ tests in `engine/tests`)
+- npm workspaces (`web` + `packages/shared`) · `tsc` typecheck
+- Docker / docker-compose for container parity
 
 ---
 
-## Quick start
+## 🚀 Run locally
 
-### Engine (the runnable, tested core) — Python 3.11+
+The repo is two services: a Python **engine** (the compute core) and a Next.js **web** app that proxies it.
+
+### 1. Engine — Python 3.11+
 
 ```bash
 cd engine
 python -m venv .venv
-.venv\Scripts\python -m pip install -r requirements.txt     # Windows
-# source .venv/bin/activate && pip install -r requirements.txt   # macOS/Linux
-
-python -m pytest -q                 # 84 tests — the M1/M2/M5 gate
-python -m uvicorn app.main:app --reload --port 8000
+# Windows:  .venv\Scripts\activate
+# macOS/Linux:  source .venv/bin/activate
+pip install -r requirements.txt
+uvicorn app.main:app --reload --port 8000
 ```
 
-Try it:
+The engine serves on `http://127.0.0.1:8000` (FastAPI docs at `/docs`). Run the test suite with `python -m pytest -q`.
+
+### 2. Web — Node 18+
 
 ```bash
-# normalize a plan (fills areaSqm / perimeterM / centroid / zone)
-curl -X POST localhost:8000/plan/validate -H "Content-Type: application/json" \
-  --data @fixtures/sample_plan_30x40_east.json
-
-# Vastu report (score + per-room + fixes)
-curl -X POST localhost:8000/vastu/check  -H "Content-Type: application/json" --data @fixtures/sample_plan_30x40_east.json
-# preliminary code review
-curl -X POST localhost:8000/code/check   -H "Content-Type: application/json" --data @fixtures/sample_plan_30x40_east.json
-# GST'd BOQ from geometry
-curl -X POST localhost:8000/boq/generate -H "Content-Type: application/json" \
-  -d "{\"plan\": $(cat fixtures/sample_plan_30x40_east.json), \"finishTier\": \"standard\"}"
+cd web
+npm install
+npm run dev          # -> http://localhost:3000
 ```
 
-Regenerate committed data (reproducible):
+The web app calls the engine at `NEXT_PUBLIC_ENGINE_URL` (defaults to `http://localhost:8000`), so start the engine first. Then open:
 
-```bash
-python scripts/build_rates.py        # fixtures/rates/rates_seed.{json,sql}
-python scripts/build_templates.py    # fixtures/templates/30x40_E.json
-python scripts/export_schema.py      # packages/shared/plan.schema.json
-```
-
-### Web (Next.js) — Node 18+
-
-```bash
-npm install                          # root (npm workspaces: web + packages/shared)
-cp .env.example web/.env.local       # fill Supabase + (optional) Razorpay + engine URL
-npm run dev                          # -> http://localhost:3000
-npm run typecheck                    # then remove `typescript.ignoreBuildErrors` in next.config.mjs
-```
-
-Supabase setup: create a project, run `supabase/schema.sql` in the SQL editor, enable Email
-+ Google auth providers, and (optionally) seed the `rates` table with
-`fixtures/rates/rates_seed.sql`.
+- `http://localhost:3000/` — landing page
+- `http://localhost:3000/studio` — AI design wizard
+- `http://localhost:3000/3d-preview` — standalone real-time 3D view
 
 ---
 
-## Engine API (v1)
+## 📁 Project structure
 
-| Method & path | Purpose |
-|---|---|
-| `GET /health` | liveness + active config |
-| `POST /plan/validate` | validate + normalize a Plan to canonical form (422 on bad geometry) |
-| `POST /vastu/check` | Plan → per-room pass/warn/fail + 0–100 score + grade + prioritized fixes |
-| `POST /code/check` | Plan → coverage, FAR, setbacks, min areas/dims, ventilation, stair width |
-| `POST /boq/generate` | Plan (+ city, tier, edits) → itemized GST'd BOQ (CGST/SGST split) |
-| `POST /export/dxf` | Plan → DXF (R2010: per-type layers, labels, dims, north arrow, title block) |
-| `POST /export/xlsx` | BOQ → Excel |
-| `POST /export/pdf` | Plan + Vastu + code + BOQ + branding → client proposal PDF |
-| `POST /plan/generate` | **v2 STUB** (feature-flagged): 30×40 East template fitted to the plot; 501 otherwise |
-
-All request/response bodies are typed pydantic models (camelCase JSON). Money is computed in
-`Decimal` with ROUND_HALF_UP and reconciles to the paise.
-
----
-
-## Web flows
-Auth (email + Google) → **Dashboard** (projects, credits/subscription) → **Wizard**: ①Plot
-→ ②Rooms (drag/resize SVG canvas **and** table; live area/perimeter/zone) → ③Openings →
-④Review (zone-shaded overlay + live Vastu & code) → ⑤BOQ (editable: finish tier, false-
-ceiling toggles, qty/rate overrides, custom lines) → **Export** (PDF/DXF/XLSX, gated). Plus
-**Settings** (studio branding) and **Billing** (Razorpay).
+```
+archiproj/
+├── engine/                 # Python FastAPI compute core
+│   ├── app/
+│   │   ├── main.py         # FastAPI entrypoint (/health, /plan, /vastu, /code, /boq, /export…)
+│   │   ├── generator/      # constraint-ranking layout solver (designer.py)
+│   │   ├── services/       # Vastu, code, BOQ, MEP, elevations, structural, climate
+│   │   ├── exporters/      # DXF · PDF · XLSX
+│   │   └── models/         # pydantic Plan / BOQ / report schemas
+│   └── tests/              # pytest suite (100+ tests)
+├── web/                    # Next.js 14 app (App Router, TS, Tailwind)
+│   └── app/                # routes: / · /studio · /3d-preview · dashboard · projects…
+├── packages/shared/        # shared TypeScript types (mirrors the engine's Plan schema)
+└── fixtures/               # sample plans, rule data, seed rates
+```
 
 ---
 
-## Environment variables
-See [`.env.example`](.env.example). Essentials: `NEXT_PUBLIC_SUPABASE_URL`,
-`NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `NEXT_PUBLIC_ENGINE_URL`
-(browser) / `ENGINE_URL` (server, Docker), and `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET` /
-`RAZORPAY_WEBHOOK_SECRET` (billing is optional; the app degrades to 503 without them).
-Optional LLM (`LLM_PROVIDER`, `LLM_API_KEY`) for a future brief→rooms helper — the app works
-fully without it.
+## 🎯 What this demonstrates
 
-## Tests
-- **Engine:** `cd engine && python -m pytest -q` — zone math (8 dirs + boundaries + center),
-  geometry, plan normalization, money (half-up vs banker's), **BOQ exact numbers** (synthetic
-  fixture) + invariants (30×40 fixture), Vastu (kitchen NE → fail, toilet NE → fail, pooja NE
-  → pass), code (under-min-area → fail, setback violation → fail), export validity, generator.
-- **Web:** `npm run typecheck` (type safety); Plan is validated by the engine on every submit.
+- **Full-stack TypeScript + Python** — a typed contract shared across two languages, web and compute cleanly separated.
+- **Computational geometry & constraint solving** — a candidate-sweeping solver that satisfies competing spatial constraints and ranks for the best feasible layout.
+- **Real-time 3D / WebGL** — an interactive three.js scene driven from generated plan data via React Three Fiber.
+- **Domain modeling of Indian building norms** — Vastu (Mandala zoning), NBC code rules and regional rate packs encoded as data, not hard-coded prose.
+- **Design systems & SaaS UX** — a multi-step design wizard, an editable SVG plan canvas, and client-ready document exports.
 
-## Deploy (≈zero cost at MVP, free tiers)
-- **Web → Vercel** (auto-detects Next.js; set env vars; root = repo, project = `web`).
-- **Engine → Railway/Render** (`engine/render.yaml` blueprint or `engine/Procfile`; root = `engine`).
-- **DB/Auth/Storage → Supabase** (run `supabase/schema.sql`).
-- **Containers:** `docker compose up` (provided for parity; recommended split is the above).
+---
 
-## Scope discipline (non-goals)
-No ML floor-plan generation (templates + rules only); no native DWG (DXF only); no
-structural/MEP/fire/energy calc; no 3D; coverage limited to KA/MH/TG; **never** outputs
-"approval-ready" / "stamped" drawings.
+## ⚠️ Disclaimer
 
-## ⚠️ Before you sell
-Rates, bylaws, the Vastu table, HSN/GST and pricing all ship as **indicative placeholders**
-(`TODO(human)`). **Read [`docs/VERIFY_BEFORE_SELLING.md`](docs/VERIFY_BEFORE_SELLING.md)** and
-verify each with the right professional first.
+GharPlan's outputs are **indicative design explorations** — concept layouts, drawings, 3D views and cost estimates meant to start a conversation. They are **not** approved, stamped or construction-ready drawings. The Vastu interpretation, building-code checks and cost/BOQ data ship as engineering approximations and **must be verified by a licensed architect and a structural engineer**, against the current local bylaws and live market rates, before any real-world construction or commercial use.

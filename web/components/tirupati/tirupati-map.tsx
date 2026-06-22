@@ -114,7 +114,7 @@ export default function TirupatiMap({ plots, selectedPlotId, onPlotSelect, flyTo
   return (
     <>
       <div id="tirupati-leaflet-map" style={{ width: '100%', height: '100%', zIndex: 1 }} />
-      <style>{`
+      <style dangerouslySetInnerHTML={{ __html: `
         .leaflet-container { background:#0a0f1e !important; }
         .leaflet-popup-content-wrapper { background:#1e293b; color:#f1f5f9; border:1px solid #334155; border-radius:10px; box-shadow:0 4px 20px rgba(0,0,0,0.5); }
         .leaflet-popup-tip { background:#1e293b; }
@@ -122,7 +122,7 @@ export default function TirupatiMap({ plots, selectedPlotId, onPlotSelect, flyTo
         .leaflet-control-zoom a { background:#1e293b !important; color:#94a3b8 !important; border-color:#334155 !important; }
         .leaflet-control-attribution { background:#0f172aaa !important; color:#475569 !important; font-size:10px !important; }
         .leaflet-control-attribution a { color:#475569 !important; }
-      `}</style>
+      `}} />
     </>
   );
 }

@@ -146,7 +146,9 @@ export function TierSelector({ selected, onChange, plotAreaSqyd }: TierSelectorP
         ))}
       </div>
 
-      <style>{`
+      {/* Scoped CSS via dangerouslySetInnerHTML so React doesn't reconcile the
+          style text node — avoids the SSR/client apostrophe-encoding mismatch. */}
+      <style dangerouslySetInnerHTML={{ __html: `
         .tier-selector { margin: 16px 0; }
         .tier-title { font-size: 1rem; font-weight: 700; color: #f1f5f9; margin: 0 0 4px; }
         .tier-subtitle { font-size: 0.78rem; color: #64748b; margin: 0 0 16px; }
@@ -173,7 +175,7 @@ export function TierSelector({ selected, onChange, plotAreaSqyd }: TierSelectorP
         .tier-highlights li { font-size: 0.72rem; color: #94a3b8; padding: 2px 0; display: flex; align-items: center; gap: 4px; }
         .tier-highlights li::before { content: '✦'; color: var(--tier-color, #64748b); font-size: 0.5rem; flex-shrink: 0; }
         .tier-selected-indicator { margin-top: 10px; font-size: 0.75rem; font-weight: 700; color: var(--tier-color); }
-      `}</style>
+      `}} />
     </div>
   );
 }

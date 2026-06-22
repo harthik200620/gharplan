@@ -4,7 +4,7 @@ import { Studio } from "@/components/studio/studio";
 import { Badge } from "@/components/ui/badge";
 
 export const metadata: Metadata = {
-  title: "Architect Studio - GharPlan",
+  title: "Architect Studio",
   description:
     "Generate five Indian residential design directions with Vastu, code, CAD, 3D, MEP coordination prompts, and BOQ.",
 };

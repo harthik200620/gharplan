@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import math
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 
 from app.models.plan import Plan, Room
@@ -90,6 +90,8 @@ class Circuit:
     mcb_a: int
     phase: str  # "1ph" | "3ph"
     points: int
+    # Conductor size (sq mm Cu) picked from WIRE_SQMM_BY_MCB for the MCB rating.
+    wire_sqmm: float = 0.0
 
 
 @dataclass
@@ -134,6 +136,10 @@ class MepModel:
     clashes: list[Clash]
     summary: dict
     legend: list[ServiceLegendItem]
+    # Per-room cooling estimates {"roomId", "tons"} for habitable rooms (living/bedroom types).
+    hvac: list[dict] = field(default_factory=list)
+    # NBC 2016 Part 4 fire checklist {"item", "ref"} rows (empty when height <= 15 m).
+    fire: list[dict] = field(default_factory=list)
 
 
 SERVICE_STYLE: dict[str, ServiceLegendItem] = {
@@ -512,11 +518,16 @@ def build_water_source(
 
 
 def build_drainage_outlet(
-    fp: Optional[Rect], shaft: Optional[Rect], w: float, d: float
+    fp: Optional[Rect],
+    shaft: Optional[Rect],
+    w: float,
+    d: float,
+    plan: Optional[Plan] = None,
 ) -> tuple[list[MepNode], list[PipeRun]]:
     """Drainage outlet: soil/waste gathered at the shaft runs to an INSPECTION
     CHAMBER just outside, then to the SEPTIC TANK / sewer at the plot edge
-    (110 mm, 1:40)."""
+    (110 mm, 1:40). When ``plan`` is given the septic node label carries its
+    IS 2470-1 style size for occupants ~ 2 per bedroom + 2 (all floors)."""
     if not shaft or not fp:
         return ([], [])
     port = shaft_port(shaft)
@@ -529,9 +540,18 @@ def build_drainage_outlet(
     dy /= m
     ic = clamp_pt((port[0] + dx * 0.8, port[1] + dy * 0.8), w, d)
     septic = clamp_pt((port[0] + dx * 2.2, port[1] + dy * 2.2), w, d)
+    septic_label = "Septic"
+    if plan is not None:
+        beds = [r for r in plan.rooms if re.search(r"bed", r.type.value) or re.search(r"bed", r.id)]
+        occupants = len(beds) * 2 + 2
+        s = septic_size(occupants)
+        septic_label = (
+            f"ST {fmt_dim(s['lengthM'])}x{fmt_dim(s['widthM'])}x{fmt_dim(s['depthM'])} m"
+            f" ({s['users']} users)"
+        )
     nodes: list[MepNode] = [
         MepNode(id="ic", kind="inspection", x=ic[0], y=ic[1], label="IC"),
-        MepNode(id="septic", kind="septic", x=septic[0], y=septic[1], label="Septic"),
+        MepNode(id="septic", kind="septic", x=septic[0], y=septic[1], label=septic_label),
     ]
     pipes: list[PipeRun] = [
         PipeRun(
@@ -575,6 +595,12 @@ def build_rainwater(
     return (nodes, pipes)
 
 
+# Conductor size (sq mm Cu, FR PVC 1.1 kV, in conduit) per MCB rating — indicative
+# per IS 694 / IS 732 practice; verify with a licensed electrical contractor for the
+# actual run lengths/derating.
+WIRE_SQMM_BY_MCB: dict[int, float] = {6: 1.0, 10: 1.5, 16: 2.5, 20: 4.0, 32: 6.0}
+
+
 def assign_circuits(elec: list[ElecPoint]) -> list[Circuit]:
     """Tag every electrical point with its final sub-circuit and return the
     circuit schedule (lighting / power / kitchen / AC / geyser / pump) with MCB
@@ -613,6 +639,7 @@ def assign_circuits(elec: list[ElecPoint]) -> list[Circuit]:
             mcb_a=spec[n]["mcb_a"],  # type: ignore[arg-type]
             phase=spec[n]["phase"],  # type: ignore[arg-type]
             points=counts.get(n, 1 if n == "Pump" else 0),
+            wire_sqmm=WIRE_SQMM_BY_MCB.get(spec[n]["mcb_a"], 1.5),  # type: ignore[arg-type]
         )
         for n in order
         if counts.get(n, 0) > 0 or n == "Pump"
@@ -710,6 +737,101 @@ def compute_clashes(
     return out
 
 
+# --------------------------------------------------------------------------- #
+# Planning intelligence: connected load, cooling, septic sizing, fire checklist
+# (keep in lock-step with the same section of web/lib/mep.ts)
+# --------------------------------------------------------------------------- #
+
+# Planning wattage per electrical point kind (W) — service-connection estimate only.
+WATTS_BY_KIND: dict[str, int] = {
+    "light": 60,
+    "fan": 75,
+    "socket6a": 100,
+    "socket16a": 1000,
+    "ac": 1500,
+    "exhaust": 60,
+    "geyser": 2000,
+    "switchboard": 0,
+    "db": 0,
+    "bell": 10,
+}
+
+
+def round2(x: float) -> float:
+    """Half-up 2-decimal rounding (parity with Math.round in the TS mirror)."""
+    return math.floor(x * 100 + 0.5) / 100
+
+
+def electrical_load_summary(elec: list[ElecPoint]) -> dict:
+    """Connected load, diversified demand and the service recommendation from the
+    planning wattages — the numbers a DISCOM service-connection form asks for."""
+    total_w = sum(WATTS_BY_KIND.get(p.kind, 0) for p in elec)
+    demand_w = total_w * 0.6
+    return {
+        "connectedLoadKw": round2(total_w / 1000),
+        "demandLoadKw": round2(demand_w / 1000),
+        "diversityFactor": 0.6,
+        "recommendedService": "1-phase" if demand_w / 1000 < 7.0 else "3-phase",
+        "note": "Planning estimate for the service-connection application — verify with the DISCOM's load norms.",
+    }
+
+
+def room_tonnage(area_sqm: float, ceiling_m: float = 3.0) -> float:
+    """Cooling estimate in tons, quarter-ton steps, 0.5 T floor — a rough planning
+    heuristic (~0.065 TR/m², Indian residential rule of thumb), NOT a heat-load
+    calculation. ``ceiling_m`` is accepted for future refinement and unused.
+    Rounding is half-up so the TS mirror (Math.round) lands on the same quarter."""
+    raw = max(0.5, area_sqm * 0.065)
+    return math.floor(raw * 4 + 0.5) / 4
+
+
+def fmt_dim(v: float) -> str:
+    """Metre dimension for labels: trailing zeros trimmed, at least one decimal
+    kept ("2.0", "0.75") — identical output in Python and TS."""
+    s = f"{v:.2f}".rstrip("0")
+    return s + "0" if s.endswith(".") else s
+
+
+# IS 2470-1 (household septic tanks, cleaning interval 1 yr) — indicative, verify.
+# capacityL is the row's working capacity in litres (L x B x liquid depth; the
+# 5-user row carries the standard's 1500 L minimum working capacity).
+SEPTIC_TABLE: list[dict] = [
+    {"users": 5, "lengthM": 1.5, "widthM": 0.75, "depthM": 1.0, "capacityL": 1500},
+    {"users": 10, "lengthM": 2.0, "widthM": 0.9, "depthM": 1.0, "capacityL": 1800},
+    {"users": 15, "lengthM": 2.3, "widthM": 1.1, "depthM": 1.3, "capacityL": 3290},
+    {"users": 20, "lengthM": 2.8, "widthM": 1.2, "depthM": 1.3, "capacityL": 4370},
+]
+
+
+def septic_size(occupants: int) -> dict:
+    """Smallest IS 2470-1 style row serving >= ``occupants``; households beyond
+    20 users cap at the 20-user tank (size a multi-family tank separately)."""
+    for row in SEPTIC_TABLE:
+        if row["users"] >= occupants:
+            return dict(row)
+    return dict(SEPTIC_TABLE[-1])
+
+
+NBC_REF = "NBC 2016 Part 4 (verify clause against the current edition)"
+
+
+def fire_checklist(building_height_m: float) -> list[dict]:
+    """NBC 2016 Part 4 trigger: residential buildings above 15 m need fire
+    clearance — return the application checklist; at/below 15 m return []."""
+    if building_height_m <= 15.0:
+        return []
+    return [
+        {"item": "Apply for a fire NOC from the state fire service before sanction.", "ref": NBC_REF},
+        {
+            "item": "At least one staircase of >= 1.0 m clear width (NBC 2016 Part 4 residential table).",
+            "ref": NBC_REF,
+        },
+        {"item": "Check travel distance to an exit <= 22.5 m on every floor.", "ref": NBC_REF},
+        {"item": "Provide an underground static water tank plus a terrace fire tank.", "ref": NBC_REF},
+        {"item": "Wet riser required for buildings taller than 15 m.", "ref": NBC_REF},
+    ]
+
+
 def build_mep_model(plan: Plan, floor: Optional[int] = None) -> MepModel:
     w = plan.plot.width_m
     d = plan.plot.depth_m
@@ -723,7 +845,7 @@ def build_mep_model(plan: Plan, floor: Optional[int] = None) -> MepModel:
     # whole-house plant + mains: OHT down-take, sump + pump, drainage outlet to the
     # septic tank, and rainwater downpipes to a recharge pit.
     water = build_water_source(fp, shaft, w, d)
-    drain = build_drainage_outlet(fp, shaft, w, d)
+    drain = build_drainage_outlet(fp, shaft, w, d, plan)
     rain = build_rainwater(fp, w, d)
     nodes: list[MepNode] = [*water[0], *drain[0], *rain[0]]
     pipes += [*water[1], *drain[1], *rain[1]]
@@ -748,10 +870,23 @@ def build_mep_model(plan: Plan, floor: Optional[int] = None) -> MepModel:
     summary = {
         "errors": len([c for c in clashes if c.severity == "error"]),
         "warns": len([c for c in clashes if c.severity == "warn"]),
+        # planning-grade electrical load + service recommendation (additive keys)
+        **electrical_load_summary(elec),
     }
     used = {p.service for p in pipes}
     order = ["cold", "hot", "soil", "waste", "vent", "rainwater"]
     legend = [SERVICE_STYLE[s] for s in order if s in used]
+
+    # per-room cooling estimates for habitable rooms (living/bedroom types only)
+    hvac: list[dict] = []
+    for r in rooms:
+        if not re.search(r"living|bed", r.type.value):
+            continue
+        rb = bounds(r.polygon)
+        hvac.append({"roomId": r.id, "tons": room_tonnage(r.area_sqm or rb.w * rb.h)})
+    # NBC Part 4 trigger with indicative height = floors x 3.0 m + 1.0 m parapet.
+    fire = fire_checklist(plan.plot.floors * 3.0 + 1.0)
+
     return MepModel(
         floor=floor,
         rooms=rooms,
@@ -767,4 +902,6 @@ def build_mep_model(plan: Plan, floor: Optional[int] = None) -> MepModel:
         clashes=clashes,
         summary=summary,
         legend=legend,
+        hvac=hvac,
+        fire=fire,
     )

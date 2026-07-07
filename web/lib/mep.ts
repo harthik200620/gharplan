@@ -111,6 +111,8 @@ export type Circuit = {
   mcbA: number;
   phase: "1ph" | "3ph";
   points: number;
+  /** Conductor size (sq mm Cu) picked from WIRE_SQMM_BY_MCB for the MCB rating. */
+  wireSqmm: number;
 };
 
 export type Conduit = {
@@ -135,6 +137,36 @@ export type ServiceLegendItem = {
   width: number;
 };
 
+/** Connected load + diversified demand for the DISCOM service-connection form. */
+export type ElectricalLoadSummary = {
+  connectedLoadKw: number;
+  demandLoadKw: number;
+  diversityFactor: number;
+  recommendedService: "1-phase" | "3-phase";
+  note: string;
+};
+
+/** Per-room cooling estimate (quarter tons) for habitable rooms. */
+export type HvacEstimate = {
+  roomId: string;
+  tons: number;
+};
+
+/** One NBC 2016 Part 4 fire checklist row. */
+export type FireChecklistRow = {
+  item: string;
+  ref: string;
+};
+
+/** One IS 2470-1 style septic tank size row. */
+export type SepticSize = {
+  users: number;
+  lengthM: number;
+  widthM: number;
+  depthM: number;
+  capacityL: number;
+};
+
 export type MepModel = {
   floor?: number;
   rooms: Room[];
@@ -150,8 +182,12 @@ export type MepModel = {
   /** Final electrical sub-circuits off the DB with their MCB ratings. */
   circuits: Circuit[];
   clashes: Clash[];
-  summary: { errors: number; warns: number };
+  summary: { errors: number; warns: number } & ElectricalLoadSummary;
   legend: ServiceLegendItem[];
+  /** Per-room cooling estimates for habitable rooms (living/bedroom types). */
+  hvac: HvacEstimate[];
+  /** NBC 2016 Part 4 fire checklist rows (empty when height <= 15 m). */
+  fire: FireChecklistRow[];
 };
 
 // --------------------------------------------------------------------------- //
@@ -631,8 +667,10 @@ function buildWaterSource(fp: Rect | null, shaft: Rect | null, W: number, D: num
 }
 
 /** Drainage outlet: soil/waste gathered at the shaft runs to an INSPECTION CHAMBER
- *  just outside, then to the SEPTIC TANK / sewer at the plot edge (110 mm, 1:40). */
-function buildDrainageOutlet(fp: Rect | null, shaft: Rect | null, W: number, D: number): { nodes: MepNode[]; pipes: PipeRun[] } {
+ *  just outside, then to the SEPTIC TANK / sewer at the plot edge (110 mm, 1:40).
+ *  When `plan` is given the septic node label carries its IS 2470-1 style size for
+ *  occupants ~ 2 per bedroom + 2 (all floors). */
+function buildDrainageOutlet(fp: Rect | null, shaft: Rect | null, W: number, D: number, plan?: Plan): { nodes: MepNode[]; pipes: PipeRun[] } {
   if (!shaft || !fp) return { nodes: [], pipes: [] };
   const port = shaftPort(shaft);
   const fcx = fp.x + fp.w / 2;
@@ -644,9 +682,16 @@ function buildDrainageOutlet(fp: Rect | null, shaft: Rect | null, W: number, D: 
   dy /= m;
   const ic = clampPt([port[0] + dx * 0.8, port[1] + dy * 0.8], W, D);
   const septic = clampPt([port[0] + dx * 2.2, port[1] + dy * 2.2], W, D);
+  let septicLabel = "Septic";
+  if (plan) {
+    const beds = plan.rooms.filter((r) => /bed/.test(r.type) || /bed/.test(r.id));
+    const occupants = beds.length * 2 + 2;
+    const s = septicSize(occupants);
+    septicLabel = `ST ${fmtDim(s.lengthM)}x${fmtDim(s.widthM)}x${fmtDim(s.depthM)} m (${s.users} users)`;
+  }
   const nodes: MepNode[] = [
     { id: "ic", kind: "inspection", x: ic[0], y: ic[1], label: "IC" },
-    { id: "septic", kind: "septic", x: septic[0], y: septic[1], label: "Septic" },
+    { id: "septic", kind: "septic", x: septic[0], y: septic[1], label: septicLabel },
   ];
   const pipes: PipeRun[] = [
     { id: "soil-outlet", roomId: "service", service: "soil", points: [port, ic, septic], sizeMm: SOIL_MAIN_MM, slope: "1:40", label: `${SOIL_MAIN_MM}∅` },
@@ -674,6 +719,11 @@ function buildRainwater(fp: Rect | null, W: number, D: number): { nodes: MepNode
   }));
   return { nodes, pipes };
 }
+
+// Conductor size (sq mm Cu, FR PVC 1.1 kV, in conduit) per MCB rating — indicative
+// per IS 694 / IS 732 practice; verify with a licensed electrical contractor for the
+// actual run lengths/derating.
+export const WIRE_SQMM_BY_MCB: Record<number, number> = { 6: 1.0, 10: 1.5, 16: 2.5, 20: 4.0, 32: 6.0 };
 
 /** Tag every electrical point with its final sub-circuit and return the circuit
  *  schedule (lighting / power / kitchen / AC / geyser / pump) with MCB ratings —
@@ -713,7 +763,95 @@ function assignCircuits(elec: ElecPoint[]): Circuit[] {
   const order = ["Lighting", "Power", "Kitchen/Power", "AC", "Geyser", "Pump"];
   return order
     .filter((n) => (counts.get(n) ?? 0) > 0 || n === "Pump")
-    .map((n) => ({ id: `ckt-${n}`, name: n, mcbA: SPEC[n].mcbA, phase: SPEC[n].phase, points: counts.get(n) ?? (n === "Pump" ? 1 : 0) }));
+    .map((n) => ({ id: `ckt-${n}`, name: n, mcbA: SPEC[n].mcbA, phase: SPEC[n].phase, points: counts.get(n) ?? (n === "Pump" ? 1 : 0), wireSqmm: WIRE_SQMM_BY_MCB[SPEC[n].mcbA] ?? 1.5 }));
+}
+
+// --------------------------------------------------------------------------- //
+// Planning intelligence: connected load, cooling, septic sizing, fire checklist
+// (keep in lock-step with the same section of engine/app/services/mep_model.py)
+// --------------------------------------------------------------------------- //
+
+/** Planning wattage per electrical point kind (W) — service-connection estimate only. */
+export const WATTS_BY_KIND: Record<ElectricalKind, number> = {
+  light: 60,
+  fan: 75,
+  socket6a: 100,
+  socket16a: 1000,
+  ac: 1500,
+  exhaust: 60,
+  geyser: 2000,
+  switchboard: 0,
+  db: 0,
+  bell: 10,
+};
+
+/** Half-up 2-decimal rounding (parity with math.floor(x*100+0.5)/100 in the Python mirror). */
+function round2(x: number): number {
+  return Math.round(x * 100) / 100;
+}
+
+/** Connected load, diversified demand and the service recommendation from the
+ *  planning wattages — the numbers a DISCOM service-connection form asks for. */
+export function electricalLoadSummary(elec: ElecPoint[]): ElectricalLoadSummary {
+  const totalW = elec.reduce((sum, p) => sum + (WATTS_BY_KIND[p.kind] ?? 0), 0);
+  const demandW = totalW * 0.6;
+  return {
+    connectedLoadKw: round2(totalW / 1000),
+    demandLoadKw: round2(demandW / 1000),
+    diversityFactor: 0.6,
+    recommendedService: demandW / 1000 < 7.0 ? "1-phase" : "3-phase",
+    note: "Planning estimate for the service-connection application — verify with the DISCOM's load norms.",
+  };
+}
+
+/** Cooling estimate in tons, quarter-ton steps, 0.5 T floor — a rough planning
+ *  heuristic (~0.065 TR/m², Indian residential rule of thumb), NOT a heat-load
+ *  calculation. `ceilingM` is accepted for future refinement and unused.
+ *  Rounding is half-up (Math.round) so the Python mirror lands on the same quarter. */
+export function roomTonnage(areaSqm: number, ceilingM = 3.0): number {
+  const raw = Math.max(0.5, areaSqm * 0.065);
+  return Math.round(raw * 4) / 4;
+}
+
+/** Metre dimension for labels: trailing zeros trimmed, at least one decimal
+ *  kept ("2.0", "0.75") — identical output in Python and TS. */
+function fmtDim(v: number): string {
+  const s = v.toFixed(2).replace(/0+$/, "");
+  return s.endsWith(".") ? s + "0" : s;
+}
+
+// IS 2470-1 (household septic tanks, cleaning interval 1 yr) — indicative, verify.
+// capacityL is the row's working capacity in litres (L x B x liquid depth; the
+// 5-user row carries the standard's 1500 L minimum working capacity).
+export const SEPTIC_TABLE: SepticSize[] = [
+  { users: 5, lengthM: 1.5, widthM: 0.75, depthM: 1.0, capacityL: 1500 },
+  { users: 10, lengthM: 2.0, widthM: 0.9, depthM: 1.0, capacityL: 1800 },
+  { users: 15, lengthM: 2.3, widthM: 1.1, depthM: 1.3, capacityL: 3290 },
+  { users: 20, lengthM: 2.8, widthM: 1.2, depthM: 1.3, capacityL: 4370 },
+];
+
+/** Smallest IS 2470-1 style row serving >= `occupants`; households beyond 20 users
+ *  cap at the 20-user tank (size a multi-family tank separately). */
+export function septicSize(occupants: number): SepticSize {
+  for (const row of SEPTIC_TABLE) {
+    if (row.users >= occupants) return { ...row };
+  }
+  return { ...SEPTIC_TABLE[SEPTIC_TABLE.length - 1] };
+}
+
+const NBC_REF = "NBC 2016 Part 4 (verify clause against the current edition)";
+
+/** NBC 2016 Part 4 trigger: residential buildings above 15 m need fire clearance —
+ *  return the application checklist; at/below 15 m return []. */
+export function fireChecklist(buildingHeightM: number): FireChecklistRow[] {
+  if (buildingHeightM <= 15.0) return [];
+  return [
+    { item: "Apply for a fire NOC from the state fire service before sanction.", ref: NBC_REF },
+    { item: "At least one staircase of >= 1.0 m clear width (NBC 2016 Part 4 residential table).", ref: NBC_REF },
+    { item: "Check travel distance to an exit <= 22.5 m on every floor.", ref: NBC_REF },
+    { item: "Provide an underground static water tank plus a terrace fire tank.", ref: NBC_REF },
+    { item: "Wet riser required for buildings taller than 15 m.", ref: NBC_REF },
+  ];
 }
 
 // --------------------------------------------------------------------------- //
@@ -734,7 +872,7 @@ export function buildMepModel(plan: Plan, floor?: number): MepModel {
   // whole-house plant + mains: OHT down-take, sump + pump, drainage outlet to the
   // septic tank, and rainwater downpipes to a recharge pit.
   const water = buildWaterSource(fp, shaft, W, D);
-  const drain = buildDrainageOutlet(fp, shaft, W, D);
+  const drain = buildDrainageOutlet(fp, shaft, W, D, plan);
   const rain = buildRainwater(fp, W, D);
   const nodes: MepNode[] = [...water.nodes, ...drain.nodes, ...rain.nodes];
   pipes.push(...water.pipes, ...drain.pipes, ...rain.pipes);
@@ -763,12 +901,24 @@ export function buildMepModel(plan: Plan, floor?: number): MepModel {
   const summary = {
     errors: clashes.filter((c) => c.severity === "error").length,
     warns: clashes.filter((c) => c.severity === "warn").length,
+    // planning-grade electrical load + service recommendation (additive keys)
+    ...electricalLoadSummary(elec),
   };
 
   // legend lists only the services that actually appear, in a stable order
   const used = new Set(pipes.map((p) => p.service));
   const order: ServiceKind[] = ["cold", "hot", "soil", "waste", "vent", "rainwater"];
   const legend = order.filter((s) => used.has(s)).map((s) => SERVICE_STYLE[s]);
+
+  // per-room cooling estimates for habitable rooms (living/bedroom types only)
+  const hvac: HvacEstimate[] = [];
+  for (const r of rooms) {
+    if (!/living|bed/.test(r.type)) continue;
+    const rb = bounds(r.polygon);
+    hvac.push({ roomId: r.id, tons: roomTonnage(r.areaSqm || rb.w * rb.h) });
+  }
+  // NBC Part 4 trigger with indicative height = floors x 3.0 m + 1.0 m parapet.
+  const fire = fireChecklist(plan.plot.floors * 3.0 + 1.0);
 
   return {
     floor,
@@ -785,6 +935,8 @@ export function buildMepModel(plan: Plan, floor?: number): MepModel {
     clashes,
     summary,
     legend,
+    hvac,
+    fire,
   };
 }
 

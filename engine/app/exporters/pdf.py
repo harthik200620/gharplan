@@ -178,7 +178,12 @@ class PlanFlowable(Flowable):
 
         c.setStrokeColor(colors.black)
         c.setLineWidth(1.2)
-        c.rect(ox, oy, w_m * s, d_m * s)
+        boundary = getattr(plan.plot, "polygon", None)
+        if boundary and len(boundary) >= 3:
+            # Plot-v2: the TRUE surveyed boundary instead of the bbox rectangle.
+            _poly(c, [(ox + float(x) * s, oy + float(y) * s) for x, y in boundary], fill=0, stroke=1)
+        else:
+            c.rect(ox, oy, w_m * s, d_m * s)
 
         rooms = [r for r in plan.rooms if self.floor is None or (r.floor or 0) == self.floor]
         for room in rooms:
@@ -461,7 +466,11 @@ def _plan_base(c, plan, floor, s, ox, oy):
     w_m, d_m = plan.plot.width_m, plan.plot.depth_m
     c.setStrokeColor(colors.HexColor("#9aa4b6"))
     c.setLineWidth(0.8)
-    c.rect(ox, oy, w_m * s, d_m * s)
+    boundary = getattr(plan.plot, "polygon", None)
+    if boundary and len(boundary) >= 3:
+        _poly(c, [(ox + float(x) * s, oy + float(y) * s) for x, y in boundary], fill=0, stroke=1)
+    else:
+        c.rect(ox, oy, w_m * s, d_m * s)
     c.setStrokeColor(colors.HexColor("#cbd5e1"))
     c.setLineWidth(0.5)
     for room in plan.rooms:

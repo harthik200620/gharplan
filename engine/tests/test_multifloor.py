@@ -161,3 +161,71 @@ def test_e_facing_g1_no_ribbon_habitable_rooms():
         assert _aspect(lv.polygon) <= 2.0, (
             f"upper living {lv.id} is a ribbon (aspect {_aspect(lv.polygon):.2f})"
         )
+
+
+# --------------------------------------------------------------------------- #
+# G+2 / G+3 — upper clones with a DIFFERENTIATED top floor
+# --------------------------------------------------------------------------- #
+
+
+def _plot_wide(floors: int, w: float, d: float) -> Plot:
+    return Plot(
+        width_m=w, depth_m=d, facing=Facing.E,
+        state=StateCode.KA, city=City.Bengaluru, floors=floors,
+    )
+
+
+def test_g2_three_floors_top_floor_differentiated():
+    plan, vastu, code, meta = generate_plan(3, _plot(3), floors=3)
+    assert {r.floor for r in plan.rooms} == {0, 1, 2}
+    assert meta["floorsGenerated"] == 3
+    assert code.summary.fail_count == 0
+    # exactly one staircase per floor, each with its own id (vertical core stacks)
+    stair_ids = []
+    for fl in (0, 1, 2):
+        stairs = [r for r in plan.rooms if (r.floor or 0) == fl and r.type.value == "staircase"]
+        assert len(stairs) == 1, f"floor {fl}: expected exactly one staircase, got {len(stairs)}"
+        stair_ids.append(stairs[0].id)
+    assert len(set(stair_ids)) == 3
+    # the TOP floor is differentiated: a home-office study, or an open terrace
+    # when a second secondary bedroom exists — never a verbatim clone.
+    top = [r for r in plan.rooms if (r.floor or 0) == 2]
+    has_office = any(r.id == "home_office" and r.type.value == "study" for r in top)
+    has_terrace = any(r.id == "terrace" and r.type.value == "balcony" for r in top)
+    assert has_office or has_terrace, "top floor was cloned without differentiation"
+    # the master suite is never the one converted
+    assert any(r.type.value == "master_bedroom" for r in top)
+    # differentiation is TOP-floor only — floor 1 keeps its bedroom mix
+    f1_ids = {r.id for r in plan.rooms if (r.floor or 0) == 1}
+    assert "home_office" not in f1_ids and "terrace" not in f1_ids
+    # proportions hold on every floor (reuse the ribbon helper; 2.6 hard ceiling)
+    for r in plan.rooms:
+        if r.type.value in _HABITABLE:
+            assert _aspect(r.polygon) <= 2.6, (
+                f"room {r.id} on floor {r.floor}: aspect {_aspect(r.polygon):.2f} > 2.6"
+            )
+
+
+def test_g3_four_floors():
+    # KA caps FAR at 1.75, so four FULL storeys are only legal on a plot whose
+    # setback envelope is well under ~44% of the plot area — i.e. a large plot in
+    # the > 500 m² band. (On the 9.144x12.192 30x40 a G+3 reads ~2.4 FAR and the
+    # checker correctly fails it.) 23x23 m passes at ~1.5.
+    import time
+
+    t0 = time.monotonic()
+    plan, vastu, code, meta = generate_plan(4, _plot_wide(4, 23.0, 23.0), floors=4)
+    elapsed = time.monotonic() - t0
+    assert elapsed < 60.0, f"G+3 generation took {elapsed:.1f}s"
+    assert {r.floor for r in plan.rooms} == {0, 1, 2, 3}
+    assert meta["floorsGenerated"] == 4
+    assert code.summary.fail_count == 0
+
+
+def test_g2_determinism():
+    def sig(plan):
+        return [(r.id, round(r.area_sqm, 3)) for r in plan.rooms]
+
+    a, _, _, _ = generate_plan(3, _plot(3), floors=3)
+    b, _, _, _ = generate_plan(3, _plot(3), floors=3)
+    assert sig(a) == sig(b)

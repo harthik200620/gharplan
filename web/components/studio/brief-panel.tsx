@@ -362,7 +362,7 @@ export function BriefPanel({
           <Stepper value={value.bhk} min={1} max={4} suffix=" BHK" onChange={(v) => onChange({ bhk: v })} />
         </Field>
         <Field label="Floors">
-          <Stepper value={value.floors} min={1} max={3} onChange={(v) => onChange({ floors: v })} />
+          <Stepper value={value.floors} min={1} max={4} onChange={(v) => onChange({ floors: v })} />
         </Field>
       </div>
 

@@ -26,6 +26,7 @@ from typing import Optional
 
 from app.models.enums import Compass, Facing, RoomType, StateCode
 from app.models.plan import Opening, Plan, Plot, Project, Room
+from app.services import geometry
 from app.services.code_service import buildable_envelope, check_code
 from app.services.plan_service import normalize
 from app.services.rules import CodeRules, VastuRules, get_code_rules, get_vastu_rules
@@ -2894,6 +2895,33 @@ def _generate_multifloor(
         for p in u_placed:
             placed.append(PlacedRoom(f"{p.id}_f{extra}", p.type, p.x0, p.y0, p.x1, p.y1, p.ceiling_height_m, extra))
 
+    # --- G+2/G+3 TOP-FLOOR DIFFERENTIATION: a real house never repeats the first
+    # floor verbatim to the roof. On 3+ storeys the TOP floor trades secondary
+    # bedrooms for a home office (smallest secondary -> study) and, where a second
+    # secondary exists, an open terrace (-> balcony, open-to-sky) — a realistic
+    # reducing-mass top storey. The master (u_master) / multi-gen guest master
+    # (u_guest), the stair and every attached bath stay untouched; rects are
+    # unchanged so overlap/inside/aspect invariants carry over from the clone. ---
+    if floors >= 3:
+        top = floors - 1
+        sec_beds = sorted(
+            (
+                p for p in placed
+                if p.floor == top
+                and p.type in (RoomType.bedroom, RoomType.childrens_bedroom)
+                and p.id.startswith(("u_kids", "u_bedroom"))
+            ),
+            key=lambda p: (round(p.area, 6), p.id),
+        )
+        if sec_beds:
+            office = sec_beds[0]
+            office.id = "home_office"
+            office.type = RoomType.study
+        if len(sec_beds) >= 2:
+            terrace = sec_beds[1]
+            terrace.id = "terrace"
+            terrace.type = RoomType.balcony
+
     def _is_bed_drop(d: str) -> bool:
         return ("toilet" not in d and "stair" not in d and "living" not in d
                 and (d.startswith("u_") or d.startswith("guest")))
@@ -2921,6 +2949,17 @@ def _generate_multifloor(
     site_meta = _add_site_utilization(plan, env, cars=(edits.parking_cars if edits else None))
     plan, vastu, code = _score_candidate(plan, code_rules)
     cov_ratio = round(min(1.0, sum(p.area for p in g_placed) / footprint), 2) if footprint else 0.0
+    # ADVISORY presentation flag for the 3D/section renderers — no geometry
+    # change. True only for the airy schemes (vastu-first / open-plan profiles;
+    # their actual VariantProfile ids are "vastu" / "modern") when the ground
+    # hall is genuinely large enough (>= 20 m²) to read as a double-height volume.
+    g_living = next((p for p in g_placed if p.type == RoomType.living), None)
+    double_height = bool(
+        floors >= 2
+        and g_living is not None and g_living.area >= 20.0
+        and variant is not None
+        and variant.id in ("vastu", "vastu-first", "modern", "open-plan")
+    )
     meta = {
         "vastuScore": vastu.score, "vastuGrade": vastu.grade,
         "codeFails": code.summary.fail_count, "droppedRooms": g_drop + u_drop,
@@ -2928,6 +2967,7 @@ def _generate_multifloor(
         "downscaled": mf_downscaled, "note": note,
         "footprintSqm": round(footprint, 1), "floorsGenerated": floors,
         "coverageRatio": cov_ratio,
+        "doubleHeightLiving": double_height,
         **site_meta,
     }
     return plan, vastu, code, meta
@@ -2959,18 +2999,92 @@ def generate_plan(
     if bhk < 1 or bhk > 4:
         raise ValueError("bhk must be between 1 and 4")
 
+    # --- PLOT POLYGON (v2): normalise an irregular boundary to the SW origin and
+    # keep width/depth equal to its bounding box (the coordinate convention every
+    # downstream consumer — zones, code checks, exporters — already assumes). The
+    # caller's Plot is never mutated; we work on a local model_copy. ---
+    poly_meta: dict = {}
+    poly_pts: Optional[list[tuple[float, float]]] = None
+    if plot.polygon is not None and len(
+        {(round(float(x), 6), round(float(y), 6)) for x, y in plot.polygon}
+    ) >= 3:
+        poly_pts = [(float(x), float(y)) for x, y in plot.polygon]
+        pminx, pminy, pmaxx, pmaxy = geometry.bounds_of(poly_pts)
+        if abs(pminx) > 1e-9 or abs(pminy) > 1e-9:  # shift ring so bbox min == (0, 0)
+            poly_pts = [(x - pminx, y - pminy) for x, y in poly_pts]
+        bb_w, bb_h = pmaxx - pminx, pmaxy - pminy
+        updates: dict = {"polygon": poly_pts}
+        # width/depth must equal the polygon bbox; when they disagree by >1% the
+        # polygon wins (it is the surveyed truth, width/depth the approximation).
+        if (
+            abs(bb_w - plot.width_m) > 0.01 * max(bb_w, plot.width_m)
+            or abs(bb_h - plot.depth_m) > 0.01 * max(bb_h, plot.depth_m)
+        ):
+            updates["width_m"] = bb_w
+            updates["depth_m"] = bb_h
+        plot = plot.model_copy(update=updates)
+
     # --- PLOT SHAPE LOGIC: narrow/widen front for gomukhi/shermukhi ---
     plot_width = plot.width_m
     if plot.plot_shape == "gomukhi":
         plot_width *= 0.95
     elif plot.plot_shape == "shermukhi":
         plot_width *= 1.05
-    
+
     # We create a temporary plot for the envelope generator
     temp_plot = plot.model_copy(update={"width_m": plot_width})
     env, keepout = _envelope_and_keepout(temp_plot, code_rules)
+
+    # --- POLYGON ENVELOPE (v1): the packer only understands axis-aligned rects,
+    # so an irregular plot becomes: true boundary -> uniform CONSERVATIVE inset
+    # (the largest of the front/rear/side setbacks; per-edge classification along
+    # the true boundary is deferred) -> largest inscribed axis-aligned rect. A
+    # polygon that fills its bbox (>= 99.5%) IS the rectangle, so it keeps the
+    # exact per-edge setback envelope computed above. An explicit polygon also
+    # supersedes the gomukhi/shermukhi width heuristic. ---
+    if poly_pts is not None:
+        poly_pts = list(plot.polygon)  # the origin-normalised ring
+        p_area = geometry.polygon_area(poly_pts)
+        bb_area = plot.width_m * plot.depth_m
+        # Setback band from the SAME area code_service.check_code uses
+        # (width*depth): the checker verifies rooms against the bbox-area band,
+        # so deriving the inset from the (smaller) true polygon area could pick
+        # a lighter band and let the inscribed rect encroach on the checked one.
+        band = code_rules.setback_for(plot.state.value, bb_area)
+        if p_area >= 0.995 * bb_area:
+            e0, e1, e2, e3 = env
+            poly_meta = {
+                "plotPolygon": [[round(x, 6), round(y, 6)] for x, y in poly_pts],
+                "envelopePolygon": [[e0, e1], [e2, e1], [e2, e3], [e0, e3]],
+                "envelopeUtilization": 1.0,
+                "polygonMode": "rect-equivalent (per-edge setbacks)",
+            }
+        else:
+            inset = max(
+                float(band.get("frontM", 0)),
+                float(band.get("rearM", 0)),
+                float(band.get("sideM", 0)),
+            )
+            envelope_poly = geometry.inset_polygon(poly_pts, inset)
+            rect = geometry.largest_inscribed_rect(envelope_poly) if envelope_poly else None
+            if envelope_poly is None or rect is None:
+                raise ValueError(
+                    "polygon plot too small/irregular for the buildable envelope"
+                )
+            env = rect
+            env_poly_area = geometry.polygon_area(envelope_poly)
+            rect_area = (rect[2] - rect[0]) * (rect[3] - rect[1])
+            poly_meta = {
+                "plotPolygon": [[round(x, 6), round(y, 6)] for x, y in poly_pts],
+                "envelopePolygon": [[round(x, 6), round(y, 6)] for x, y in envelope_poly],
+                "envelopeUtilization": (
+                    round(min(1.0, rect_area / env_poly_area), 2) if env_poly_area > 1e-9 else 0.0
+                ),
+                "polygonMode": "v1-inscribed-rect (uniform conservative inset)",
+            }
+
     minx, miny, maxx, maxy = env
-    
+
     env = (minx, miny, maxx, maxy)
     env_w, env_d = maxx - minx, maxy - miny
     if env_w < 2.0 or env_d < 2.0:
@@ -2991,6 +3105,9 @@ def generate_plan(
     # --- RIGHT-SIZING: map the buildable footprint to the largest sensible tier,
     # then reconcile with the requested bhk (downscale if it doesn't fit). ---
     footprint = buildable_footprint_sqm(plot, code_rules)
+    if poly_pts is not None:
+        # On an irregular plot only the inscribed rect is actually packable.
+        footprint = min(footprint, env_w * env_d)
     effective_tier, requested_tier, downscaled, tier_note = resolve_tier(bhk, footprint)
     effective_bhk = _TIER_BEDROOMS[effective_tier]
 
@@ -3048,6 +3165,7 @@ def generate_plan(
             if auto_note:
                 meta["note"] = f"{auto_note} {meta.get('note', '')}".strip()
                 meta["autoStorey"] = True
+            meta.update(poly_meta)
             return plan, vastu, code, meta
 
     # --- STUDIO: bespoke single-room layout (band packer would slice it too thin).
@@ -3074,7 +3192,9 @@ def generate_plan(
             "attempts": s_attempts, "tier": effective_tier,
             "requestedBhk": max(1, min(4, int(bhk))), "downscaled": downscaled,
             "note": tier_note, "footprintSqm": round(footprint, 1),
+            "doubleHeightLiving": False,
             **site_meta,
+            **poly_meta,
         }
         return plan, vastu, code, meta
 
@@ -3259,7 +3379,11 @@ def generate_plan(
         "downscaled": downscaled,
         "note": tier_note,
         "footprintSqm": round(footprint, 1),
+        # Advisory presentation flag (see _generate_multifloor); a single-storey
+        # hall is never double-height.
+        "doubleHeightLiving": False,
         **site_meta,
+        **poly_meta,
     }
     return plan, vastu, code, meta
 

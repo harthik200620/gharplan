@@ -132,7 +132,16 @@ def _draw_plan(msp, doc, plan: Plan, floor: Optional[int], dx: float, dy: float,
     d = plan.plot.depth_m
     plot_layer = "MEP_ROOM" if mep_base else "PLOT"
     _ensure(doc, plot_layer, 8 if mep_base else 7)
-    _rect(msp, dx, dy, w, d, plot_layer)
+    boundary = getattr(plan.plot, "polygon", None)
+    if boundary and len(boundary) >= 3:
+        # Plot-v2: draw the TRUE surveyed boundary instead of the bbox rectangle.
+        msp.add_lwpolyline(
+            _off([(float(x), float(y)) for x, y in boundary], dx, dy),
+            close=True,
+            dxfattribs={"layer": plot_layer},
+        )
+    else:
+        _rect(msp, dx, dy, w, d, plot_layer)
 
     for room in plan.rooms:
         if floor is not None and (room.floor or 0) != floor:

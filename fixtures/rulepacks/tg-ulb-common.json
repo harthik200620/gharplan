@@ -1,0 +1,116 @@
+{
+  "packId": "tg-ulb-common",
+  "version": "2.0.0",
+  "state": "TG",
+  "jurisdiction": "Telangana ULBs outside GHMC - municipal corporations and municipalities (Warangal/GWMC, Nizamabad, Karimnagar, Khammam, Ramagundam, Mahabubnagar, Siddipet, etc.)",
+  "regime": "Telangana Building Rules — G.O.Ms.No.168 MA&UD (07-04-2012) as amended, applied statewide to ULBs; TG-bPASS (TS-bPASS Act 2020) processing",
+  "useClass": "residential",
+  "instantApproval": {
+    "maxPlotSqYd": 75,
+    "maxPlotSqm": 62.71,
+    "maxHeightM": 7,
+    "note": "Same statewide TG-bPASS instant registration tier as GHMC: plots up to 75 sq yd (about 62.71 m2) and height up to 7 m (G+1) - Re.1 token registration on self-declaration; 75 sq yd to 500 m2 / up to 10 m goes via instant self-certification approval.",
+    "source": { "ref": "TS-bPASS Act 2020 / TG-bPASS portal guidance (tsbpass.telangana.gov.in); docs/region-research.md - TG section", "confidence": "needs_verification" }
+  },
+  "setbacks": [
+    {
+      "when": { "plotAreaSqm": [0, 100], "roadWidthM": [0, 100000], "heightM": [0, 100000] },
+      "frontM": 1.5,
+      "rearM": 1.0,
+      "sideM": 1.0,
+      "note": "Same statewide G.O.Ms.No.168 family as tg-ghmc; kept identical to fixtures/code_rules.json TG. Sub-50 m2 no-setback relief exists in the rules but is not modeled.",
+      "source": { "ref": "G.O.Ms.No.168 MA&UD (2012) residential setback table; docs/region-research.md - TG setback note", "confidence": "needs_verification" }
+    },
+    {
+      "when": { "plotAreaSqm": [100, 200], "roadWidthM": [0, 100000], "heightM": [0, 100000] },
+      "frontM": 1.5,
+      "rearM": 1.0,
+      "sideM": 1.0,
+      "note": "101-200 m2 relaxed band: front 1.5 m, sides and rear 1.0 m (road under 12 m).",
+      "source": { "ref": "G.O.Ms.No.168 MA&UD (2012) residential setback table; docs/region-research.md - TG setback note", "confidence": "needs_verification" }
+    },
+    {
+      "when": { "plotAreaSqm": [200, 300], "roadWidthM": [0, 100000], "heightM": [0, 100000] },
+      "frontM": 2.0,
+      "rearM": 1.5,
+      "sideM": 1.5,
+      "note": "201-300 m2 band on a road under 12 m. Road-width-scaled front setbacks are not modeled (see tg-ghmc note).",
+      "source": { "ref": "G.O.Ms.No.168 MA&UD (2012) residential setback table; docs/region-research.md - TG setback note", "confidence": "needs_verification" }
+    },
+    {
+      "when": { "plotAreaSqm": [300, 500], "roadWidthM": [0, 100000], "heightM": [0, 100000] },
+      "frontM": 3.0,
+      "rearM": 2.0,
+      "sideM": 2.0,
+      "source": { "ref": "fixtures/code_rules.json TG setbacks (calibrated engine baseline); docs/region-research.md - TG section", "confidence": "needs_verification" }
+    },
+    {
+      "when": { "plotAreaSqm": [500, 100000], "roadWidthM": [0, 100000], "heightM": [0, 100000] },
+      "frontM": 6.0,
+      "rearM": 4.5,
+      "sideM": 3.0,
+      "note": "Baseline-engine extrapolation for large plots; the rules prescribe height-dependent setbacks for taller buildings.",
+      "source": { "ref": "fixtures/code_rules.json TG setbacks (calibrated engine baseline); docs/region-research.md - TG section", "confidence": "needs_verification" }
+    }
+  ],
+  "heightByRoad": [
+    {
+      "roadWidthM": [0, 9],
+      "maxHeightM": 10,
+      "source": { "ref": "G.O.Ms.No.168 height-vs-road-width provisions; docs/region-research.md - TG caveats (10 m on a road under 9 m)", "confidence": "needs_verification" }
+    },
+    {
+      "roadWidthM": [9, 100000],
+      "maxHeightM": 15,
+      "note": "Simplified for smaller ULBs: 15 m cap on roads of 9 m and wider. Taller non-high-rise permissions on wide roads exist in some corporation areas per their master plans, but that granularity is not supportable statewide - treat wide-road / taller proposals as needing a jurisdiction-specific check.",
+      "source": { "ref": "G.O.Ms.No.168 height-vs-road-width provisions; docs/region-research.md - TG caveats", "confidence": "needs_verification" }
+    }
+  ],
+  "far": {
+    "value": null,
+    "note": "Same setback-based control regime as tg-ghmc: no separate FAR cap for non-high-rise residential under the Telangana Building Rules 2012. The legacy engine working default is 1.5 (fixtures/code_rules.json TG.FAR) - advisory only.",
+    "source": { "ref": "G.O.Ms.No.168 MA&UD (2012) - setback-based control regime; docs/region-research.md - TG confidence note", "confidence": "needs_verification" }
+  },
+  "coverage": {
+    "maxPct": 55,
+    "note": "Practitioner working default consistent with fixtures/code_rules.json TG.maxGroundCoveragePct; not a printed statutory ceiling for individual houses.",
+    "source": { "ref": "docs/region-research.md - TG table (coverage 55%, working default)", "confidence": "needs_verification" }
+  },
+  "parking": {
+    "perDwelling": 1,
+    "note": "One covered car space plus two-wheeler space per dwelling as working default (stilt/ground parking; stilt up to 2.4 m clear exempt from height reckoning). ECS-based norms apply mainly to group housing.",
+    "source": { "ref": "G.O.Ms.No.168 parking provisions (practitioner reading); docs/region-research.md - TG parking row", "confidence": "needs_verification" }
+  },
+  "rwh": {
+    "mandatoryAbovePlotSqm": 200,
+    "note": "Rainwater-harvesting structure required for plots of 200 m2 and above (WALTA-heritage requirement continued in Telangana; enforced by ULBs as a sanction condition).",
+    "source": { "ref": "G.O.Ms.No.168 rainwater-harvesting provision / WALTA 2002 heritage", "confidence": "needs_verification" }
+  },
+  "cornerPlot": {
+    "secondFrontSetback": true,
+    "note": "Corner plots treat the second road-abutting side as a front setback (matched band's frontM applies on that flank). Junction splay may additionally be required.",
+    "source": { "ref": "G.O.Ms.No.168 - corner plot treatment (common sanctioning practice)", "confidence": "needs_verification" }
+  },
+  "roomMinimums": {
+    "inheritFrom": "state-baseline",
+    "note": "NBC-derived room minimums come from fixtures/code_rules.json states.TG block."
+  },
+  "docChecklist": [
+    "Sale deed / link documents (registered title)",
+    "Encumbrance certificate (EC)",
+    "Latest property tax / vacant land tax receipt",
+    "Approved layout copy or LRS (layout regularisation) proceedings, where applicable",
+    "NALA conversion certificate (if the land was agricultural)",
+    "ULB master plan land-use extract / zoning confirmation for the plot",
+    "Building plans signed by the owner and a licensed technical person (LTP)",
+    "Structural stability certificate / soil report, as applicable to the proposed height",
+    "Mortgage deed for 10% of built-up area in favour of the ULB, where applicable",
+    "Rainwater-harvesting undertaking (plots of 200 m2 and above)"
+  ],
+  "notes": [
+    "Advisory defaults for early design only - NOT legal advice and NOT a substitute for a sanctioned plan. Verify against the live TG-bPASS engine and the current G.O.Ms.No.168 tables for the specific plot.",
+    "ULB-specific master plans / zonal development plans (e.g. Warangal Kakatiya UDA area, Nizamabad UDA) may OVERRIDE these statewide defaults - land use, road-widening lines and locally notified setback/height variations prevail over this pack.",
+    "Mortgage clause: 10% of built-up area mortgaged to the sanctioning ULB (released on occupancy certificate), commonly applied to plots above 200 m2 - threshold and mechanics NEED VERIFICATION against G.O.Ms.No.168 / TS-bPASS rules.",
+    "Same regime family as tg-ghmc with marginally simpler height handling; numbers for plots <= 500 m2 restate fixtures/code_rules.json TG values verbatim."
+  ]
+}

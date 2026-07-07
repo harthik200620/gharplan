@@ -1,0 +1,280 @@
+[
+  {
+    "case": "ghmc-tiny-60sqm-6m-road-g1",
+    "packId": "tg-ghmc",
+    "plotAreaSqm": 60,
+    "roadWidthM": 6,
+    "heightM": 7,
+    "note": "Tiny plot under 75 sq yd (62.71 m2) at G+1 - TG-bPASS instant tier applies.",
+    "expect": { "frontM": 1.5, "rearM": 1.0, "sideM": 1.0, "maxHeightM": 10, "farAllowed": null, "instantApprovalEligible": true }
+  },
+  {
+    "case": "ghmc-tiny-60sqm-9m-road-too-tall-for-instant",
+    "packId": "tg-ghmc",
+    "plotAreaSqm": 60,
+    "roadWidthM": 9,
+    "heightM": 9,
+    "note": "Plot small enough but height 9 m exceeds the 7 m instant cap; road 9 m sits at the [9,12) boundary (min-inclusive).",
+    "expect": { "frontM": 1.5, "rearM": 1.0, "sideM": 1.0, "maxHeightM": 15, "farAllowed": null, "instantApprovalEligible": false }
+  },
+  {
+    "case": "ghmc-instant-boundary-62.5sqm",
+    "packId": "tg-ghmc",
+    "plotAreaSqm": 62.5,
+    "roadWidthM": 6,
+    "heightM": 7,
+    "note": "62.5 <= 62.71 (75 sq yd) and height exactly 7 m - boundary probe for instant eligibility.",
+    "expect": { "frontM": 1.5, "rearM": 1.0, "sideM": 1.0, "maxHeightM": 10, "farAllowed": null, "instantApprovalEligible": true }
+  },
+  {
+    "case": "ghmc-30x40-111.5sqm-9m-road-g1",
+    "packId": "tg-ghmc",
+    "plotAreaSqm": 111.5,
+    "roadWidthM": 9,
+    "heightM": 7,
+    "expect": { "frontM": 1.5, "rearM": 1.0, "sideM": 1.0, "maxHeightM": 15, "farAllowed": null, "instantApprovalEligible": false }
+  },
+  {
+    "case": "ghmc-150sqm-6m-road-g2",
+    "packId": "tg-ghmc",
+    "plotAreaSqm": 150,
+    "roadWidthM": 6,
+    "heightM": 10,
+    "expect": { "frontM": 1.5, "rearM": 1.0, "sideM": 1.0, "maxHeightM": 10, "farAllowed": null, "instantApprovalEligible": false }
+  },
+  {
+    "case": "ghmc-plot200-boundary-9m-road",
+    "packId": "tg-ghmc",
+    "plotAreaSqm": 200,
+    "roadWidthM": 9,
+    "heightM": 10,
+    "note": "Plot exactly 200 m2 falls in the [200,300) band (min-inclusive) - the stricter reading vs the legacy max-inclusive ladder.",
+    "expect": { "frontM": 2.0, "rearM": 1.5, "sideM": 1.5, "maxHeightM": 15, "farAllowed": null, "instantApprovalEligible": false }
+  },
+  {
+    "case": "ghmc-250sqm-9m-road-14m-tall",
+    "packId": "tg-ghmc",
+    "plotAreaSqm": 250,
+    "roadWidthM": 9,
+    "heightM": 14,
+    "note": "Height input does not shift TG setback bands (height is full-range in this pack).",
+    "expect": { "frontM": 2.0, "rearM": 1.5, "sideM": 1.5, "maxHeightM": 15, "farAllowed": null, "instantApprovalEligible": false }
+  },
+  {
+    "case": "ghmc-250sqm-corner-12m-road",
+    "packId": "tg-ghmc",
+    "plotAreaSqm": 250,
+    "roadWidthM": 12,
+    "heightM": 10,
+    "cornerPlot": true,
+    "note": "Corner plot: second road-abutting flank takes frontM (2.0) in place of sideM. Road exactly 12 m enters the [12,inf) band.",
+    "expect": { "frontM": 2.0, "rearM": 1.5, "sideM": 1.5, "maxHeightM": 18, "farAllowed": null, "instantApprovalEligible": false, "cornerSecondFront": true }
+  },
+  {
+    "case": "ghmc-400sqm-12m-road",
+    "packId": "tg-ghmc",
+    "plotAreaSqm": 400,
+    "roadWidthM": 12,
+    "heightM": 12,
+    "expect": { "frontM": 3.0, "rearM": 2.0, "sideM": 2.0, "maxHeightM": 18, "farAllowed": null, "instantApprovalEligible": false }
+  },
+  {
+    "case": "ghmc-400sqm-18m-road",
+    "packId": "tg-ghmc",
+    "plotAreaSqm": 400,
+    "roadWidthM": 18,
+    "heightM": 15,
+    "expect": { "frontM": 3.0, "rearM": 2.0, "sideM": 2.0, "maxHeightM": 18, "farAllowed": null, "instantApprovalEligible": false }
+  },
+  {
+    "case": "ghmc-plot500-boundary-18m-road",
+    "packId": "tg-ghmc",
+    "plotAreaSqm": 500,
+    "roadWidthM": 18,
+    "heightM": 15,
+    "note": "Plot exactly 500 m2 falls in the open [500,inf) band (min-inclusive).",
+    "expect": { "frontM": 6.0, "rearM": 4.5, "sideM": 3.0, "maxHeightM": 18, "farAllowed": null, "instantApprovalEligible": false }
+  },
+  {
+    "case": "ghmc-750sqm-24m-road",
+    "packId": "tg-ghmc",
+    "plotAreaSqm": 750,
+    "roadWidthM": 24,
+    "heightM": 16,
+    "expect": { "frontM": 6.0, "rearM": 4.5, "sideM": 3.0, "maxHeightM": 18, "farAllowed": null, "instantApprovalEligible": false }
+  },
+  {
+    "case": "tgulb-warangal-60sqm-6m-road-instant",
+    "packId": "tg-ulb-common",
+    "plotAreaSqm": 60,
+    "roadWidthM": 6,
+    "heightM": 7,
+    "note": "Statewide instant tier applies identically in non-GHMC ULBs.",
+    "expect": { "frontM": 1.5, "rearM": 1.0, "sideM": 1.0, "maxHeightM": 10, "farAllowed": null, "instantApprovalEligible": true }
+  },
+  {
+    "case": "tgulb-nizamabad-90sqm-8.9m-road",
+    "packId": "tg-ulb-common",
+    "plotAreaSqm": 90,
+    "roadWidthM": 8.9,
+    "heightM": 7,
+    "note": "Road 8.9 m stays in the [0,9) band; plot 90 m2 exceeds the instant plot cap.",
+    "expect": { "frontM": 1.5, "rearM": 1.0, "sideM": 1.0, "maxHeightM": 10, "farAllowed": null, "instantApprovalEligible": false }
+  },
+  {
+    "case": "tgulb-karimnagar-180sqm-9m-road",
+    "packId": "tg-ulb-common",
+    "plotAreaSqm": 180,
+    "roadWidthM": 9,
+    "heightM": 10,
+    "expect": { "frontM": 1.5, "rearM": 1.0, "sideM": 1.0, "maxHeightM": 15, "farAllowed": null, "instantApprovalEligible": false }
+  },
+  {
+    "case": "tgulb-350sqm-18m-road-corner",
+    "packId": "tg-ulb-common",
+    "plotAreaSqm": 350,
+    "roadWidthM": 18,
+    "heightM": 12,
+    "cornerPlot": true,
+    "note": "ULB pack caps at 15 m even on an 18 m road (simplified two-band height table).",
+    "expect": { "frontM": 3.0, "rearM": 2.0, "sideM": 2.0, "maxHeightM": 15, "farAllowed": null, "instantApprovalEligible": false, "cornerSecondFront": true }
+  },
+  {
+    "case": "apdpms-80sqm-6m-road",
+    "packId": "ap-dpms-common",
+    "plotAreaSqm": 80,
+    "roadWidthM": 6,
+    "heightM": 7,
+    "note": "AP sub-100 m2 band has the reduced 0.5 m rear/side; no instant tier modeled for AP (instantApproval null).",
+    "expect": { "frontM": 1.5, "rearM": 0.5, "sideM": 0.5, "maxHeightM": 10, "farAllowed": 1.75, "instantApprovalEligible": false }
+  },
+  {
+    "case": "apdpms-plot100-boundary-6m-road",
+    "packId": "ap-dpms-common",
+    "plotAreaSqm": 100,
+    "roadWidthM": 6,
+    "heightM": 7,
+    "note": "Plot exactly 100 m2 enters the [100,200) band - rear/side step from 0.5 to 1.0 (sharp boundary-semantics probe).",
+    "expect": { "frontM": 1.5, "rearM": 1.0, "sideM": 1.0, "maxHeightM": 10, "farAllowed": 1.75, "instantApprovalEligible": false }
+  },
+  {
+    "case": "apdpms-150sqm-9m-road",
+    "packId": "ap-dpms-common",
+    "plotAreaSqm": 150,
+    "roadWidthM": 9,
+    "heightM": 10,
+    "note": "Road 9 m is still under 12 m in AP - height cap stays 10 m.",
+    "expect": { "frontM": 1.5, "rearM": 1.0, "sideM": 1.0, "maxHeightM": 10, "farAllowed": 1.75, "instantApprovalEligible": false }
+  },
+  {
+    "case": "apdpms-250sqm-12m-road-boundary",
+    "packId": "ap-dpms-common",
+    "plotAreaSqm": 250,
+    "roadWidthM": 12,
+    "heightM": 12,
+    "note": "Road exactly 12 m enters the [12,inf) band - height cap rises to 15 m.",
+    "expect": { "frontM": 2.0, "rearM": 1.5, "sideM": 1.0, "maxHeightM": 15, "farAllowed": 1.75, "instantApprovalEligible": false }
+  },
+  {
+    "case": "apdpms-250sqm-corner-9m-road",
+    "packId": "ap-dpms-common",
+    "plotAreaSqm": 250,
+    "roadWidthM": 9,
+    "heightM": 10,
+    "cornerPlot": true,
+    "expect": { "frontM": 2.0, "rearM": 1.5, "sideM": 1.0, "maxHeightM": 10, "farAllowed": 1.75, "instantApprovalEligible": false, "cornerSecondFront": true }
+  },
+  {
+    "case": "apdpms-400sqm-18m-road",
+    "packId": "ap-dpms-common",
+    "plotAreaSqm": 400,
+    "roadWidthM": 18,
+    "heightM": 15,
+    "expect": { "frontM": 3.0, "rearM": 2.0, "sideM": 2.0, "maxHeightM": 15, "farAllowed": 1.75, "instantApprovalEligible": false }
+  },
+  {
+    "case": "apdpms-600sqm-18m-road",
+    "packId": "ap-dpms-common",
+    "plotAreaSqm": 600,
+    "roadWidthM": 18,
+    "heightM": 15,
+    "expect": { "frontM": 6.0, "rearM": 4.5, "sideM": 3.0, "maxHeightM": 15, "farAllowed": 1.75, "instantApprovalEligible": false }
+  },
+  {
+    "case": "apcrda-inherit-150sqm-9m-road",
+    "packId": "ap-crda",
+    "plotAreaSqm": 150,
+    "roadWidthM": 9,
+    "heightM": 10,
+    "note": "Proves 'inherits: ap-dpms-common' resolves - APCRDA pack has no bands of its own.",
+    "expect": { "frontM": 1.5, "rearM": 1.0, "sideM": 1.0, "maxHeightM": 10, "farAllowed": 1.75, "instantApprovalEligible": false }
+  },
+  {
+    "case": "apcrda-inherit-corner-120sqm-9m-road",
+    "packId": "ap-crda",
+    "plotAreaSqm": 120,
+    "roadWidthM": 9,
+    "heightM": 7,
+    "cornerPlot": true,
+    "note": "Corner rule is inherited from ap-dpms-common.",
+    "expect": { "frontM": 1.5, "rearM": 1.0, "sideM": 1.0, "maxHeightM": 10, "farAllowed": 1.75, "instantApprovalEligible": false, "cornerSecondFront": true }
+  },
+  {
+    "case": "aptuda-inherit-250sqm-12m-road",
+    "packId": "ap-tuda",
+    "plotAreaSqm": 250,
+    "roadWidthM": 12,
+    "heightM": 12,
+    "note": "Proves 'inherits: ap-dpms-common' resolves for TUDA.",
+    "expect": { "frontM": 2.0, "rearM": 1.5, "sideM": 1.0, "maxHeightM": 15, "farAllowed": 1.75, "instantApprovalEligible": false }
+  },
+  {
+    "case": "apvmrda-inherit-80sqm-6m-road",
+    "packId": "ap-vmrda",
+    "plotAreaSqm": 80,
+    "roadWidthM": 6,
+    "heightM": 7,
+    "note": "Proves 'inherits: ap-dpms-common' resolves for VMRDA.",
+    "expect": { "frontM": 1.5, "rearM": 0.5, "sideM": 0.5, "maxHeightM": 10, "farAllowed": 1.75, "instantApprovalEligible": false }
+  },
+  {
+    "case": "kalegacy-120sqm-9m-road",
+    "packId": "ka-legacy",
+    "plotAreaSqm": 120,
+    "roadWidthM": 9,
+    "heightM": 10,
+    "confidence": "verified",
+    "note": "Verified 1:1 against fixtures/code_rules.json states.KA (band maxPlotAreaSqm 150; FAR 1.75; maxHeightM 12) - adapter identity check, not external-law verification.",
+    "expect": { "frontM": 1.5, "rearM": 1.0, "sideM": 0.6, "maxHeightM": 12, "farAllowed": 1.75, "instantApprovalEligible": false }
+  },
+  {
+    "case": "kalegacy-200sqm-12m-road",
+    "packId": "ka-legacy",
+    "plotAreaSqm": 200,
+    "roadWidthM": 12,
+    "heightM": 12,
+    "confidence": "verified",
+    "note": "Verified 1:1 against fixtures/code_rules.json states.KA (band maxPlotAreaSqm 300).",
+    "expect": { "frontM": 3.0, "rearM": 2.0, "sideM": 1.2, "maxHeightM": 12, "farAllowed": 1.75, "instantApprovalEligible": false }
+  },
+  {
+    "case": "kalegacy-400sqm-12m-road",
+    "packId": "ka-legacy",
+    "plotAreaSqm": 400,
+    "roadWidthM": 12,
+    "heightM": 12,
+    "confidence": "verified",
+    "note": "Verified 1:1 against fixtures/code_rules.json states.KA (band maxPlotAreaSqm 500).",
+    "expect": { "frontM": 4.5, "rearM": 3.0, "sideM": 2.0, "maxHeightM": 12, "farAllowed": 1.75, "instantApprovalEligible": false }
+  },
+  {
+    "case": "kalegacy-800sqm-24m-road",
+    "packId": "ka-legacy",
+    "plotAreaSqm": 800,
+    "roadWidthM": 24,
+    "heightM": 12,
+    "confidence": "verified",
+    "note": "Verified 1:1 against fixtures/code_rules.json states.KA (open band maxPlotAreaSqm null). Road width has no effect in the legacy adapter (single full-range band).",
+    "expect": { "frontM": 6.0, "rearM": 4.5, "sideM": 3.0, "maxHeightM": 12, "farAllowed": 1.75, "instantApprovalEligible": false }
+  }
+]

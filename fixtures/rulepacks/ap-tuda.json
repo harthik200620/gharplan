@@ -1,0 +1,16 @@
+{
+  "packId": "ap-tuda",
+  "version": "2.0.0",
+  "state": "AP",
+  "inherits": "ap-dpms-common",
+  "jurisdiction": "TUDA — Tirupati Urban Development Authority region, including Tirupati Municipal Corporation (TMC) and surrounding ULBs/panchayats in the TUDA planning area",
+  "regime": "AP Building Rules 2017 (G.O.Ms.No.119 MA&UD) as amended, administered by TMC/TUDA via AP DPMS; TUDA master plan overlays",
+  "useClass": "residential",
+  "notes": [
+    "Inherits all numeric bands (setbacks, heights, FAR, coverage, parking, RWH, corner rule, checklist) from ap-dpms-common - the AP Building Rules 2017 statewide values.",
+    "Temple-town sensitivity: height and facade controls near the Tirumala foothills, major temple precincts (e.g. Sri Govindaraja Swamy temple, Kapila Theertham axis) and the Alipiri footpath corridor are locally sensitive; endowments-linked or master-plan height restrictions near such zones are reported but NOT codified in this pack - NEEDS VERIFICATION with TUDA/TMC before relying on the statewide height bands near temple zones.",
+    "TUDA master plan / zonal development plan land-use and road-widening lines prevail over these statewide defaults - verify the plot's zoning with TUDA/TMC.",
+    "Cultural note (advisory, non-statutory): client expectation of Vastu vetting is unusually high in Tirupati; this has no regulatory force and never overrides statutory setbacks or NBC requirements.",
+    "Advisory defaults for early design only - NOT legal advice and NOT a substitute for a sanctioned plan; verify on AP DPMS and against current TUDA/TMC notifications."
+  ]
+}

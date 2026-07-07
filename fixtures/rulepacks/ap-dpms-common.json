@@ -1,0 +1,113 @@
+{
+  "packId": "ap-dpms-common",
+  "version": "2.0.0",
+  "state": "AP",
+  "jurisdiction": "Andhra Pradesh urban local bodies (municipal corporations and municipalities) processing building permissions via AP DPMS / Online Building Permission System",
+  "regime": "Andhra Pradesh Building Rules 2017 — G.O.Ms.No.119 MA&UD (28-03-2017) as amended; AP DPMS online processing",
+  "useClass": "residential",
+  "instantApproval": null,
+  "setbacks": [
+    {
+      "when": { "plotAreaSqm": [0, 100], "roadWidthM": [0, 100000], "heightM": [0, 100000] },
+      "frontM": 1.5,
+      "rearM": 0.5,
+      "sideM": 0.5,
+      "note": "Baseline calibration from fixtures/code_rules.json AP (<=100 m2). Table-17's exact treatment of sub-100 m2 plots (and its height-dependence) needs verification.",
+      "source": { "ref": "AP Building Rules 2017 (G.O.Ms.No.119) Table-17 / Rule 57; fixtures/code_rules.json AP setbacks (calibrated engine baseline)", "confidence": "needs_verification" }
+    },
+    {
+      "when": { "plotAreaSqm": [100, 200], "roadWidthM": [0, 100000], "heightM": [0, 100000] },
+      "frontM": 1.5,
+      "rearM": 1.0,
+      "sideM": 1.0,
+      "note": "DISCREPANCY flagged: the docs/region-research.md Table-17 extract shows 'remaining sides' of 1.5-2.0 m rising with permissible height for 100-200 m2 plots (1.5 m at 7 m height, 2.0 m at 12 m); the calibrated engine baseline uses rear/side 1.0 m and is kept here for compatibility. Verify against Table-17 before sanction-grade use.",
+      "source": { "ref": "AP Building Rules 2017 (G.O.Ms.No.119) Table-17 / Rule 57; docs/region-research.md - AP setback note", "confidence": "needs_verification" }
+    },
+    {
+      "when": { "plotAreaSqm": [200, 300], "roadWidthM": [0, 100000], "heightM": [0, 100000] },
+      "frontM": 2.0,
+      "rearM": 1.5,
+      "sideM": 1.0,
+      "note": "DISCREPANCY flagged: docs/region-research.md shows remaining sides of 2.0-3.0 m rising with height for 200-300 m2 (2.0 at 7 m, 2.5 at 12 m, 3.0 at 15 m), and its Tirupati default row reads front 1.5-2.0 / rear 2.0 / side1 1.5 / side2 1.0. The engine baseline (rear 1.5 / side 1.0) is kept for compatibility. This schema also models a single sideM whereas AP practice often differentiates side1/side2.",
+      "source": { "ref": "AP Building Rules 2017 (G.O.Ms.No.119) Table-17 / Rule 57; docs/region-research.md - AP setback note", "confidence": "needs_verification" }
+    },
+    {
+      "when": { "plotAreaSqm": [300, 500], "roadWidthM": [0, 100000], "heightM": [0, 100000] },
+      "frontM": 3.0,
+      "rearM": 2.0,
+      "sideM": 2.0,
+      "note": "AP rules permit redistributing setbacks (minimum 1.5 m on any one side for buildings up to 10 m, plots 300-750 m2). A 1 m peripheral green strip on all sides is required for plots above 300 m2.",
+      "source": { "ref": "AP Building Rules 2017 (G.O.Ms.No.119) Table-17 / Rule 57; fixtures/code_rules.json AP setbacks (calibrated engine baseline)", "confidence": "needs_verification" }
+    },
+    {
+      "when": { "plotAreaSqm": [500, 100000], "roadWidthM": [0, 100000], "heightM": [0, 100000] },
+      "frontM": 6.0,
+      "rearM": 4.5,
+      "sideM": 3.0,
+      "note": "Baseline-engine extrapolation for large plots; Table-17 prescribes height-linked setbacks for taller buildings which this flat band does not capture.",
+      "source": { "ref": "fixtures/code_rules.json AP setbacks (calibrated engine baseline); docs/region-research.md - AP section", "confidence": "needs_verification" }
+    }
+  ],
+  "heightByRoad": [
+    {
+      "roadWidthM": [0, 12],
+      "maxHeightM": 10,
+      "note": "Practical cap of ~10 m (stilt + G+2) where the abutting road is under 12 m; Table-17 couples permissible height to both road width and the setbacks provided. Stilt parking floor (min 2.5 m clear) is excluded from height reckoning.",
+      "source": { "ref": "AP Building Rules 2017 (G.O.Ms.No.119) Table-17; docs/region-research.md - AP caveats (max height ~10 m without a 12 m road)", "confidence": "needs_verification" }
+    },
+    {
+      "roadWidthM": [12, 100000],
+      "maxHeightM": 15,
+      "note": "Up to ~15 m non-high-rise on roads of 12 m and wider, with the larger Table-17 setbacks. Buildings of 18 m and above are high-rise (minimum 12 m road, fire NOC, separate scrutiny) and outside this pack's scope.",
+      "source": { "ref": "AP Building Rules 2017 (G.O.Ms.No.119) Table-17 / high-rise provisions; docs/region-research.md - AP caveats", "confidence": "needs_verification" }
+    }
+  ],
+  "far": {
+    "value": 1.75,
+    "note": "AP retained an FAR-style ceiling of about 1.5-1.75 for small residential development. For non-high-rise plots the 2017 rules chiefly derive the buildable envelope from setbacks + permissible height, so 1.75 (matching fixtures/code_rules.json AP.FAR) is a calibrated practitioner default rather than a printed statutory cap.",
+    "source": { "ref": "AP Building Rules 2017 (G.O.Ms.No.119) read with docs/region-research.md - AP confidence note (FAR ~1.75 derived estimate)", "confidence": "needs_verification" }
+  },
+  "coverage": {
+    "maxPct": 65,
+    "note": "Matches fixtures/code_rules.json AP.maxGroundCoveragePct (65). DISCREPANCY flagged: docs/region-research.md Tirupati table lists ground coverage 60% - the engine baseline (65) is kept for compatibility; verify which applies for the target ULB/zone.",
+    "source": { "ref": "fixtures/code_rules.json AP (calibrated engine baseline); docs/region-research.md - AP table (60%, derived estimate)", "confidence": "needs_verification" }
+  },
+  "parking": {
+    "perDwelling": 1,
+    "note": "One covered car space (about 2.5 x 5.0 m) plus two-wheeler space (about 1 x 2 m) within the plot for an individual dwelling; the stilt parking floor (min 2.5 m clear) is excluded from height reckoning. AP Rules Table-11 prescribes percentage-of-built-up-area parking for group housing (20% of built-up area for residential complexes in Municipal Corporation areas).",
+    "source": { "ref": "AP Building Rules 2017 (G.O.Ms.No.119) Table-11; docs/region-research.md - AP parking row", "confidence": "needs_verification" }
+  },
+  "rwh": {
+    "mandatoryAbovePlotSqm": 200,
+    "note": "Rainwater-harvesting structure mandatory for plots of 200 m2 and above, linked to the AP Water, Land and Trees Act (WALTA) 2002; typically a percolation pit per sanction conditions.",
+    "source": { "ref": "AP WALTA 2002 read with AP Building Rules 2017 rainwater-harvesting provision", "confidence": "needs_verification" }
+  },
+  "cornerPlot": {
+    "secondFrontSetback": true,
+    "note": "Corner plots treat the second road-abutting side as a front setback (the matched band's frontM applies on that flank in place of sideM); a junction splay may additionally be required.",
+    "source": { "ref": "AP Building Rules 2017 - corner plot treatment (common sanctioning practice)", "confidence": "needs_verification" }
+  },
+  "roomMinimums": {
+    "inheritFrom": "state-baseline",
+    "note": "NBC / G.O.Ms.No.119 Table-5 derived room minimums come from fixtures/code_rules.json states.AP (habitable 9.5 m2 / 2.4 m, kitchen 5.0 m2, ceiling 2.75 m, ventilation ratio 0.1, stair 1.0 m)."
+  },
+  "docChecklist": [
+    "Sale deed / link documents (registered title)",
+    "Encumbrance certificate (EC)",
+    "Latest property tax / vacant land tax receipt",
+    "Approved layout copy / layout regularisation (LRS) proceedings, where applicable",
+    "Land-conversion (NALA) certificate if the land was agricultural",
+    "Building plans prepared and signed by a licensed technical person (LTP), uploaded on AP DPMS",
+    "Structural design / stability certificate and soil report, as applicable to height",
+    "Mortgage deed for 10% of built-up area in favour of the ULB, where applicable",
+    "Rainwater-harvesting (WALTA) undertaking for plots of 200 m2 and above",
+    "Situational NOCs where triggered: fire services (taller buildings), airport funnel, irrigation/water bodies, railway/defence proximity"
+  ],
+  "notes": [
+    "Advisory defaults for early design only - NOT legal advice and NOT a substitute for a sanctioned plan. Verify against the live AP DPMS engine and the current G.O.Ms.No.119 tables (as amended) for the specific plot.",
+    "A 1 m green strip along the frontage is mandatory; plots above 300 m2 additionally require a 1 m peripheral green strip on all sides (docs/region-research.md - AP setback note).",
+    "Mortgage clause: AP Building Rules 2017 carry a security-mortgage provision (10% of built-up area mortgaged to the sanctioning authority, released on occupancy certificate) - exact threshold and applicability NEED VERIFICATION against G.O.Ms.No.119 and its amendments.",
+    "instantApproval is null: AP's 2016-17 ease-of-doing-business reforms reportedly allowed registration-in-lieu-of-permission for small individual residential buildings (reported around plot <= 200 m2 and height <= 7 m), and AP DPMS offers self-certification tracks, but the exact statutory thresholds could not be pinned from available material - NOT modeled pending verification.",
+    "Discrepancy log vs docs/region-research.md: (a) coverage 65 (engine baseline) vs 60 (docs Tirupati table); (b) side/rear setbacks for 100-300 m2 - the Table-17 extract shows higher, height-linked values than the calibrated baseline (see band notes); (c) the docs Tirupati row uses asymmetric side1 1.5 / side2 1.0 while this schema models a single sideM; (d) docs AP toilet minimums (1.8 m2 / 1.2 m width) differ from the engine's roomClassification values (WC 1.1 m2 / 1.1 m) - room minimums stay with the state baseline, flagged here only."
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "packId": "ap-crda",
+  "version": "2.0.0",
+  "state": "AP",
+  "inherits": "ap-dpms-common",
+  "jurisdiction": "APCRDA — Andhra Pradesh Capital Region Development Authority (Amaravati capital region, including the Vijayawada-Guntur-Tenali-Mangalagiri belt)",
+  "regime": "AP Building Rules 2017 (G.O.Ms.No.119 MA&UD) read with the APCRDA Act 2014, the CRDA Perspective Plan / Amaravati master plans and CRDA development promotion regulations",
+  "useClass": "residential",
+  "notes": [
+    "Inherits all numeric bands (setbacks, heights, FAR, coverage, parking, RWH, corner rule, checklist) from ap-dpms-common - the AP Building Rules 2017 statewide values.",
+    "CRDA overlay: land use per the CRDA Perspective Plan / Amaravati master plan zones prevails over the statewide defaults; zoning regulations for the capital region can prescribe zone-specific setbacks, heights and urban-design controls - verify the plot's zone on the CRDA portal before relying on this pack. NEEDS VERIFICATION per plot.",
+    "Amaravati Land Pooling Scheme (LPS) returnable plots in the capital city carry their own development-control conditions attached to the LPS patta - those conditions override this pack. NEEDS VERIFICATION per plot.",
+    "Capital-city seed area, riverfront (Krishna) stretches and government-complex precincts may carry stricter height and facade controls - NEEDS VERIFICATION.",
+    "Advisory defaults for early design only - NOT legal advice and NOT a substitute for a sanctioned plan; verify on AP DPMS / the APCRDA online permission system."
+  ]
+}

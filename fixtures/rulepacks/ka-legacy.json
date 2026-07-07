@@ -1,0 +1,95 @@
+{
+  "packId": "ka-legacy",
+  "version": "1.0.0",
+  "state": "KA",
+  "jurisdiction": "Karnataka — Bengaluru-calibrated statewide legacy block (BBMP/BDA, now Greater Bengaluru Authority GBA)",
+  "regime": "BBMP RMP-2015 (as amended Nov-2025) — legacy state-level rules",
+  "useClass": "residential",
+  "instantApproval": null,
+  "setbacks": [
+    {
+      "when": { "plotAreaSqm": [0, 150], "roadWidthM": [0, 100000], "heightM": [0, 100000] },
+      "frontM": 1.5,
+      "rearM": 1.0,
+      "sideM": 0.6,
+      "note": "Restated 1:1 from fixtures/code_rules.json states.KA.setbacks (maxPlotAreaSqm 150). The Nov-2025 RMP amendment's small-plot relief (0.9 front / 0.7 rear / 0.7 one side, second side may be nil, plots <= 150 m2) is NOT in the legacy block and therefore not modeled.",
+      "source": { "ref": "docs/region-research.md — KA section", "confidence": "needs_verification" }
+    },
+    {
+      "when": { "plotAreaSqm": [150, 300], "roadWidthM": [0, 100000], "heightM": [0, 100000] },
+      "frontM": 3.0,
+      "rearM": 2.0,
+      "sideM": 1.2,
+      "note": "Restated 1:1 from fixtures/code_rules.json states.KA.setbacks (maxPlotAreaSqm 300). RMP-2015 actually fixes setbacks as percentages of site dimensions for buildings up to 11.5 m (front ~12% of depth, rear/side ~8%) - the legacy fixed ladder is a working simplification.",
+      "source": { "ref": "docs/region-research.md — KA section", "confidence": "needs_verification" }
+    },
+    {
+      "when": { "plotAreaSqm": [300, 500], "roadWidthM": [0, 100000], "heightM": [0, 100000] },
+      "frontM": 4.5,
+      "rearM": 3.0,
+      "sideM": 2.0,
+      "note": "Restated 1:1 from fixtures/code_rules.json states.KA.setbacks (maxPlotAreaSqm 500).",
+      "source": { "ref": "docs/region-research.md — KA section", "confidence": "needs_verification" }
+    },
+    {
+      "when": { "plotAreaSqm": [500, 100000], "roadWidthM": [0, 100000], "heightM": [0, 100000] },
+      "frontM": 6.0,
+      "rearM": 4.5,
+      "sideM": 3.0,
+      "note": "Restated 1:1 from fixtures/code_rules.json states.KA.setbacks (maxPlotAreaSqm null / open band).",
+      "source": { "ref": "docs/region-research.md — KA section", "confidence": "needs_verification" }
+    }
+  ],
+  "heightByRoad": [
+    {
+      "roadWidthM": [0, 100000],
+      "maxHeightM": 12,
+      "note": "Single full-range band by design: the legacy code_rules.json KA block has no road-width granularity - maxHeightM 12 is its flat cap. (RMP-2015 practice ties taller permissions to road width; not modeled in this adapter.)",
+      "source": { "ref": "docs/region-research.md — KA section", "confidence": "needs_verification" }
+    }
+  ],
+  "far": {
+    "value": 1.75,
+    "note": "From fixtures/code_rules.json states.KA.FAR. Zone-specific FAR under RMP-2015 (and post-Nov-2025 values) can differ; 1.75 is the calibrated working default.",
+    "source": { "ref": "docs/region-research.md — KA section", "confidence": "needs_verification" }
+  },
+  "coverage": {
+    "maxPct": 65,
+    "note": "From fixtures/code_rules.json states.KA.maxGroundCoveragePct.",
+    "source": { "ref": "docs/region-research.md — KA section", "confidence": "needs_verification" }
+  },
+  "parking": {
+    "perDwelling": 1,
+    "note": "From fixtures/code_rules.json states.KA.parkingPerDwelling: one car space (min ~2.5 x 5.0 m) per dwelling unit, mandatory for dwellings above ~50 m2 built-up; two-wheeler space ~2.5 m2.",
+    "source": { "ref": "docs/region-research.md — KA section", "confidence": "needs_verification" }
+  },
+  "rwh": {
+    "mandatoryAbovePlotSqm": null,
+    "note": "Not modeled in the legacy code_rules.json KA block, so this adapter asserts nothing. (Separately, BWSSB mandates rainwater harvesting for Bengaluru sites - commonly cited at >= 1200 sq ft (~111 m2) for new buildings - outside this adapter's scope.)",
+    "source": { "ref": "docs/region-research.md — KA section", "confidence": "needs_verification" }
+  },
+  "cornerPlot": {
+    "secondFrontSetback": false,
+    "note": "Corner treatment is not modeled in the legacy code_rules.json KA block; this adapter therefore applies no second-front rule.",
+    "source": { "ref": "docs/region-research.md — KA section", "confidence": "needs_verification" }
+  },
+  "roomMinimums": {
+    "inheritFrom": "state-baseline",
+    "note": "NBC-derived room minimums come from fixtures/code_rules.json states.KA (habitable 9.5 m2 / 2.4 m, kitchen 5.0 m2, ceiling 2.75 m, ventilation ratio 0.1, stair 1.0 m)."
+  },
+  "docChecklist": [
+    "Sale deed / mother deed (registered title)",
+    "Khata certificate and khata extract",
+    "Encumbrance certificate (EC)",
+    "Latest property tax paid receipt",
+    "Sanctioned layout plan / release order (BDA/BBMP/GBA approved layout)",
+    "Building plans signed by a registered architect/engineer",
+    "Structural stability certificate, as applicable to the proposed height"
+  ],
+  "notes": [
+    "Adapter pack generated FROM fixtures/code_rules.json states.KA - the numbers above restate that block 1:1 in pack-schema form for the resolver; provenance is the legacy engine block, with docs/region-research.md — KA section as the cited research trail.",
+    "Boundary semantics: the legacy engine's maxPlotAreaSqm ladder reads max-INCLUSIVE, while this pack uses half-open [min, max) bands - a plot exactly at 150/300/500 m2 may resolve one band apart between the two systems (the pack picks the larger-plot, stricter band). Treat exact-edge plots as needing manual confirmation.",
+    "Known regime drift not modeled (see docs/region-research.md KA setback note): RMP-2015 percentage-based setbacks, the Nov-2025 small-plot relief, zone-specific FAR above 1.75, and 15 m height permissions - two regimes are in circulation in 2026; confirm the sanctioned table with BBMP/GBA.",
+    "Advisory defaults for early design only - NOT legal advice and NOT a substitute for a sanctioned plan."
+  ]
+}

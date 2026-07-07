@@ -1,0 +1,17 @@
+{
+  "packId": "ap-vmrda",
+  "version": "2.0.0",
+  "state": "AP",
+  "inherits": "ap-dpms-common",
+  "jurisdiction": "VMRDA — Visakhapatnam Metropolitan Region Development Authority (formerly VUDA), including GVMC (Greater Visakhapatnam Municipal Corporation) and surrounding ULBs in the metropolitan region",
+  "regime": "AP Building Rules 2017 (G.O.Ms.No.119 MA&UD) as amended, administered by GVMC/VMRDA via AP DPMS; VMRDA master plan overlays",
+  "useClass": "residential",
+  "notes": [
+    "Inherits all numeric bands (setbacks, heights, FAR, coverage, parking, RWH, corner rule, checklist) from ap-dpms-common - the AP Building Rules 2017 statewide values.",
+    "Coastal Regulation Zone (CRZ): plots near the shoreline fall under CRZ notifications (largely CRZ-II in the built-up urban coastal stretches of Visakhapatnam); CRZ clearances, shoreline setbacks and height limits OVERRIDE this pack near the coast - NEEDS VERIFICATION per plot.",
+    "Hill-slope and eco-sensitive overlays: development on and around the city's hills (Kailasagiri, Yarada, Rushikonda and similar slopes) is restricted by VMRDA master plan / GVMC hill-area regulations - NEEDS VERIFICATION per plot.",
+    "Height clearance NOCs: the Visakhapatnam airport funnel and naval/defence installations impose additional height restrictions in affected zones - NEEDS VERIFICATION per plot.",
+    "VMRDA master plan land-use and road-widening lines prevail over these statewide defaults.",
+    "Advisory defaults for early design only - NOT legal advice and NOT a substitute for a sanctioned plan; verify on AP DPMS and against current VMRDA/GVMC notifications."
+  ]
+}

@@ -13,7 +13,7 @@ returns 501 so the flag still has an observable effect.
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Literal, Optional
 
 from fastapi import APIRouter, HTTPException
 from pydantic import Field, field_validator
@@ -67,6 +67,28 @@ class GenerateRequest(CamelModel):
     family_profile: FamilyProfile = Field(default=FamilyProfile.nuclear)
     plot_shape: PlotShape = Field(default=PlotShape.regular)
     family_persona: Optional[str] = None
+    # ---- Site intelligence v2 (all optional & additive; omitting them keeps the
+    #      legacy rectangular-plot behaviour exactly) ----
+    polygon: Optional[list[tuple[float, float]]] = Field(
+        default=None,
+        description="True plot boundary ring (metres, SW origin, open or closed); "
+        "when set, plotWidthM/plotDepthM describe its bounding box",
+    )
+    road_widths_m: Optional[dict[str, float]] = Field(
+        default=None,
+        description="Abutting road width per plot edge, keys N/S/E/W (metres); "
+        "drives road-width-based setback/height rules",
+    )
+    corner_plot: bool = False
+    soil_type: Optional[
+        Literal["hard_rock", "soft_rock", "dense_sand", "medium_clay", "soft_clay", "filled"]
+    ] = Field(default=None, description="Assumed bearing stratum; defaults to medium_clay")
+    slope_note: Optional[str] = None
+    ulb_hint: Optional[str] = Field(
+        default=None,
+        description="Jurisdiction packId override (e.g. 'tg-ulb-common') used when the "
+        "real ULB city is not in the City enum",
+    )
 
     @field_validator("plot_width_m", "plot_depth_m")
     @classmethod
@@ -141,41 +163,17 @@ def _validated_plot(req: "GenerateRequest") -> Plot:
         family_profile=req.family_profile,
         plot_shape=req.plot_shape,
         family_persona=req.family_persona,
+        polygon=req.polygon,
+        road_widths_m=req.road_widths_m,
+        corner_plot=req.corner_plot,
+        slope_note=req.slope_note,
+        soil_type=req.soil_type or "medium_clay",
     )
 
 
 @router.post("/generate", response_model=GenerateResponse)
 def plan_generate(req: GenerateRequest) -> GenerateResponse:
-    if not config.FEATURE_GENERATOR:
-        raise HTTPException(
-            status_code=501,
-            detail={
-                "status": "disabled",
-                "message": "The floor-plan generator is turned off (FEATURE_GENERATOR=false).",
-            },
-        )
-
-    if req.state not in _SUPPORTED_STATES:
-        raise HTTPException(
-            status_code=422,
-            detail={
-                "status": "unsupported_state",
-                "message": f"No building-code ruleset for state '{req.state.value}'. "
-                f"Supported: {sorted(s.value for s in _SUPPORTED_STATES)}.",
-            },
-        )
-
-    plot = Plot(
-        width_m=req.plot_width_m,
-        depth_m=req.plot_depth_m,
-        facing=req.facing,
-        state=req.state,
-        city=_resolve_city(req.city, req.state),
-        floors=req.floors,
-        family_profile=req.family_profile,
-        plot_shape=req.plot_shape,
-        family_persona=req.family_persona,
-    )
+    plot = _validated_plot(req)
 
     try:
         plan, vastu, code, meta = generate_plan(
@@ -183,7 +181,9 @@ def plan_generate(req: GenerateRequest) -> GenerateResponse:
             plot=plot,
             floors=req.floors,
             vastu_priority=req.vastu_priority,
-            code_rules=resolve_jurisdiction(plot.state.value, plot.city.value),
+            code_rules=resolve_jurisdiction(
+                plot.state.value, plot.city.value, ulb_hint=req.ulb_hint
+            ),
             vastu_rules=get_vastu_rules(),
         )
     except ValueError as exc:
@@ -228,7 +228,9 @@ def plan_options(req: GenerateRequest) -> GenerateOptionsResponse:
             plot=plot,
             floors=req.floors,
             vastu_priority=req.vastu_priority,
-            code_rules=resolve_jurisdiction(plot.state.value, plot.city.value),
+            code_rules=resolve_jurisdiction(
+                plot.state.value, plot.city.value, ulb_hint=req.ulb_hint
+            ),
             vastu_rules=get_vastu_rules(),
         )
     except ValueError as exc:
@@ -278,7 +280,9 @@ def plan_refine(req: RefineRequest) -> GenerateResponse:
             plot=plot,
             floors=result.floors,
             vastu_priority=req.vastu_priority,
-            code_rules=resolve_jurisdiction(plot.state.value, plot.city.value),
+            code_rules=resolve_jurisdiction(
+                plot.state.value, plot.city.value, ulb_hint=req.ulb_hint
+            ),
             vastu_rules=get_vastu_rules(),
             variant=_variant_by_id(result.variant_id),
             edits=result.edits,

@@ -133,4 +133,15 @@ export interface GenerateRequest {
   /** Optional free-text wishes ("home office", "pooja room", "parking"). */
   notes?: string;
   family_persona?: string;
+  // ---- Site intelligence v2 (optional; threaded to Plot on the engine) ----
+  /** True plot boundary ring (metres, SW origin); omit for a plain rectangle. */
+  polygon?: Point[] | null;
+  /** Abutting road width per plot edge, keys N/S/E/W (metres). */
+  roadWidthsM?: Record<string, number>;
+  cornerPlot?: boolean;
+  /** Assumed bearing stratum; engine defaults to "medium_clay". */
+  soilType?: SoilType;
+  slopeNote?: string;
+  /** Jurisdiction packId override (e.g. "tg-ulb-common") when the real ULB city isn't in the City enum. */
+  ulbHint?: string;
 }

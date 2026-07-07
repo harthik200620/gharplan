@@ -2,8 +2,10 @@
 
 import { useState } from "react";
 import { ClipboardList, Compass, Loader2, Sparkles, Wand2, Users, MapPin, LayoutGrid } from "lucide-react";
-import type { City, Facing, FinishTier } from "@gharplan/shared";
+import type { City, Facing, FinishTier, Point, SoilType } from "@gharplan/shared";
 import { CITIES, STATE_LABELS, STATE_BY_CITY } from "@gharplan/shared";
+import { ANCHOR_CITY, AUTHORITY_LABEL, JURISDICTIONS } from "@/lib/jurisdictions";
+import { PlotEditor } from "./plot-editor";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -230,21 +232,77 @@ export function BriefPanel({
         </Field>
       </div>
 
-      {/* ── City ─────────────────────────────────────────────────────────── */}
-      <Field label="City" hint={STATE_LABELS[STATE_BY_CITY[value.city]]}>
-        <Select value={value.city} onValueChange={(v) => onChange({ city: v as City })}>
-          <SelectTrigger>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {CITIES.map((c) => (
-              <SelectItem key={c} value={c}>
-                {c} - {STATE_LABELS[STATE_BY_CITY[c]]}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </Field>
+      {/* ── Location: state → district → ULB city (jurisdiction cascade) ──── */}
+      {(() => {
+        const briefState = STATE_BY_CITY[value.city];
+        const stateEntry = JURISDICTIONS[briefState];
+        const district =
+          value.district && stateEntry?.districts[value.district]
+            ? value.district
+            : Object.keys(stateEntry?.districts ?? {})[0] ?? "";
+        const ulbCities = stateEntry?.districts[district]?.cities ?? {};
+        const ulbCity = Object.keys(ulbCities)[0] ?? value.city;
+        const packId = ulbCities[ulbCity]?.packId ?? value.ulbHint ?? "";
+
+        function pickState(st: string) {
+          const entry = JURISDICTIONS[st];
+          const d0 = Object.keys(entry.districts)[0];
+          const c0 = Object.keys(entry.districts[d0].cities)[0];
+          const pid = entry.districts[d0].cities[c0].packId;
+          const anchor = (CITIES as readonly string[]).includes(c0) ? (c0 as City) : ANCHOR_CITY[st];
+          onChange({ city: anchor, district: d0, ulbHint: pid });
+        }
+        function pickDistrict(d: string) {
+          const c0 = Object.keys(stateEntry.districts[d].cities)[0];
+          const pid = stateEntry.districts[d].cities[c0].packId;
+          const anchor = (CITIES as readonly string[]).includes(c0) ? (c0 as City) : ANCHOR_CITY[briefState];
+          onChange({ city: anchor, district: d, ulbHint: pid });
+        }
+
+        return (
+          <div className="space-y-2">
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="State">
+                <Select value={briefState} onValueChange={pickState}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(JURISDICTIONS).map(([st, e]) => (
+                      <SelectItem key={st} value={st}>
+                        {e.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+              <Field label="District">
+                <Select value={district} onValueChange={pickDistrict}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.keys(stateEntry?.districts ?? {}).map((d) => (
+                      <SelectItem key={d} value={d}>
+                        {d}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              {ulbCity} · Authority:{" "}
+              <span className="font-medium text-foreground">
+                {AUTHORITY_LABEL[packId] ?? STATE_LABELS[briefState]}
+              </span>
+              {!(CITIES as readonly string[]).includes(ulbCity) && (
+                <> · rules resolved via the {AUTHORITY_LABEL[packId] ?? packId} pack</>
+              )}
+            </p>
+          </div>
+        );
+      })()}
 
       {/* ── Plot dimensions ───────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 gap-3">
@@ -269,6 +327,74 @@ export function BriefPanel({
         {value.widthFt} × {value.depthFt} ft · {((value.widthFt * value.depthFt) / 10.7639).toFixed(0)} m² ·{" "}
         {(value.widthFt * value.depthFt).toLocaleString("en-IN")} sq ft
       </p>
+
+      {/* ── Site details (drive setbacks, height caps & foundation design) ── */}
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Road width" hint="m">
+          <Input
+            type="number"
+            inputMode="decimal"
+            min={3}
+            max={45}
+            value={value.roadWidthM ?? 9}
+            onChange={(e) => onChange({ roadWidthM: +e.target.value })}
+          />
+        </Field>
+        <Field label="Soil type" hint="SBC">
+          <Select
+            value={value.soilType ?? "medium_clay"}
+            onValueChange={(v) => onChange({ soilType: v as SoilType })}
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="hard_rock">Hard rock</SelectItem>
+              <SelectItem value="soft_rock">Soft rock</SelectItem>
+              <SelectItem value="dense_sand">Dense sand</SelectItem>
+              <SelectItem value="medium_clay">Medium clay (default)</SelectItem>
+              <SelectItem value="soft_clay">Soft clay</SelectItem>
+              <SelectItem value="filled">Filled ground</SelectItem>
+            </SelectContent>
+          </Select>
+        </Field>
+      </div>
+      <div className="-mt-1 flex items-center justify-between rounded-lg border px-3 py-2">
+        <div>
+          <p className="text-xs font-medium">Corner plot</p>
+          <p className="text-[10px] text-muted-foreground">Second frontage takes the front setback</p>
+        </div>
+        <Switch checked={!!value.cornerPlot} onChange={(v) => onChange({ cornerPlot: v })} />
+      </div>
+      <div className="-mt-1 flex items-center justify-between rounded-lg border px-3 py-2">
+        <div>
+          <p className="text-xs font-medium">Irregular plot</p>
+          <p className="text-[10px] text-muted-foreground">Draw the true boundary — the engine fits the house inside it</p>
+        </div>
+        <Switch
+          checked={!!(value.polygon && value.polygon.length >= 3)}
+          onChange={(v) =>
+            onChange({
+              polygon: v
+                ? ([
+                    [0, 0],
+                    [value.widthFt / 3.28084, 0],
+                    [value.widthFt / 3.28084, value.depthFt / 3.28084],
+                    [0, value.depthFt / 3.28084],
+                  ] as Point[])
+                : null,
+            })
+          }
+        />
+      </div>
+      {value.polygon && value.polygon.length >= 3 && (
+        <PlotEditor
+          widthM={value.widthFt / 3.28084}
+          depthM={value.depthFt / 3.28084}
+          value={value.polygon}
+          onChange={(pts) => onChange({ polygon: pts })}
+        />
+      )}
 
       {/* ── Site Intelligence ─────────────────────────────────────────────── */}
       <div className="rounded-xl border border-amber-300/40 bg-amber-50/50 p-3 dark:border-amber-500/20 dark:bg-amber-500/5">

@@ -28,6 +28,7 @@ import { FloorPlan3D, type ThreeDExportApi } from "@/components/cad/floor-plan-3
 import { MepPlan } from "@/components/cad/mep-plan";
 import { ElevationView } from "@/components/cad/elevation-view";
 import { SectionView } from "@/components/cad/section-view";
+import { ReportCard } from "@/components/studio/report-card";
 import { Schedules } from "@/components/studio/schedules";
 import { ScoreGauge, scoreColor } from "@/components/score-gauge";
 import { ZONE_CAD } from "@/lib/cad";
@@ -361,27 +362,7 @@ export function ResultPanel({
                 <Metric label="Footprint" value={`${code.metrics.footprintSqm.toFixed(0)} mÂ²`} cap={`plot ${code.metrics.plotAreaSqm.toFixed(0)} mÂ²`} />
                 <Metric label="Built-up" value={`${code.metrics.builtUpSqm.toFixed(0)} mÂ²`} cap={`${data.plan.plot.floors} floor(s)`} />
               </div>
-              <div className="divide-y rounded-xl border bg-card">
-                {code.checks.map((c, i) => (
-                  <div key={i} className="flex items-start gap-3 p-3">
-                    <div className="mt-0.5">{STATUS_ICON[c.status]}</div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-sm font-medium">{c.label}</span>
-                        {(c.actual || c.required) && (
-                          <span className="shrink-0 font-mono text-xs text-muted-foreground">
-                            {c.actual ?? "â€”"}{c.required ? ` / ${c.required}` : ""}
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-xs text-muted-foreground">{c.message}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                {code.state} Â· {DISCLAIMERS.code}
-              </p>
+              <ReportCard code={code} />
             </div>
           )}
 

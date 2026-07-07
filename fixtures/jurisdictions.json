@@ -1,0 +1,28 @@
+{
+  "TG": {
+    "label": "Telangana",
+    "districts": {
+      "Hyderabad": { "cities": { "Hyderabad": { "packId": "tg-ghmc" } } },
+      "Warangal": { "cities": { "Warangal": { "packId": "tg-ulb-common" } } },
+      "Nizamabad": { "cities": { "Nizamabad": { "packId": "tg-ulb-common" } } },
+      "Karimnagar": { "cities": { "Karimnagar": { "packId": "tg-ulb-common" } } }
+    }
+  },
+  "AP": {
+    "label": "Andhra Pradesh",
+    "districts": {
+      "Chittoor": { "cities": { "Tirupati": { "packId": "ap-tuda" } } },
+      "Visakhapatnam": { "cities": { "Visakhapatnam": { "packId": "ap-vmrda" } } },
+      "NTR": { "cities": { "Vijayawada": { "packId": "ap-crda" } } },
+      "Guntur": { "cities": { "Guntur": { "packId": "ap-crda" } } },
+      "Krishna": { "cities": { "Machilipatnam": { "packId": "ap-dpms-common" } } },
+      "Kurnool": { "cities": { "Kurnool": { "packId": "ap-dpms-common" } } }
+    }
+  },
+  "KA": {
+    "label": "Karnataka",
+    "districts": {
+      "Bengaluru Urban": { "cities": { "Bengaluru": { "packId": "ka-legacy" } } }
+    }
+  }
+}

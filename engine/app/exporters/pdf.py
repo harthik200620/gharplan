@@ -13,6 +13,10 @@ from __future__ import annotations
 import base64
 import io
 from datetime import datetime
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:  # optional structural annexe — no hard runtime dependency
+    from app.structural.models import StructuralDesign
 
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_RIGHT
@@ -49,6 +53,7 @@ from app.services.cad_geom import (
 )
 from app.services.elevations import elevation_openings, roof_level, section_model
 from app.services.mep_model import SERVICE_STYLE, build_mep_model
+from app.services.rules import resolve_jurisdiction
 
 ZONE_FILL = {
     "N": colors.HexColor("#E3F2FD"),
@@ -129,6 +134,31 @@ NODE_COLOR = {
 
 def _inr(x) -> str:
     return f"Rs {float(x):,.2f}"
+
+
+def _esc(s) -> str:
+    """Escape dynamic text for reportlab Paragraph mini-XML."""
+    return str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+class _Bookmark(Flowable):
+    """Zero-size flowable adding a PDF outline entry at its position. Outline
+    titles live in the uncompressed object graph, so key section names stay
+    literally findable in the bytes regardless of page-stream compression."""
+
+    def __init__(self, title: str, key: str, level: int = 0):
+        super().__init__()
+        self.title = title
+        self.key = key
+        self.level = level
+        self.width = self.height = 0
+
+    def wrap(self, *_):
+        return (0, 0)
+
+    def draw(self):
+        self.canv.bookmarkPage(self.key)
+        self.canv.addOutlineEntry(self.title, self.key, level=self.level, closed=False)
 
 
 def _fit(avail_w, avail_h, xmin, ymin, xmax, ymax, frac=0.9):
@@ -656,9 +686,25 @@ def build_pdf(
     code: CodeReport,
     boq: BoqReport,
     branding: Branding | None = None,
+    structural: "StructuralDesign | None" = None,
 ) -> bytes:
     from app.services.design_narrative_service import get_design_narrative
     branding = branding or Branding()
+
+    # Governing rules for the municipal title block + submission checklist.
+    # TG/AP resolve to a jurisdiction pack (named jurisdiction, regime, doc
+    # checklist); KA/legacy keeps the plain state label.
+    rules_obj = resolve_jurisdiction(plan.plot.state.value, plan.plot.city.value)
+    if hasattr(rules_obj, "regime"):
+        jurisdiction_label = (getattr(rules_obj, "raw", {}) or {}).get(
+            "jurisdiction", ""
+        ) or getattr(rules_obj, "pack_id", plan.plot.state.value)
+        regime_label = rules_obj.regime or "—"
+    else:
+        jurisdiction_label = f"{plan.plot.city.value}, {plan.plot.state.value} (state building bylaws)"
+        regime_label = f"{plan.plot.state.value} state bylaws (legacy ruleset)"
+    _doc_checklist = getattr(rules_obj, "doc_checklist", None)
+    checklist = list(_doc_checklist()) if callable(_doc_checklist) else []
     styles = getSampleStyleSheet()
     h1 = ParagraphStyle("h1", parent=styles["Title"], textColor=BRAND, fontSize=22, spaceAfter=4)
     h2 = ParagraphStyle("h2", parent=styles["Heading2"], textColor=BRAND, spaceBefore=10)
@@ -673,35 +719,79 @@ def build_pdf(
     front = front_face(plan)
     bhk = len([r for r in plan.rooms if r.type.value == "Bedroom"])
 
-    # 1. COVER PAGE
-    story.append(Spacer(1, 4 * cm))
+    # 1. COVER PAGE — with the municipal title block + sign-off provision
+    story.append(_Bookmark("Municipal Title Block & Sign-off", "cover"))
+    story.append(Spacer(1, 1.6 * cm))
     if branding.logo_data_url:
         buf = _decode_logo(branding.logo_data_url)
         if buf:
             try:
-                story.append(Image(buf, width=5 * cm, height=5 * cm, kind="proportional"))
+                story.append(Image(buf, width=4 * cm, height=4 * cm, kind="proportional"))
             except Exception:
                 pass
-    story.append(Spacer(1, 2 * cm))
+    story.append(Spacer(1, 0.8 * cm))
     story.append(Paragraph("Architectural Design Proposal", h1))
     story.append(Paragraph("Preliminary Concept", h2))
-    story.append(Spacer(1, 2 * cm))
-    
-    meta = [
-        ["Project:", plan.project.name],
-        ["Client:", plan.project.client_name or "-"],
-        ["Location:", f"{plan.plot.city.value}, {plan.plot.state.value}"],
-        ["Date:", datetime.now().strftime("%d %b %Y")],
+    story.append(Spacer(1, 0.9 * cm))
+
+    drawing_set = "Floor plans · Elevations · Section · MEP services · Schedules · Vastu · Code review · BOQ"
+    if structural is not None:
+        drawing_set += " · Structural design basis (preliminary)"
+    title_rows = [
+        ["Project", plan.project.name],
+        ["Client", plan.project.client_name or "—"],
+        [
+            "Plot",
+            f"{plan.plot.width_m:g} × {plan.plot.depth_m:g} m ({plan.plot.area_sqm:g} m²) · "
+            f"{plan.plot.city.value}, {plan.plot.state.value}",
+        ],
+        ["Jurisdiction", jurisdiction_label],
+        ["Regime", regime_label],
+        ["Drawing set", drawing_set],
+        ["Date", plan.project.created_at or datetime.now().strftime("%d %b %Y")],
     ]
-    t = Table(meta, colWidths=[3 * cm, 13 * cm])
-    t.setStyle(TableStyle([
+    tb = Table(
+        [[k, Paragraph(_esc(v), small)] for k, v in title_rows],
+        colWidths=[3.2 * cm, 12.8 * cm],
+    )
+    tb.setStyle(TableStyle([
+        ("BOX", (0, 0), (-1, -1), 1.0, BRAND),
+        ("INNERGRID", (0, 0), (-1, -1), 0.4, GRID),
         ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
         ("TEXTCOLOR", (0, 0), (0, -1), BRAND),
-        ("FONTSIZE", (0, 0), (-1, -1), 12),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+        ("FONTSIZE", (0, 0), (-1, -1), 8.5),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
     ]))
-    story.append(t)
-    story.append(Spacer(1, 2 * cm))
+    story.append(tb)
+    story.append(Spacer(1, 0.5 * cm))
+
+    # Empty sign-off box for the licensed professional (statutory requirement).
+    sign = Table(
+        [
+            [Paragraph(
+                "<b>Licensed Professional Sign-off</b> — Required before any statutory submission",
+                small,
+            )],
+            ["Name:"],
+            ["COA / PE Reg. No.:"],
+            ["Signature & Seal:"],
+        ],
+        colWidths=[16 * cm],
+        rowHeights=[None, 0.9 * cm, 0.9 * cm, 1.7 * cm],
+    )
+    sign.setStyle(TableStyle([
+        ("BOX", (0, 0), (-1, -1), 1.0, BRAND),
+        ("INNERGRID", (0, 0), (-1, -1), 0.4, GRID),
+        ("BACKGROUND", (0, 0), (0, 0), colors.HexColor("#F1F5FB")),
+        ("FONTSIZE", (0, 1), (0, -1), 8.5),
+        ("TEXTCOLOR", (0, 1), (0, -1), colors.HexColor("#555555")),
+        ("VALIGN", (0, 1), (0, -1), "TOP"),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+    ]))
+    story.append(sign)
+    story.append(Spacer(1, 0.7 * cm))
     story.append(Paragraph(branding.studio_name, h2))
     contact = " · ".join(x for x in [branding.address, branding.phone, branding.email, branding.website] if x)
     if contact:
@@ -813,6 +903,62 @@ def build_pdf(
     story.append(Paragraph("Compliance Summary: " + ("Issues found, redesign recommended." if flagged else "All preliminary checks passed."), body))
     story.append(PageBreak())
 
+    # 5b. STRUCTURAL DESIGN BASIS (preliminary, when the RCC sizer ran)
+    if structural is not None:
+        story.append(_Bookmark("Structural Design Basis", "structural"))
+        story.append(Paragraph("Structural Design Basis (Preliminary)", h1))
+        seismic_zone = (structural.seismic or {}).get("zone", "—")
+        story.append(Paragraph(
+            f"{structural.concrete_grade} concrete · {structural.steel_grade} steel · "
+            f"SBC {structural.sbc_kpa:g} kPa ({_esc(structural.soil_type)}) · Seismic zone {_esc(seismic_zone)}",
+            h2,
+        ))
+        story.append(Spacer(1, 8))
+
+        kind_order = {"column": 0, "footing": 1, "plinth_beam": 2, "beam": 3, "slab": 4, "lintel": 5}
+        members = sorted(structural.members, key=lambda mm: (kind_order.get(mm.kind, 9), mm.id))
+        max_rows = 25
+        mrows = [["Member", "Kind", "Size (mm)", "Rebar", "Util."]]
+        for mem in members[:max_rows]:
+            size = f"{mem.size_mm[0]}×{mem.size_mm[1]}" + (f" / {mem.thickness_mm} thk" if mem.thickness_mm else "")
+            mrows.append([
+                mem.id,
+                mem.kind.replace("_", " "),
+                size,
+                Paragraph(_esc(mem.rebar), small),
+                f"{mem.utilization:.2f}",
+            ])
+        story.append(_table(mrows, [2.2 * cm, 2.2 * cm, 3.2 * cm, 7.4 * cm, 1.4 * cm]))
+        if len(members) > max_rows:
+            story.append(Spacer(1, 4))
+            story.append(Paragraph(
+                f"… and {len(members) - max_rows} more members — see the structural module output for the full set.",
+                small,
+            ))
+        story.append(Spacer(1, 10))
+
+        for sec in structural.design_basis:
+            story.append(Paragraph(_esc(sec.title), h3))
+            story.append(Paragraph(_esc(sec.body), body))
+            if sec.clause_refs:
+                story.append(Paragraph("Refs: " + _esc(", ".join(sec.clause_refs)), small))
+        story.append(Spacer(1, 10))
+        story.append(Paragraph(_esc(structural.disclaimer), small))
+        story.append(PageBreak())
+
+    # 5c. SUBMISSION DOCUMENT CHECKLIST (jurisdiction packs only — KA legacy has none)
+    if checklist:
+        story.append(_Bookmark("Submission Document Checklist", "checklist"))
+        story.append(Paragraph("Submission Document Checklist", h1))
+        story.append(Paragraph(f"Per {_esc(jurisdiction_label)}", h2))
+        story.append(Paragraph(
+            "Verify the current list with the sanctioning authority before filing.", small,
+        ))
+        story.append(Spacer(1, 10))
+        for item in checklist:
+            story.append(Paragraph(f"[  ]  {_esc(item)}", bullet))
+        story.append(PageBreak())
+
     # 6. COST ESTIMATE
     story.append(Paragraph("Cost Estimate", h1))
     story.append(Paragraph(f"Preliminary Estimate — {boq.finish_tier.value.title()} finish, {boq.city.value}", h2))
@@ -886,6 +1032,11 @@ def build_pdf(
     story.append(Paragraph("Terms &amp; Conditions", h3))
     story.append(Paragraph(branding.terms, small))
 
+    keywords = ["Vastukala AI", "Municipal Title Block", "Licensed Professional Sign-off"]
+    if structural is not None:
+        keywords.append("Structural Design Basis")
+    if checklist:
+        keywords.append("Submission Document Checklist")
     doc = SimpleDocTemplate(
         (buf_out := io.BytesIO()),
         pagesize=A4,
@@ -894,6 +1045,9 @@ def build_pdf(
         topMargin=15 * mm,
         bottomMargin=18 * mm,
         title=f"Vastukala AI Proposal — {plan.project.name}",
+        author="Vastukala AI",
+        subject="Preliminary architectural proposal — not for construction",
+        keywords=", ".join(keywords),
     )
     doc.build(story, onFirstPage=_footer, onLaterPages=_footer)
     return buf_out.getvalue()

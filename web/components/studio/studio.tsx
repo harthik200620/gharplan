@@ -156,7 +156,7 @@ export function Studio() {
     }
   }
 
-  async function onExport(type: "pdf" | "dxf" | "xlsx") {
+  async function onExport(type: "pdf" | "dxf" | "xlsx" | "ifc") {
     if (!data) return;
     setExporting(type);
     try {

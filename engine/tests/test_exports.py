@@ -51,3 +51,32 @@ def test_pdf_starts_with_magic_and_has_size(sample_plan):
     data = build_pdf(plan, v, c, b, Branding(studio_name="Acme Studio", gstin="29ABCDE1234F1Z5"))
     assert data[:4] == b"%PDF"
     assert len(data) > 3000
+
+
+# --------------------------------------------------------------------------- #
+# Structural annexe + municipal title block
+# --------------------------------------------------------------------------- #
+
+
+def test_pdf_with_structural_has_design_basis_and_signoff(sample_plan):
+    from app.structural import design_structure
+
+    plan, _ = normalize(sample_plan)
+    v = check_vastu(plan, get_vastu_rules())
+    c = check_code(plan, get_code_rules())
+    s = design_structure(plan)
+    data = build_pdf(plan, v, c, _boq(plan), Branding(studio_name="Acme Studio"), structural=s)
+    assert data[:4] == b"%PDF"
+    assert b"Structural Design Basis" in data
+    assert b"Sign-off" in data
+
+
+def test_dxf_with_structural_has_struct_layers(sample_plan):
+    from app.structural import design_structure
+
+    plan, _ = normalize(sample_plan)
+    s = design_structure(plan)
+    data = build_dxf(plan, structural=s)
+    assert b"STRUCT-COL" in data
+    assert b"STRUCT-GRID" in data
+    assert b"STRUCT-FOOTING" in data

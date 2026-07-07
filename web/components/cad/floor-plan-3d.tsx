@@ -3,7 +3,7 @@
 import * as React from "react";
 import { Suspense } from "react";
 import * as THREE from "three";
-import { Canvas } from "@react-three/fiber";
+import { Canvas, useThree } from "@react-three/fiber";
 import {
   OrbitControls,
   ContactShadows,
@@ -2792,7 +2792,76 @@ function Scene({ plan, structure, mepMode, finishTier }: { plan: Plan; structure
   );
 }
 
-export function FloorPlan3D({ plan, structure, className, mepMode: controlledMepMode, finishTier }: { plan: Plan; structure?: StructureReport; className?: string; mepMode?: boolean; finishTier?: 'economy' | 'standard' | 'premium' }) {
+/** Imperative export surface exposed by the live scene (GLB + 4K viewport capture). */
+export type ThreeDExportApi = {
+  exportGltf: () => Promise<Blob>;
+  capture4k: () => Promise<Blob>;
+};
+
+/** Lives INSIDE the Canvas; wires the running gl/scene/camera to `apiRef`.
+    Future photoreal seam: send the same GLB + camera pose to an external
+    render API instead of capturing the WebGL viewport. */
+function ExportBridge({ apiRef }: { apiRef: React.MutableRefObject<ThreeDExportApi | null> }) {
+  const { gl, scene, camera } = useThree();
+  React.useEffect(() => {
+    apiRef.current = {
+      async exportGltf() {
+        const { GLTFExporter } = await import("three/examples/jsm/exporters/GLTFExporter.js");
+        return new Promise<Blob>((resolve, reject) => {
+          new GLTFExporter().parse(
+            scene,
+            (result) => resolve(new Blob([result as ArrayBuffer], { type: "model/gltf-binary" })),
+            (err) => reject(err instanceof Error ? err : new Error(String(err))),
+            { binary: true },
+          );
+        });
+      },
+      async capture4k() {
+        const prevSize = new THREE.Vector2();
+        gl.getSize(prevSize);
+        const prevRatio = gl.getPixelRatio();
+        const cam = camera as THREE.PerspectiveCamera;
+        const prevAspect = cam.aspect;
+        const shoot = (w: number, h: number) =>
+          new Promise<Blob>((resolve, reject) => {
+            gl.setPixelRatio(1);
+            gl.setSize(w, h, false);
+            cam.aspect = w / h;
+            cam.updateProjectionMatrix();
+            gl.render(scene, camera);
+            gl.domElement.toBlob(
+              (b) => (b ? resolve(b) : reject(new Error("viewport capture failed"))),
+              "image/png",
+            );
+          });
+        try {
+          // 4K, then 1440p, then the live viewport — whatever the GPU allows.
+          try {
+            return await shoot(3840, 2160);
+          } catch {
+            try {
+              return await shoot(2560, 1440);
+            } catch {
+              return await shoot(Math.round(prevSize.x), Math.round(prevSize.y));
+            }
+          }
+        } finally {
+          gl.setPixelRatio(prevRatio);
+          gl.setSize(prevSize.x, prevSize.y, false);
+          cam.aspect = prevAspect;
+          cam.updateProjectionMatrix();
+          gl.render(scene, camera);
+        }
+      },
+    };
+    return () => {
+      apiRef.current = null;
+    };
+  }, [gl, scene, camera, apiRef]);
+  return null;
+}
+
+export function FloorPlan3D({ plan, structure, className, mepMode: controlledMepMode, finishTier, exportApiRef }: { plan: Plan; structure?: StructureReport; className?: string; mepMode?: boolean; finishTier?: 'economy' | 'standard' | 'premium'; exportApiRef?: React.MutableRefObject<ThreeDExportApi | null> }) {
   const [localMepMode, setLocalMepMode] = React.useState(false);
   const mepMode = controlledMepMode ?? localMepMode;
   const W = plan.plot.widthM;
@@ -2818,6 +2887,7 @@ export function FloorPlan3D({ plan, structure, className, mepMode: controlledMep
         style={{ background: finishTier === 'premium' ? "linear-gradient(180deg,#0a0a1a 0%,#1a1a2e 40%,#2d1a0a 100%)" : "linear-gradient(180deg,#5b8ec4 0%,#88b8d8 35%,#d8c090 70%,#c8a870 100%)" }}
       >
         <Scene plan={plan} structure={structure} mepMode={mepMode} finishTier={finishTier} />
+        {exportApiRef && <ExportBridge apiRef={exportApiRef} />}
       </Canvas>
     </div>
   );

@@ -1,7 +1,9 @@
-"""Export endpoints: /export/dxf, /export/xlsx, /export/pdf.
+"""Export endpoints: /export/dxf, /export/xlsx, /export/pdf, /export/ifc.
 
 The PDF/XLSX endpoints compute the Vastu, code and BOQ reports server-side from
 the supplied plan, so the client only sends the plan (+ city, tier, branding).
+DXF/PDF/IFC also compute the preliminary structural design server-side (best
+effort — export still succeeds when the structural module declines the plan).
 """
 
 from __future__ import annotations
@@ -10,6 +12,7 @@ from fastapi import APIRouter
 from fastapi.responses import Response
 
 from app.exporters.dxf import build_dxf
+from app.exporters.ifc import build_ifc
 from app.exporters.pdf import build_pdf
 from app.exporters.xlsx import build_xlsx
 from app.models.export import ExportRequest
@@ -20,12 +23,21 @@ from app.services.plan_service import normalize
 from app.services.rates import get_rates_provider
 from app.services.rules import get_boq_rules, get_vastu_rules, resolve_jurisdiction
 from app.services.vastu_service import check_vastu
+from app.structural import design_structure
 
 router = APIRouter(prefix="/export", tags=["export"])
 
 
 def _rules_for(norm: Plan):
     return resolve_jurisdiction(norm.plot.state.value, norm.plot.city.value)
+
+
+def _structural_or_none(norm: Plan):
+    """Preliminary RCC design, or None when the plan defeats the sizer."""
+    try:
+        return design_structure(norm)
+    except Exception:
+        return None
 
 
 def _slug(name: str) -> str:
@@ -40,11 +52,22 @@ def _attach(filename: str) -> dict:
 def export_dxf(plan: Plan) -> Response:
     norm, _ = normalize(plan)
     code = check_code(norm, _rules_for(norm))
-    data = build_dxf(norm, code)
+    data = build_dxf(norm, code, structural=_structural_or_none(norm))
     return Response(
         content=data,
         media_type="image/vnd.dxf",
         headers=_attach(f"{_slug(norm.project.name)}.dxf"),
+    )
+
+
+@router.post("/ifc")
+def export_ifc(plan: Plan) -> Response:
+    norm, _ = normalize(plan)
+    data = build_ifc(norm, _structural_or_none(norm))
+    return Response(
+        content=data,
+        media_type="application/x-step",
+        headers=_attach(f"{_slug(norm.project.name)}.ifc"),
     )
 
 
@@ -80,7 +103,7 @@ def export_pdf(req: ExportRequest) -> Response:
     norm, boq = _boq_from(req)
     vastu = check_vastu(norm, get_vastu_rules())
     code = check_code(norm, _rules_for(norm))
-    data = build_pdf(norm, vastu, code, boq, req.branding)
+    data = build_pdf(norm, vastu, code, boq, req.branding, structural=_structural_or_none(norm))
     return Response(
         content=data,
         media_type="application/pdf",

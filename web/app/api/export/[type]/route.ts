@@ -7,7 +7,10 @@ const MIME: Record<string, string> = {
   pdf: "application/pdf",
   dxf: "image/vnd.dxf",
   xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  ifc: "application/x-step",
 };
+// Endpoints that take the bare Plan (not the ExportRequest wrapper).
+const PLAN_ONLY = new Set(["dxf", "ifc"]);
 // Server-side: prefer an internal ENGINE_URL (e.g. http://engine:8000 in Docker),
 // falling back to the public URL used by the browser.
 const ENGINE_URL =
@@ -43,7 +46,7 @@ export async function POST(req: Request, { params }: { params: { type: string } 
 
   // ---- demo mode: no auth, engine uses its default branding ----
   if (!hasSupabaseEnv()) {
-    return proxyToEngine(type, type === "dxf" ? body.plan : body, name);
+    return proxyToEngine(type, PLAN_ONLY.has(type) ? body.plan : body, name);
   }
 
   const supabase = createClient();
@@ -71,6 +74,8 @@ export async function POST(req: Request, { params }: { params: { type: string } 
     if (projectId) await supabase.from("projects").update({ is_unlocked: true }).eq("id", projectId);
   }
 
-  const engineBody = type === "dxf" ? body.plan : { ...body, branding: brandingFromProfile(profile) };
+  const engineBody = PLAN_ONLY.has(type)
+    ? body.plan
+    : { ...body, branding: brandingFromProfile(profile) };
   return proxyToEngine(type, engineBody, name);
 }

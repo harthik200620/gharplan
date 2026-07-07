@@ -24,7 +24,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Segmented } from "@/components/ui/segmented";
 import { FloorPlanCad } from "@/components/cad/floor-plan-cad";
-import { FloorPlan3D } from "@/components/cad/floor-plan-3d";
+import { FloorPlan3D, type ThreeDExportApi } from "@/components/cad/floor-plan-3d";
 import { MepPlan } from "@/components/cad/mep-plan";
 import { ElevationView } from "@/components/cad/elevation-view";
 import { SectionView } from "@/components/cad/section-view";
@@ -67,7 +67,7 @@ export function ResultPanel({
   boq: BoqReport | null;
   boqLoading: boolean;
   exporting: string | null;
-  onExport: (type: "pdf" | "dxf" | "xlsx") => void;
+  onExport: (type: "pdf" | "dxf" | "xlsx" | "ifc") => void;
   onOpenInEditor: () => void;
   onRefine: (instruction: string) => void;
   refining: boolean;
@@ -80,6 +80,28 @@ export function ResultPanel({
   const [selected, setSelected] = React.useState<string | null>(null);
   const [tab, setTab] = React.useState<"overview" | "vastu" | "code" | "climate" | "structure" | "cost" | "documents">("overview");
   const [floor, setFloor] = React.useState(0);
+
+  // Client-side 3D exports: GLB via three's GLTFExporter and an honest
+  // "real-time render" 4K PNG capture of the live WebGL viewport.
+  const threeDExportRef = React.useRef<ThreeDExportApi | null>(null);
+  const [busy3d, setBusy3d] = React.useState<"glb" | "png" | null>(null);
+  async function download3d(kind: "glb" | "png") {
+    const api = threeDExportRef.current;
+    if (!api) return;
+    setBusy3d(kind);
+    try {
+      const blob = kind === "glb" ? await api.exportGltf() : await api.capture4k();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const base = data.plan.project.name.replace(/\W+/g, "_");
+      a.download = kind === "glb" ? `${base}.glb` : `${base}_render_4k.png`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setBusy3d(null);
+    }
+  }
 
   const floors = React.useMemo(
     () => Array.from(new Set(data.plan.rooms.map((r) => r.floor ?? 0))).sort((a, b) => a - b),
@@ -139,7 +161,7 @@ export function ResultPanel({
           <Button variant="outline" size="sm" onClick={onOpenInEditor}>
             <Pencil className="h-4 w-4" /> Edit
           </Button>
-          {(["pdf", "dxf", "xlsx"] as const).map((t) => (
+          {(["pdf", "dxf", "xlsx", "ifc"] as const).map((t) => (
             <Button
               key={t}
               variant={t === "pdf" ? "accent" : "outline"}
@@ -231,10 +253,21 @@ export function ResultPanel({
           </>
         ) : view === "3d" ? (
           <>
-            <FloorPlan3D plan={data.plan} structure={data.structure} finishTier={finishTier} className="h-[460px] overflow-hidden rounded-xl border bg-card shadow-soft" />
-            <p className="px-1 text-[11px] text-muted-foreground">
-              Axonometric 3D Â· same geometry as the CAD drawing &amp; DXF
-            </p>
+            <FloorPlan3D plan={data.plan} structure={data.structure} finishTier={finishTier} exportApiRef={threeDExportRef} className="h-[460px] overflow-hidden rounded-xl border bg-card shadow-soft" />
+            <div className="flex flex-wrap items-center gap-2 px-1">
+              <p className="text-[11px] text-muted-foreground">
+                Axonometric 3D Â· same geometry as the CAD drawing &amp; DXF
+              </p>
+              <span className="flex-1" />
+              <Button variant="outline" size="sm" disabled={!!busy3d} onClick={() => download3d("glb")}>
+                {busy3d === "glb" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                GLB (3D model)
+              </Button>
+              <Button variant="outline" size="sm" disabled={!!busy3d} onClick={() => download3d("png")}>
+                {busy3d === "png" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                Real-time render (4K)
+              </Button>
+            </div>
           </>
         ) : view === "elevation" ? (
           <ElevationView plan={data.plan} />

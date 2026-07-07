@@ -10,10 +10,13 @@ geometry the on-screen viewer and the PDF use.
 from __future__ import annotations
 
 import io
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 import ezdxf
 from ezdxf.enums import TextEntityAlignment
+
+if TYPE_CHECKING:  # optional structural overlay — no hard runtime dependency
+    from app.structural.models import StructuralDesign
 
 from app.config import DISCLAIMER_EXPORT
 from app.models.enums import room_label
@@ -391,11 +394,83 @@ def _draw_schedules(msp, doc, plan: Plan, code: Optional[CodeReport], dx: float,
 
 
 # --------------------------------------------------------------------------- #
+# Structural overlay (preliminary RCC grid / columns / footings)
+# --------------------------------------------------------------------------- #
+
+
+def _draw_structural(msp, doc, plan: Plan, structural: "StructuralDesign", dx: float, dy: float):
+    """Column-layout sheet: grid lines w/ labels, column + footing rectangles,
+    and a footing schedule note block. Preliminary — mirrors the disclaimer."""
+    for name, aci in [
+        ("STRUCT-GRID", 8), ("STRUCT-COL", 1), ("STRUCT-FOOTING", 30), ("STRUCT-TEXT", 7),
+    ]:
+        _ensure(doc, name, aci)
+    w = plan.plot.width_m
+    d = plan.plot.depth_m
+    _rect(msp, dx, dy, w, d, "STRUCT-GRID")
+
+    for gl in structural.grid:
+        if gl.axis == "x":  # a line of constant x, labelled A, B, C…
+            msp.add_lwpolyline(
+                _off([(gl.offset_m, -0.8), (gl.offset_m, d + 0.8)], dx, dy),
+                dxfattribs={"layer": "STRUCT-GRID"},
+            )
+            _text(msp, _ascii(gl.label), dx + gl.offset_m, dy + d + 1.1, 0.25,
+                  "STRUCT-GRID", TextEntityAlignment.MIDDLE_CENTER)
+        else:  # constant y, labelled 1, 2, 3…
+            msp.add_lwpolyline(
+                _off([(-0.8, gl.offset_m), (w + 0.8, gl.offset_m)], dx, dy),
+                dxfattribs={"layer": "STRUCT-GRID"},
+            )
+            _text(msp, _ascii(gl.label), dx - 1.1, dy + gl.offset_m, 0.25,
+                  "STRUCT-GRID", TextEntityAlignment.MIDDLE_CENTER)
+
+    footings = []
+    for m in structural.members:
+        if m.x_m is None or m.y_m is None:
+            continue
+        if m.kind == "column":
+            b = m.size_mm[0] / 1000.0
+            h = m.size_mm[1] / 1000.0
+            _rect(msp, dx + m.x_m - b / 2, dy + m.y_m - h / 2, b, h, "STRUCT-COL")
+            _text(msp, _ascii(f"{m.id} {m.size_mm[0]}x{m.size_mm[1]}"),
+                  dx + m.x_m + b / 2 + 0.1, dy + m.y_m, 0.14, "STRUCT-COL")
+        elif m.kind == "footing":
+            fl = m.size_mm[0] / 1000.0
+            fb = m.size_mm[1] / 1000.0
+            _rect(msp, dx + m.x_m - fl / 2, dy + m.y_m - fb / 2, fl, fb, "STRUCT-FOOTING")
+            footings.append(m)
+
+    lines = [
+        f"STRUCTURAL LAYOUT (PRELIMINARY) - {structural.concrete_grade} / {structural.steel_grade}",
+        f"SBC {structural.sbc_kpa:g} kPa ({structural.soil_type})",
+        "",
+        "FOOTING SCHEDULE",
+        "Mark      Size LxB mm   Thk mm  Rebar",
+    ]
+    for m in footings:
+        lines.append(
+            f"{m.id:<9} {m.size_mm[0]}x{m.size_mm[1]:<7} {m.thickness_mm or '-':<7} {m.rebar}"
+        )
+    import textwrap
+
+    lines.append("")
+    lines.extend(textwrap.wrap(structural.disclaimer, width=80))
+    mt = msp.add_mtext(_ascii("\\P".join(lines)), dxfattribs={"layer": "STRUCT-TEXT", "char_height": 0.2})
+    mt.set_location((dx, dy - 1.6), attachment_point=7)  # 7 = top-left, grows down
+    _text(msp, "STRUCTURAL COLUMN LAYOUT (PRELIMINARY)", dx, dy + d + 1.9, 0.3, "STRUCT-TEXT")
+
+
+# --------------------------------------------------------------------------- #
 # Document
 # --------------------------------------------------------------------------- #
 
 
-def build_dxf(plan: Plan, code: Optional[CodeReport] = None) -> bytes:
+def build_dxf(
+    plan: Plan,
+    code: Optional[CodeReport] = None,
+    structural: "StructuralDesign | None" = None,
+) -> bytes:
     doc = ezdxf.new("R2010", setup=True)
     msp = doc.modelspace()
 
@@ -436,6 +511,10 @@ def build_dxf(plan: Plan, code: Optional[CodeReport] = None) -> bytes:
     # --- section, below the elevations ---
     sec_ffl = elev_ffl - (roof_level(plan) + LEVELS.PARAPET + LEVELS.FOOTING + gap + 1.0)
     _draw_section(msp, doc, plan, 0.0, sec_ffl)
+
+    # --- structural column layout, below the section (when designed) ---
+    if structural is not None:
+        _draw_structural(msp, doc, plan, structural, 0.0, sec_ffl - (LEVELS.FOOTING + gap + 4.0) - d)
 
     # --- MEP overlay, to the right of the plan ---
     mep_x = plan_span_x + 4.0

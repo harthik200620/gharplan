@@ -18,10 +18,14 @@ from app.services.boq_service import generate_boq
 from app.services.code_service import check_code
 from app.services.plan_service import normalize
 from app.services.rates import get_rates_provider
-from app.services.rules import get_boq_rules, get_code_rules, get_vastu_rules
+from app.services.rules import get_boq_rules, get_vastu_rules, resolve_jurisdiction
 from app.services.vastu_service import check_vastu
 
 router = APIRouter(prefix="/export", tags=["export"])
+
+
+def _rules_for(norm: Plan):
+    return resolve_jurisdiction(norm.plot.state.value, norm.plot.city.value)
 
 
 def _slug(name: str) -> str:
@@ -35,7 +39,7 @@ def _attach(filename: str) -> dict:
 @router.post("/dxf")
 def export_dxf(plan: Plan) -> Response:
     norm, _ = normalize(plan)
-    code = check_code(norm, get_code_rules())
+    code = check_code(norm, _rules_for(norm))
     data = build_dxf(norm, code)
     return Response(
         content=data,
@@ -62,7 +66,7 @@ def _boq_from(req: ExportRequest):
 @router.post("/xlsx")
 def export_xlsx(req: ExportRequest) -> Response:
     norm, boq = _boq_from(req)
-    code = check_code(norm, get_code_rules())
+    code = check_code(norm, _rules_for(norm))
     data = build_xlsx(boq, req.branding, plan=norm, code=code)
     return Response(
         content=data,
@@ -75,7 +79,7 @@ def export_xlsx(req: ExportRequest) -> Response:
 def export_pdf(req: ExportRequest) -> Response:
     norm, boq = _boq_from(req)
     vastu = check_vastu(norm, get_vastu_rules())
-    code = check_code(norm, get_code_rules())
+    code = check_code(norm, _rules_for(norm))
     data = build_pdf(norm, vastu, code, boq, req.branding)
     return Response(
         content=data,

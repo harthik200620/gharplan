@@ -2364,10 +2364,14 @@ class _Candidate:
     score_key: tuple
 
 
-def _score_candidate(plan: Plan) -> tuple[Plan, object, object]:
+def _score_candidate(
+    plan: Plan, code_rules: Optional[CodeRules] = None
+) -> tuple[Plan, object, object]:
     plan, _ = normalize(plan)
     vastu = check_vastu(plan, get_vastu_rules())
-    code = check_code(plan, get_code_rules())
+    # Score against the SAME rules object the caller resolved (a jurisdiction
+    # pack for TG/AP) so the returned report carries its citations/checks.
+    code = check_code(plan, code_rules or get_code_rules())
     return plan, vastu, code
 
 
@@ -2731,7 +2735,7 @@ def _upper_program(tier, env_w, env_d, min_habitable, min_toilet, vastu, variant
 
 def _layout_floor(
     program, program_by_id, env, keepout, plot, min_dim, min_habitable,
-    min_area_by_type, plot_area, max_cov, stair_col=0, variant=None,
+    min_area_by_type, plot_area, max_cov, stair_col=0, variant=None, code_rules=None,
 ) -> tuple[list[PlacedRoom], list[str]]:
     """Optimise ONE floor's program (band sweep + swaps) and return the best placed
     rooms + dropped ids. The stair is pinned to ``stair_col`` so it sits in the
@@ -2799,7 +2803,7 @@ def _layout_floor(
                     continue
                 all_dropped = result.dropped + cov_dropped
                 ess_drop = sum(1 for d in all_dropped if prio.get(d, 0) >= ESS)
-                plan, vastu, code = _score_candidate(_build_plan(list(result.placed), plot, env, "floor", edits=None, variant=variant))
+                plan, vastu, code = _score_candidate(_build_plan(list(result.placed), plot, env, "floor", edits=None, variant=variant), code_rules)
                 kd_bad = 0 if _kitchen_dining_adjacent(result.placed) else 1
                 aspect_bad = _aspect_bad(result.placed)
                 worst_asp = _worst_aspect(result.placed)
@@ -2824,7 +2828,8 @@ def _layout_floor(
 def _generate_multifloor(
     bhk, plot, floors, tier, footprint, env, keepout, plot_area, max_cov,
     min_dim, min_habitable, min_kitchen, min_toilet, min_area_by_type,
-    vastu_rules, project_name, variant=None, edits=None, family_profile="nuclear", family_persona=None
+    vastu_rules, project_name, variant=None, edits=None, family_profile="nuclear",
+    family_persona=None, code_rules=None,
 ) -> tuple[Plan, object, object, dict]:
     """G+1 / G+2: a social ground floor + an upper floor of family living and
     ensuite bedrooms, each room tagged with its ``floor``. The bhk is honoured
@@ -2866,10 +2871,12 @@ def _generate_multifloor(
     g_placed, g_drop = _layout_floor(
         ground, {r.id: r for r in ground}, env, keepout, plot, min_dim,
         min_habitable, min_area_by_type, plot_area, max_cov, stair_col=1, variant=variant,
+        code_rules=code_rules,
     )
     u_placed, u_drop = _layout_floor(
         upper, {r.id: r for r in upper}, env, keepout, plot, min_dim,
         min_habitable, min_area_by_type, plot_area, max_cov, stair_col=1, variant=variant,
+        code_rules=code_rules,
     )
     if not g_placed or not u_placed:
         raise ValueError("could not lay out a multi-floor plan for the given brief")
@@ -2912,7 +2919,7 @@ def _generate_multifloor(
     )
     plan = _build_plan(placed, plot, env, name, edits, variant)
     site_meta = _add_site_utilization(plan, env, cars=(edits.parking_cars if edits else None))
-    plan, vastu, code = _score_candidate(plan)
+    plan, vastu, code = _score_candidate(plan, code_rules)
     cov_ratio = round(min(1.0, sum(p.area for p in g_placed) / footprint), 2) if footprint else 0.0
     meta = {
         "vastuScore": vastu.score, "vastuGrade": vastu.grade,
@@ -3030,6 +3037,7 @@ def generate_plan(
                 min_area_by_type, vastu_rules, project_name, variant, edits,
                 family_profile=plot.family_profile.value,
                 family_persona=plot.family_persona,
+                code_rules=code_rules,
             )
         except ValueError:
             if not auto_storey:
@@ -3053,13 +3061,13 @@ def generate_plan(
             _assert_no_overlap(placed)
             _assert_inside(placed, env)
             plan = _build_plan(placed, plot, env, name, edits, variant)
-            plan, vastu, code = _score_candidate(plan)
+            plan, vastu, code = _score_candidate(plan, code_rules)
             key = (code.summary.fail_count, -round(vastu.score))
             if best_studio is None or key < best_studio.score_key:
                 best_studio = _Candidate(plan=plan, vastu=vastu, code=code, dropped=[], score_key=key)
         assert best_studio is not None
         site_meta = _add_site_utilization(best_studio.plan, env, cars=(edits.parking_cars if edits else None))
-        plan, vastu, code = _score_candidate(best_studio.plan)
+        plan, vastu, code = _score_candidate(best_studio.plan, code_rules)
         meta = {
             "vastuScore": vastu.score, "vastuGrade": vastu.grade,
             "codeFails": code.summary.fail_count, "droppedRooms": [],
@@ -3183,7 +3191,7 @@ def generate_plan(
             _assert_no_overlap(result.placed)
             _assert_inside(result.placed, env)
             plan = _build_plan(result.placed, plot, env, name, edits, variant)
-            plan, vastu, code = _score_candidate(plan)
+            plan, vastu, code = _score_candidate(plan, code_rules)
             # Ranking (best = smallest): correctness first — never sacrifice an
             # essential room, then minimise code fails — then quality per the
             # brief (higher Vastu), and finally prefer fewer optional drops. Vastu
@@ -3238,7 +3246,7 @@ def generate_plan(
 
     best = min(candidates, key=lambda c: c.score_key)
     site_meta = _add_site_utilization(best.plan, env, cars=(edits.parking_cars if edits else None))
-    plan, vastu, code = _score_candidate(best.plan)
+    plan, vastu, code = _score_candidate(best.plan, code_rules)
     meta = {
         "vastuScore": vastu.score,
         "vastuGrade": vastu.grade,

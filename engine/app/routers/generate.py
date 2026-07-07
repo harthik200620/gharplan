@@ -25,7 +25,7 @@ from app.models.enums import City, Facing, FinishTier, StateCode, FamilyProfile,
 from app.models.plan import Plan, Plot
 from app.models.reports import CodeReport, VastuReport
 from app.services.refine_service import parse_edits
-from app.services.rules import get_code_rules, get_vastu_rules
+from app.services.rules import get_vastu_rules, resolve_jurisdiction
 from app.services.climate_service import get_climate_zone, get_passive_strategies, get_orientation_advice, get_shading_requirements
 from app.services.structural_service import get_column_grid, get_foundation_type, get_structural_narrative
 from app.services.autonomous_loop import optimize_plan
@@ -183,7 +183,7 @@ def plan_generate(req: GenerateRequest) -> GenerateResponse:
             plot=plot,
             floors=req.floors,
             vastu_priority=req.vastu_priority,
-            code_rules=get_code_rules(),
+            code_rules=resolve_jurisdiction(plot.state.value, plot.city.value),
             vastu_rules=get_vastu_rules(),
         )
     except ValueError as exc:
@@ -228,7 +228,7 @@ def plan_options(req: GenerateRequest) -> GenerateOptionsResponse:
             plot=plot,
             floors=req.floors,
             vastu_priority=req.vastu_priority,
-            code_rules=get_code_rules(),
+            code_rules=resolve_jurisdiction(plot.state.value, plot.city.value),
             vastu_rules=get_vastu_rules(),
         )
     except ValueError as exc:
@@ -278,7 +278,7 @@ def plan_refine(req: RefineRequest) -> GenerateResponse:
             plot=plot,
             floors=result.floors,
             vastu_priority=req.vastu_priority,
-            code_rules=get_code_rules(),
+            code_rules=resolve_jurisdiction(plot.state.value, plot.city.value),
             vastu_rules=get_vastu_rules(),
             variant=_variant_by_id(result.variant_id),
             edits=result.edits,

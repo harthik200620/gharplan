@@ -8,7 +8,7 @@ from app.models.plan import Plan
 from app.models.reports import CodeReport
 from app.services.code_service import check_code
 from app.services.plan_service import normalize
-from app.services.rules import get_code_rules
+from app.services.rules import resolve_jurisdiction
 
 router = APIRouter(prefix="/code", tags=["code"])
 
@@ -16,4 +16,5 @@ router = APIRouter(prefix="/code", tags=["code"])
 @router.post("/check", response_model=CodeReport)
 def code_check(plan: Plan) -> CodeReport:
     normalized, _ = normalize(plan)
-    return check_code(normalized, get_code_rules())
+    rules = resolve_jurisdiction(normalized.plot.state.value, normalized.plot.city.value)
+    return check_code(normalized, rules)

@@ -13,7 +13,11 @@ from app.models.enums import room_label
 from app.models.plan import Plan
 from app.models.reports import CodeCheck, CodeMetrics, CodeReport, CodeSummary
 from app.services import geometry
-from app.services.rules import CodeRules
+from app.services.rules import CodeRules, JurisdictionPack
+
+# Fold a diagonal facing onto the cardinal whose road usually fronts the plot
+# (matches the drawing pipeline's _facing_edge behaviour).
+_FACING_FOLD = {"NE": "E", "SE": "E", "NW": "W", "SW": "W"}
 
 _RANK = {"pass": 0, "warn": 1, "fail": 2}
 
@@ -131,6 +135,26 @@ def check_code(plan: Plan, rules: CodeRules) -> CodeReport:
     state_code = plan.plot.state.value
     st = rules.state(state_code)
     cls = rules.classification()
+
+    # Jurisdiction pack (TG/AP): clause citations + road-width / RWH / height /
+    # instant-approval intelligence. Legacy CodeRules (KA) path is untouched.
+    pack = rules if isinstance(rules, JurisdictionPack) else None
+    facing = plan.plot.facing.value
+    front_edge = _FACING_FOLD.get(facing, facing)
+    road_widths = getattr(plan.plot, "road_widths_m", None) or {}
+    front_road_w = road_widths.get(front_edge)
+    front_road_w = float(front_road_w) if front_road_w is not None else None
+    # Slab-to-slab 3.0 m per floor + 1.0 m parapet allowance (estimate; the
+    # structural module refines this later).
+    building_height = plan.plot.floors * 3.0 + 1.0
+
+    def _cite(check: CodeCheck, kind: str, **kw) -> CodeCheck:
+        if pack is not None:
+            ref, conf = pack.citation_for(kind, **kw)
+            if ref:
+                check.citation = ref
+                check.confidence = conf
+        return check
     habitable = set(cls.get("habitableRoomTypes", []))
     ventilation = set(cls.get("ventilationRoomTypes", []))
     virtual = set(cls.get("virtualRoomTypes", []))
@@ -163,38 +187,93 @@ def check_code(plan: Plan, rules: CodeRules) -> CodeReport:
     # --- ground coverage ---
     max_cov = float(st["maxGroundCoveragePct"])
     checks.append(
-        CodeCheck(
-            rule_id="ground_coverage",
-            label="Ground coverage",
-            status="pass" if coverage_pct <= max_cov + 1e-6 else "fail",
-            actual=_fmt(coverage_pct, "%"),
-            required=f"<= {max_cov} %",
-            message=f"Footprint covers {round(coverage_pct, 1)}% of the plot (limit {max_cov}%).",
+        _cite(
+            CodeCheck(
+                rule_id="ground_coverage",
+                label="Ground coverage",
+                status="pass" if coverage_pct <= max_cov + 1e-6 else "fail",
+                actual=_fmt(coverage_pct, "%"),
+                required=f"<= {max_cov} %",
+                message=f"Footprint covers {round(coverage_pct, 1)}% of the plot (limit {max_cov}%).",
+            ),
+            "coverage",
         )
     )
 
     # --- FAR ---
-    far_allowed = float(st["FAR"])
-    checks.append(
-        CodeCheck(
-            rule_id="far",
-            label="Floor Area Ratio",
-            status="pass" if far_used <= far_allowed + 1e-6 else "fail",
-            actual=_fmt(far_used, ""),
-            required=f"<= {far_allowed}",
-            message=f"FAR used {round(far_used, 2)} of {far_allowed} allowed ({floors} floor(s)).",
+    pack_far = pack.far_allowed() if pack is not None else None
+    if pack is not None and pack_far is None:
+        # Regime with no separate FAR cap (e.g. TG setback-based control):
+        # informational check so the report card explains the envelope logic.
+        # The metrics card still needs a numeric denominator — use the legacy
+        # state value, which the pack note designates as advisory-only.
+        far_allowed = float(st["FAR"])
+        checks.append(
+            _cite(
+                CodeCheck(
+                    rule_id="far",
+                    label="Floor Area Ratio",
+                    status="pass",
+                    actual=_fmt(far_used, ""),
+                    required="no separate FAR cap",
+                    message=(
+                        pack.far_note()
+                        or "This regime controls the envelope via setbacks and height; no separate FAR cap."
+                    ),
+                ),
+                "far",
+            )
         )
-    )
+    else:
+        far_allowed = pack_far if pack_far is not None else float(st["FAR"])
+        checks.append(
+            _cite(
+                CodeCheck(
+                    rule_id="far",
+                    label="Floor Area Ratio",
+                    status="pass" if far_used <= far_allowed + 1e-6 else "fail",
+                    actual=_fmt(far_used, ""),
+                    required=f"<= {far_allowed}",
+                    message=f"FAR used {round(far_used, 2)} of {far_allowed} allowed ({floors} floor(s)).",
+                ),
+                "far",
+            )
+        )
 
     # --- setbacks ---
-    band = rules.setback_for(state_code, plot_area)
+    if pack is not None:
+        band = pack.setback_for(
+            state_code, plot_area, road_w_m=front_road_w, height_m=building_height
+        )
+    else:
+        band = rules.setback_for(state_code, plot_area)
+    front_m = float(band.get("frontM", 0))
+    rear_m = float(band.get("rearM", 0))
+    side_m = float(band.get("sideM", 0))
+    setback_notes = []
+    if (
+        pack is not None
+        and getattr(plan.plot, "corner_plot", False)
+        and pack.corner_second_front()
+    ):
+        # Corner rule: second road-abutting flank takes the front setback. Which
+        # flank isn't derivable without per-edge road data, so apply it to both
+        # flanks — the conservative (stricter) reading.
+        side_m = max(side_m, front_m)
+        setback_notes.append(
+            "Corner plot: second frontage takes the front setback (applied to both flanks as the conservative check)."
+        )
+    if pack is not None and band.get("_assumedRoadWidth"):
+        setback_notes.append(
+            "Assumed 9.0 m abutting road — provide per-edge road widths for exact bands."
+        )
     env = buildable_envelope(
         plan.plot.width_m,
         plan.plot.depth_m,
         plan.plot.facing.value,
-        float(band.get("frontM", 0)),
-        float(band.get("rearM", 0)),
-        float(band.get("sideM", 0)),
+        front_m,
+        rear_m,
+        side_m,
     )
     encroachers = []
     for r in real_rooms:
@@ -209,16 +288,24 @@ def check_code(plan: Plan, rules: CodeRules) -> CodeReport:
         setback_status = "pass"
         setback_msg = (
             f"All rooms sit inside the buildable envelope "
-            f"(front {band.get('frontM')} / rear {band.get('rearM')} / side {band.get('sideM')} m)."
+            f"(front {front_m} / rear {rear_m} / side {side_m} m)."
         )
+    if setback_notes:
+        setback_msg = f"{setback_msg} {' '.join(setback_notes)}"
     checks.append(
-        CodeCheck(
-            rule_id="setbacks",
-            label="Setbacks",
-            status=setback_status,
-            actual=f"{len(encroachers)} encroaching",
-            required="0 encroaching",
-            message=setback_msg,
+        _cite(
+            CodeCheck(
+                rule_id="setbacks",
+                label="Setbacks",
+                status=setback_status,
+                actual=f"{len(encroachers)} encroaching",
+                required="0 encroaching",
+                message=setback_msg,
+            ),
+            "setbacks",
+            plot_area_sqm=plot_area,
+            road_w_m=front_road_w,
+            height_m=building_height,
         )
     )
 
@@ -226,19 +313,88 @@ def check_code(plan: Plan, rules: CodeRules) -> CodeReport:
     parking_req = int(st.get("parkingPerDwelling", 1))
     parking_have = sum(1 for r in plan.rooms if r.type.value == "parking")
     checks.append(
-        CodeCheck(
-            rule_id="parking",
-            label="Parking",
-            status="pass" if parking_have >= parking_req else "warn",
-            actual=f"{parking_have} bay(s)",
-            required=f">= {parking_req} bay(s)",
-            message=(
-                f"{parking_have} parking bay(s) modelled (need {parking_req})."
-                if parking_have >= parking_req
-                else f"No dedicated parking modelled (need {parking_req}); often provided in stilt/open setback."
+        _cite(
+            CodeCheck(
+                rule_id="parking",
+                label="Parking",
+                status="pass" if parking_have >= parking_req else "warn",
+                actual=f"{parking_have} bay(s)",
+                required=f">= {parking_req} bay(s)",
+                message=(
+                    f"{parking_have} parking bay(s) modelled (need {parking_req})."
+                    if parking_have >= parking_req
+                    else f"No dedicated parking modelled (need {parking_req}); often provided in stilt/open setback."
+                ),
             ),
+            "parking",
         )
     )
+
+    # --- jurisdiction-pack checks (TG/AP): height vs road, RWH mandate,
+    #     instant-approval tier. Legacy CodeRules path emits none of these. ---
+    if pack is not None:
+        max_h = pack.max_height_for(front_road_w)
+        if max_h is not None:
+            h_msg = (
+                f"Estimated building height {round(building_height, 1)} m "
+                f"(floors x 3.0 m + parapet) vs {max_h} m allowed"
+            )
+            h_msg += (
+                f" on the {front_road_w} m abutting road."
+                if front_road_w is not None
+                else " (assumed 9.0 m abutting road — provide per-edge road widths for the exact cap)."
+            )
+            checks.append(
+                _cite(
+                    CodeCheck(
+                        rule_id="height_vs_road",
+                        label="Height vs road width",
+                        status="pass" if building_height <= max_h + 1e-6 else "fail",
+                        actual=_fmt(building_height, "m"),
+                        required=f"<= {max_h} m",
+                        message=h_msg,
+                    ),
+                    "heightByRoad",
+                    road_w_m=front_road_w,
+                )
+            )
+
+        rwh_thr = pack.rwh_threshold_sqm()
+        if rwh_thr is not None and plot_area >= rwh_thr:
+            checks.append(
+                _cite(
+                    CodeCheck(
+                        rule_id="rwh_mandate",
+                        label="Rainwater harvesting",
+                        status="pass",
+                        actual="RWH pit in MEP plan",
+                        required=f"mandatory >= {round(rwh_thr)} m2 plot",
+                        message=(
+                            f"Plot {round(plot_area, 1)} m2 >= {round(rwh_thr)} m2 — RWH is mandatory; "
+                            "the MEP plan includes a rainwater pit with roof downpipes."
+                        ),
+                    ),
+                    "rwh",
+                )
+            )
+
+        if pack.instant_approval_eligible(plot_area, building_height):
+            checks.append(
+                _cite(
+                    CodeCheck(
+                        rule_id="instant_approval",
+                        label="Instant approval tier",
+                        status="pass",
+                        actual=f"{round(plot_area, 1)} m2, {round(building_height, 1)} m",
+                        required="<= 75 sq yd (62.71 m2) and <= 7 m",
+                        message=(
+                            "Eligible for the TS-bPASS instant-approval (self-certification) tier — "
+                            "small-plot fast track; final eligibility is confirmed by the ULB portal."
+                        ),
+                    ),
+                    "instantApproval",
+                )
+            )
 
     # --- per-room checks ---
     win_area_by_room: dict[str, float] = {}

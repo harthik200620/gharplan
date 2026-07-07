@@ -62,5 +62,8 @@ export const engine = {
     post<GenerateOptionsResponse>("/plan/options", req, signal),
   refine: (req: RefineRequest, signal?: AbortSignal) =>
     post<GenerateResponse>("/plan/refine", req, signal),
+  /** Preliminary RCC member design (IS 456/875/1893) for a generated plan. */
+  structural: (plan: Plan, signal?: AbortSignal) =>
+    post<any>("/plan/structural", { plan, futureFloors: 0 }, signal),
   engineUrl: ENGINE_URL,
 };

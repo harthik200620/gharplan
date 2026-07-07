@@ -354,7 +354,7 @@ export function ResultPanel({
 
           
           {tab === "climate" && <ClimatePanel data={data.climate} />}
-          {tab === "structure" && <StructurePanel data={data.structure} />}
+          {tab === "structure" && <StructurePanel plan={data.plan} />}
 
           {tab === "cost" && (
 

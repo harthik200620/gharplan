@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app import config
-from app.routers import boq, code, export, generate, layouts, validate, vastu
+from app.routers import boq, code, export, generate, layouts, structural, validate, vastu
 from app.services.plan_service import PlanValidationError
 from app.services.rates import MissingRateError
 
@@ -66,3 +66,4 @@ app.include_router(code.router)
 app.include_router(export.router)
 app.include_router(layouts.router)
 app.include_router(generate.router)
+app.include_router(structural.router)

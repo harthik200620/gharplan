@@ -11,6 +11,7 @@ from decimal import Decimal
 from app.models.enums import City, FinishTier
 from app.services.boq_service import generate_boq
 from app.services.plan_service import normalize
+from app.services.rules import BoqRules
 
 
 def _line(report, item_code):
@@ -19,7 +20,11 @@ def _line(report, item_code):
 
 def test_boq_synthetic_exact(synthetic_plan, test_rates, boq_rules):
     plan, _ = normalize(synthetic_plan)
-    rep = generate_boq(plan, City.Bengaluru, FinishTier.standard, test_rates, boq_rules)
+    # Zero the policy layers (metro labour factor, site contingency) so this test
+    # pins the PURE takeoff+money pipeline; policy invariants live in
+    # test_boq_fixture.py against the real rules.
+    pure_rules = BoqRules({**boq_rules.raw, "labourCityFactor": {}, "contingencyPct": 0})
+    rep = generate_boq(plan, City.Bengaluru, FinishTier.standard, test_rates, pure_rules)
 
     # --- geometry-derived quantities (4m x 3m room, ceiling 3.0) ---
     assert _line(rep, "FLR-VIT").qty == 12.96  # 12 * 1.08

@@ -49,6 +49,14 @@ export interface Project {
   createdAt?: string | null;
 }
 
+export type SoilType =
+  | "hard_rock"
+  | "soft_rock"
+  | "dense_sand"
+  | "medium_clay"
+  | "soft_clay"
+  | "filled";
+
 export interface Plot {
   widthM: number;
   depthM: number;
@@ -58,6 +66,14 @@ export interface Plot {
   state: StateCode;
   city: City;
   floors: number;
+  /** Plot v2 — true boundary ring (metres); width/depth = its bounding box when set. */
+  polygon?: Point[] | null;
+  /** Abutting road width per plot edge, keys N/S/E/W (metres). */
+  roadWidthsM?: Record<string, number> | null;
+  cornerPlot?: boolean;
+  slopeNote?: string | null;
+  /** Assumed bearing stratum; sets the SBC default in structural design. */
+  soilType?: SoilType;
 }
 
 export interface Opening {

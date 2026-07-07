@@ -831,7 +831,9 @@ def build_pdf(
     story.append(tt)
     
     if plan.plot.area_sqm > 0 and m.built_up_sqm > 0:
-        story.append(Paragraph(f"Approximate Per Sq Ft Rate: {_inr(s.grand_total / (m.built_up_sqm * 10.764))}/sqft built-up", body))
+        # grand_total is Decimal; built-up sqft is float — divide in float for this display-only rate.
+        rate_per_sqft = float(s.grand_total) / (m.built_up_sqm * 10.764)
+        story.append(Paragraph(f"Approximate Per Sq Ft Rate: {_inr(rate_per_sqft)}/sqft built-up", body))
     story.append(Spacer(1, 12))
     
     # Trade-wise summary instead of massive line-items for brevity in proposal
@@ -882,7 +884,7 @@ def build_pdf(
         rightMargin=15 * mm,
         topMargin=15 * mm,
         bottomMargin=18 * mm,
-        title=f"GharPlan Proposal — {plan.project.name}",
+        title=f"Vastukala AI Proposal — {plan.project.name}",
     )
     doc.build(story, onFirstPage=_footer, onLaterPages=_footer)
     return buf_out.getvalue()

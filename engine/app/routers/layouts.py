@@ -1,10 +1,10 @@
-"""Layouts router — Tirupati government-approved plot selection API.
+"""Layouts router â€” Tirupati government-approved plot selection API.
 
 Exposes:
-  GET /layouts/tirupati          → full GeoJSON FeatureCollection
-  GET /layouts/tirupati/search   → filtered plots
-  GET /layouts/tirupati/{id}     → single plot + auto-generated design brief
-  GET /layouts/tirupati/stats    → summary statistics
+  GET /layouts/tirupati          â†’ full GeoJSON FeatureCollection
+  GET /layouts/tirupati/search   â†’ filtered plots
+  GET /layouts/tirupati/{id}     â†’ single plot + auto-generated design brief
+  GET /layouts/tirupati/stats    â†’ summary statistics
 """
 from __future__ import annotations
 
@@ -86,7 +86,7 @@ def search_tirupati_plots(
 
 @router.get("/tirupati/{plot_id}", summary="Get plot detail with auto-generated design brief")
 def get_plot_detail(plot_id: str):
-    """Returns full plot details + auto-generated brief ready for the GharPlan generator."""
+    """Returns full plot details + auto-generated brief ready for the Vastukala AI generator."""
     features = _load()["features"]
     plot = next((f for f in features if f["properties"].get("id") == plot_id), None)
     if not plot:

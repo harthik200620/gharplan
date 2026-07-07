@@ -4,7 +4,8 @@ import { canExport, getOrCreateProfile, type ProjectRow } from "@/lib/db";
 import { createClient } from "@/lib/supabase/server";
 
 export default async function EditProjectPage({ params }: { params: { id: string } }) {
-  const supabase = createClient();
+  const supabase = createClient(); // null in demo mode — no saved projects exist
+  if (!supabase) notFound();
   const {
     data: { user },
   } = await supabase.auth.getUser();

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from decimal import Decimal
 from functools import lru_cache
 from pathlib import Path
 
@@ -40,6 +41,15 @@ class BoqRules:
 
     def excluded_types(self) -> set[str]:
         return set(self.raw.get("excludeRoomTypes", []))
+
+    def labour_city_factor(self, city: str) -> Decimal:
+        """Regional labour-rate multiplier (policy layer, data-driven; 1.0 = none)."""
+        d = self.raw.get("labourCityFactor", {})
+        return Decimal(str(d.get(city, d.get("default", 1.0))))
+
+    def contingency_pct(self) -> Decimal:
+        """Site-contingency percentage applied on the subtotal (0 = none)."""
+        return Decimal(str(self.raw.get("contingencyPct", 0)))
 
     def items(self) -> list[dict]:
         return list(self.raw.get("items", []))

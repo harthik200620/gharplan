@@ -1,4 +1,4 @@
-# GharPlan engine — build context is the REPO ROOT (needs engine/ + fixtures/).
+# Vastukala AI engine â€” build context is the REPO ROOT (needs engine/ + fixtures/).
 FROM python:3.11-slim
 
 WORKDIR /app

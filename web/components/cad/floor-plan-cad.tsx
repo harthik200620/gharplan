@@ -376,7 +376,7 @@ export function FloorPlanCad({
           <line x1={W * 0.3} y1={0} x2={W * 0.3} y2={0.5} stroke="#0f172a" strokeWidth={0.8} vectorEffect="non-scaling-stroke" />
           <line x1={W * 0.55} y1={0} x2={W * 0.55} y2={0.5} stroke="#0f172a" strokeWidth={0.8} vectorEffect="non-scaling-stroke" />
           <line x1={W * 0.75} y1={0} x2={W * 0.75} y2={0.5} stroke="#0f172a" strokeWidth={0.8} vectorEffect="non-scaling-stroke" />
-          <text x={0.1} y={0.3}>Project: GHARPLAN CAD</text>
+          <text x={0.1} y={0.3}>Project: VASTUKALA AI CAD</text>
           <text x={W * 0.3 + 0.1} y={0.3}>Client: Professional</text>
           <text x={W * 0.55 + 0.1} y={0.3}>Scale: 1:100</text>
           <text x={W * 0.75 + 0.1} y={0.3}>Floor: {floor === 0 ? "GROUND" : "UPPER"}</text>

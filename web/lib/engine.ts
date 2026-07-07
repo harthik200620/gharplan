@@ -1,4 +1,4 @@
-// Typed client for the GharPlan compute engine (FastAPI).
+// Typed client for the Vastukala AI compute engine (FastAPI).
 
 import type {
   BoqReport,

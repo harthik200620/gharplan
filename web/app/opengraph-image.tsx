@@ -4,7 +4,7 @@ import { ImageResponse } from "next/og";
 // loader throws ERR_INVALID_URL on Windows (malformed file:// path to noto-sans).
 export const runtime = "edge";
 
-export const alt = "GharPlan — AI Architect OS for Indian Homes";
+export const alt = "Vastukala AI — The Autonomous Architect Platform for India";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -137,7 +137,7 @@ export default async function OpengraphImage() {
                 lineHeight: 1,
               }}
             >
-              GharPlan
+              Vastukala AI
             </div>
             <div
               style={{
@@ -148,7 +148,7 @@ export default async function OpengraphImage() {
                 color: "#cbd5e1",
               }}
             >
-              AI Architect OS for Indian Homes
+              The Autonomous Architect Platform for India
             </div>
           </div>
         </div>

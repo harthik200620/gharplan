@@ -28,7 +28,7 @@ export function Logo({
         </svg>
       </span>
       {!markOnly && (
-        <span className="font-display text-lg font-bold tracking-tight text-foreground">GharPlan</span>
+        <span className="font-display text-lg font-bold tracking-tight text-foreground">Vastukala AI</span>
       )}
     </Link>
   );

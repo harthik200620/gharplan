@@ -37,6 +37,24 @@ class Plot(CamelModel):
     family_profile: FamilyProfile = Field(default=FamilyProfile.nuclear)
     plot_shape: PlotShape = Field(default=PlotShape.regular)
     family_persona: Optional[str] = None
+    # ---- Plot v2 (optional site intelligence; the rectangular path is unchanged
+    #      when these stay at their defaults) ----
+    polygon: Optional[list[Point]] = Field(
+        default=None,
+        description="True plot boundary ring (metres, open or closed); when set, width/depth describe its bounding box",
+    )
+    road_widths_m: Optional[dict[str, float]] = Field(
+        default=None,
+        description="Abutting road width per plot edge, keys N/S/E/W (metres); drives road-width-based setback/height rules",
+    )
+    corner_plot: bool = False
+    slope_note: Optional[str] = None
+    soil_type: Literal[
+        "hard_rock", "soft_rock", "dense_sand", "medium_clay", "soft_clay", "filled"
+    ] = Field(
+        default="medium_clay",
+        description="Assumed bearing stratum (owner-declared or jurisdiction-typical); sets the SBC default in structural design",
+    )
 
 
 class Opening(CamelModel):

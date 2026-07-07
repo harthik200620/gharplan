@@ -124,7 +124,7 @@ def build_xlsx(
     ws.title = "BOQ"
 
     row = 1
-    studio = branding.studio_name if branding else "GharPlan"
+    studio = branding.studio_name if branding else "Vastukala AI"
     ws.cell(row, 1, studio).font = Font(bold=True, size=14)
     row += 1
     ws.cell(row, 1, f"Bill of Quantities — {report.city.value} — {report.finish_tier.value.title()} finish")

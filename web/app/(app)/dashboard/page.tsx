@@ -7,16 +7,19 @@ import type { ProjectRow } from "@/lib/db";
 import { createClient } from "@/lib/supabase/server";
 
 export default async function DashboardPage() {
-  const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  const { data } = await supabase
-    .from("projects")
-    .select("id, name, client_name, plan, updated_at")
-    .eq("user_id", user!.id)
-    .order("updated_at", { ascending: false });
-  const projects = (data ?? []) as Pick<ProjectRow, "id" | "name" | "client_name" | "plan" | "updated_at">[];
+  const supabase = createClient(); // null in demo mode (no Supabase env)
+  let projects: Pick<ProjectRow, "id" | "name" | "client_name" | "plan" | "updated_at">[] = [];
+  if (supabase) {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    const { data } = await supabase
+      .from("projects")
+      .select("id, name, client_name, plan, updated_at")
+      .eq("user_id", user!.id)
+      .order("updated_at", { ascending: false });
+    projects = (data ?? []) as Pick<ProjectRow, "id" | "name" | "client_name" | "plan" | "updated_at">[];
+  }
 
   return (
     <div className="space-y-8">

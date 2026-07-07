@@ -1,4 +1,4 @@
-"""GharPlan engine — FastAPI application entrypoint.
+"""Vastukala AI engine â€” FastAPI application entrypoint.
 
 M1 endpoints: GET /health, POST /plan/validate, POST /boq/generate.
 M2 will add /vastu/check, /code/check and /export/*; M5 adds /plan/generate.
@@ -16,7 +16,7 @@ from app.services.plan_service import PlanValidationError
 from app.services.rates import MissingRateError
 
 app = FastAPI(
-    title="GharPlan Engine",
+    title="Vastukala AI Engine",
     version="1.0.0",
     description="Vastu, building-code & BOQ-from-geometry compute core for Indian residential design.",
 )

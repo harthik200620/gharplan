@@ -4,6 +4,14 @@
   "wastage": {
     "flooring": 1.08
   },
+  "labourCityFactor": {
+    "Bengaluru": 1.15,
+    "Pune": 1.15,
+    "default": 1.0
+  },
+  "labourCityFactorNote": "Metro labour premium over the AP/TG baseline (indicative 2025-26 market ballpark; verify with local contractors before quoting).",
+  "contingencyPct": 0.10,
+  "contingencyNote": "Indicative site contingency on the works subtotal (approvals, minor variations, supervision). Verify/adjust per project before quoting.",
   "dadoHeightM": {
     "toilet": 2.1,
     "bathroom": 2.1,

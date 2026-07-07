@@ -1,4 +1,4 @@
-# GharPlan web — build context is the REPO ROOT (npm workspaces).
+# Vastukala AI web — build context is the REPO ROOT (npm workspaces).
 # For most deploys, prefer Vercel (auto-detects Next.js). This image is for
 # docker-compose parity.
 FROM node:20-alpine

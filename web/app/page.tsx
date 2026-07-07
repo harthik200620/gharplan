@@ -281,7 +281,7 @@ export default async function Landing() {
 
             {/* Subheadline */}
             <p className="mt-6 max-w-2xl text-lg leading-relaxed text-muted-foreground sm:text-xl">
-              GharPlan turns your plot brief into{" "}
+              Vastukala AI turns your plot brief into{" "}
               <strong className="text-foreground font-semibold">5 professional architectural schemes</strong>{" "}
               — complete with Vastu analysis, 2D CAD plans, 3D massing, MEP coordination, and construction BOQ.
             </p>
@@ -574,7 +574,7 @@ export default async function Landing() {
               </p>
               <p className="mt-4 flex items-center gap-2 text-sm text-sidebar-foreground/50">
                 <BadgeCheck className="h-4 w-4 text-emerald-400 shrink-0" />
-                Join 5,000+ architects and homeowners who design with GharPlan
+                Join 5,000+ architects and homeowners who design with Vastukala AI
               </p>
             </div>
             <div className="flex flex-col gap-3 sm:flex-row lg:flex-col xl:flex-row">
@@ -597,7 +597,7 @@ export default async function Landing() {
           <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
             <Logo />
             <p className="text-xs text-muted-foreground">
-              &copy; {new Date().getFullYear()} GharPlan — built for Indian residential design studios
+              &copy; {new Date().getFullYear()} Vastukala AI — built for Indian residential design studios
             </p>
           </div>
           <p className="mt-6 max-w-3xl text-xs leading-relaxed text-muted-foreground">

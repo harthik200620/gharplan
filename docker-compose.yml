@@ -15,7 +15,7 @@ services:
     environment:
       ENGINE_CORS_ORIGINS: "http://localhost:3000"
       GHARPLAN_BRAHMASTHAN: "grid_3x3"
-      FEATURE_GENERATOR: "false"
+      FEATURE_GENERATOR: "true"
 
   web:
     build:

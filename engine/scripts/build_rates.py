@@ -7,12 +7,12 @@ Emits BOTH:
 Rates are researched INDICATIVE 2025-26 ballpark composite (material+labour)
 rates for Indian residential finishing/civil work, derived from a Bengaluru
 base + per-city multiplier (see `# Sources:` block below). They are NOT
-quote-ready. EVERY row keeps `"verify": True` — confirm against current local
+quote-ready. EVERY row keeps `"verify": True` â€” confirm against current local
 market quotes and the correct HSN/SAC + GST slab before quoting a real client.
 
 Magnitude note: per-unit rates are PER the stated `unit` (sqm, not sqft).
 Most published Indian costs are quoted per sqft, so per-sqm items below were
-converted ×10.764 (1 sqm = 10.764 sqft). All-in Bengaluru sanity check for the
+converted Ã—10.764 (1 sqm = 10.764 sqft). All-in Bengaluru sanity check for the
 big-ticket items: 12mm internal plaster ~Rs 280/sqm; standard vitrified flooring
 laid ~Rs 1100-1500/sqm; emulsion 2-coat ~Rs 110-150/sqm.
 
@@ -42,12 +42,12 @@ Run:  python scripts/build_rates.py
 #   Waterproofing (coating/cementitious Rs 30-50/sqft; membrane/PU Rs 50-120/sqft):
 #     https://www.houseyog.com/blog/waterproofing-cost-per-sq-ft-india/
 #     https://limehouse.in/terrace-waterproofing-cost-in-india/
-#   Flush / teak-veneer doors (teak-veneer flush ~Rs 340-500/sqft → ~Rs 7-12k
+#   Flush / teak-veneer doors (teak-veneer flush ~Rs 340-500/sqft â†’ ~Rs 7-12k
 #   for a 3'x7' door incl frame; teak panel Rs 18-35k/door):
 #     https://www.veneermart.in/teak-veneer-doors.html
 #     https://dir.indiamart.com/impcat/teak-veneers-door.html
 #   Aluminium / UPVC windows (UPVC Rs 450-900/sqft incl install; aluminium
-#   from ~Rs 350/sqft → ~Rs 4.5-8k alu / Rs 9-16k UPVC for a typical sash):
+#   from ~Rs 350/sqft â†’ ~Rs 4.5-8k alu / Rs 9-16k UPVC for a typical sash):
 #     https://buildingandinteriors.com/upvc-windows-price-per-sq-ft/
 #     https://thegreenfortune.com/greenfortune-upvc-windows-pricing/
 #   Electrical points (concealed point all-in ~Rs 700-1200; light point ~Rs 150
@@ -59,7 +59,7 @@ Run:  python scripts/build_rates.py
 #   CP & sanitaryware per WC (basic Rs 10-20k; mid Rs 20-40k incl install):
 #     https://www.houseyog.com/blog/bathroom-fitting-cost-in-india-jaquar-hindware-kohler-price-installation-guide/
 #   Modular kitchen (laminate Rs 1500-2500/sqft; converted to per-rft of run
-#   ~Rs 1300-3500/rft basic→premium):
+#   ~Rs 1300-3500/rft basicâ†’premium):
 #     https://www.houseyog.com/blog/modular-kitchen-cost-in-india/
 #     https://gharkabudget.com/articles/modular-kitchen-price-india-2026/
 #     https://www.bricknbolt.com/blogs-and-articles/home-design-guide/modular-kitchen-cost
@@ -70,7 +70,7 @@ Run:  python scripts/build_rates.py
 #   fabrication+fixing):
 #     https://www.nobroker.in/forum/what-is-the-price-of-granite-per-square-foot/
 #     https://civillane.com/cost/kitchen-platform/
-#   MS grill (Rs 120-300/sqft fabricated+fixed → ~Rs 1700-3200/sqm):
+#   MS grill (Rs 120-300/sqft fabricated+fixed â†’ ~Rs 1700-3200/sqm):
 #     https://www.contractorbhai.com/cost-for-making-window-grills/
 #     https://www.paramvisions.com/2021/11/how-to-calculate-cost-of-ms-window.html
 #   Civil labour day rate (skilled mason ~Rs 700-900/day + helper ~Rs 450-600;
@@ -80,7 +80,7 @@ Run:  python scripts/build_rates.py
 #
 # GST note: finishing GOODS (tiles 6907, putty 3214, paint 3209, gypsum 6809,
 # CP/sanitaryware 3922, MS 7308) and composite WORKS-CONTRACT services (SAC 9954)
-# are 18% — kept as-is. Verify each HSN/SAC + slab against current GST notifs
+# are 18% â€” kept as-is. Verify each HSN/SAC + slab against current GST notifs
 # before quoting; some items (e.g. certain low-value sanitaryware) can differ.
 
 from __future__ import annotations
@@ -94,7 +94,7 @@ UPDATED_AT = "2026-06-01"  # researched-as-of date; fixed for diff-friendly outp
 
 # Per-city cost multiplier vs Bengaluru base (indicative). Verify before quoting.
 # Bengaluru/Pune are higher-cost metros; Hyderabad slightly cheaper labour;
-# Tirupati tier-2 (AP) cheapest. Multipliers are coarse — confirm locally.
+# Tirupati tier-2 (AP) cheapest. Multipliers are coarse â€” confirm locally.
 CITY_MULTIPLIER = {
     "Bengaluru": 1.00,
     "Hyderabad": 0.95,
@@ -109,8 +109,8 @@ BASE = [
     # Plaster: ~Rs 280/sqm all-in (1:6, 12mm); material-light, labour-heavy.
     ("PLS-CEM", "Internal cement plaster 12mm", "sqm", 95, 195, 18, "9954", "all"),
     # Flooring (per sqm laid, incl tile + adhesive + labour). Eco ceramic
-    # ~Rs 65-120/sqft→~Rs 800/sqm; std vitrified ~Rs 100-170/sqft→~Rs 1300/sqm;
-    # premium large-slab ~Rs 170-300/sqft→~Rs 2100/sqm.
+    # ~Rs 65-120/sqftâ†’~Rs 800/sqm; std vitrified ~Rs 100-170/sqftâ†’~Rs 1300/sqm;
+    # premium large-slab ~Rs 170-300/sqftâ†’~Rs 2100/sqm.
     ("FLR-CER", "Ceramic floor tiles (economy)", "sqm", 520, 280, 18, "6907", "economy"),
     ("FLR-VIT", "Vitrified floor tiles 600x600", "sqm", 850, 450, 18, "6907", "standard"),
     ("FLR-VITP", "Premium vitrified/large slab", "sqm", 1550, 550, 18, "6907", "premium"),
@@ -118,23 +118,23 @@ BASE = [
     ("SKB-CER", "Ceramic skirting", "rmt", 95, 55, 18, "6907", "economy"),
     ("SKB-VIT", "Vitrified skirting", "rmt", 130, 70, 18, "6907", "standard"),
     ("SKB-VITP", "Premium skirting", "rmt", 220, 90, 18, "6907", "premium"),
-    # Dado / wall tiling (per sqm laid ~Rs 80-130/sqft → ~Rs 1000-1200/sqm).
+    # Dado / wall tiling (per sqm laid ~Rs 80-130/sqft â†’ ~Rs 1000-1200/sqm).
     ("WTL-CER", "Ceramic wall tiles (dado)", "sqm", 680, 380, 18, "6907", "standard"),
     ("WTL-CERP", "Designer wall tiles (dado)", "sqm", 1150, 480, 18, "6907", "premium"),
-    # Putty / primer / paint (per sqm). Putty 2-coat ~Rs 8-13/sqft→~Rs 90/sqm;
+    # Putty / primer / paint (per sqm). Putty 2-coat ~Rs 8-13/sqftâ†’~Rs 90/sqm;
     # primer ~Rs 35-55/sqm; emulsion 2-coat ~Rs 90-150/sqm; premium ~Rs 180-280.
     ("PUT-WAL", "Wall putty 2 coats", "sqm", 48, 42, 18, "3214", "all"),
     ("PRM-WAL", "Primer 1 coat", "sqm", 26, 20, 18, "3209", "all"),
     ("PNT-ECO", "Distemper / economy emulsion 2 coats", "sqm", 42, 38, 18, "3209", "economy"),
     ("PNT-STD", "Emulsion paint 2 coats", "sqm", 72, 52, 18, "3209", "standard"),
     ("PNT-PRM", "Premium emulsion 2 coats", "sqm", 140, 80, 18, "3209", "premium"),
-    # False ceiling (per sqm). POP ~Rs 60-105/sqft→~Rs 900-1300/sqm;
-    # gypsum ~Rs 70-150/sqft→~Rs 1100-1700/sqm.
+    # False ceiling (per sqm). POP ~Rs 60-105/sqftâ†’~Rs 900-1300/sqm;
+    # gypsum ~Rs 70-150/sqftâ†’~Rs 1100-1700/sqm.
     ("FCL-POP", "POP false ceiling", "sqm", 620, 480, 18, "6809", "economy"),
     ("FCL-GYP", "Gypsum board false ceiling", "sqm", 820, 520, 18, "6809", "standard"),
     ("FCL-GYPP", "Designer false ceiling", "sqm", 1150, 650, 18, "6809", "premium"),
-    # Waterproofing (per sqm). Coating/cementitious ~Rs 30-50/sqft→~Rs 350-540;
-    # membrane/PU ~Rs 50-120/sqft→~Rs 900-1300/sqm.
+    # Waterproofing (per sqm). Coating/cementitious ~Rs 30-50/sqftâ†’~Rs 350-540;
+    # membrane/PU ~Rs 50-120/sqftâ†’~Rs 900-1300/sqm.
     ("WPF-STD", "Waterproofing (coating)", "sqm", 280, 180, 18, "3214", "standard"),
     ("WPF-PRM", "Waterproofing (membrane)", "sqm", 720, 380, 18, "3214", "premium"),
     # Doors (per nos, incl frame+fixing). Laminated flush ~Rs 6-9k; flush w/
@@ -154,7 +154,7 @@ BASE = [
     ("PLM-PT", "Plumbing point (supply + drainage)", "nos", 1150, 750, 18, "3917", "standard"),
     ("PLM-PTP", "Premium plumbing point", "nos", 1750, 1050, 18, "3917", "premium"),
     # Items available for manual add in the editable BOQ (not auto-taken-off).
-    # MS grill (per sqm fabricated+fixed ~Rs 120-300/sqft → ~Rs 1700-3200/sqm).
+    # MS grill (per sqm fabricated+fixed ~Rs 120-300/sqft â†’ ~Rs 1700-3200/sqm).
     ("GRL-MS", "MS safety grill", "sqm", 1850, 650, 18, "7308", "all"),
     # Modular kitchen (per rft of cabinetry run, all-in ~Rs 1300-3500/rft).
     ("KIT-ECO", "Modular kitchen (economy)", "rft", 1150, 350, 18, "9403", "economy"),
@@ -201,9 +201,9 @@ def _sql_escape(s: str) -> str:
 
 def build_sql(rows: list[dict]) -> str:
     lines = [
-        "-- GharPlan seed rates. Researched INDICATIVE 2025-26 ballpark composite",
+        "-- Vastukala AI seed rates. Researched INDICATIVE 2025-26 ballpark composite",
         "-- (material+labour) rates for Indian residential work (see sources in",
-        "-- scripts/build_rates.py). NOT quote-ready: every row is verify:true —",
+        "-- scripts/build_rates.py). NOT quote-ready: every row is verify:true â€”",
         "-- confirm against current local market quotes and the correct HSN/SAC +",
         "-- GST slab before quoting a real client.",
         "create table if not exists rates (",

@@ -10,7 +10,7 @@ door/window counts are attributed once via the opening's single ``roomId``.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 
 from app.models.boq import (
     BoqGroup,
@@ -312,9 +312,8 @@ def generate_boq(
             item_code = item["itemCodeByTier"][tier]
             rate = rates.get(city_name, item_code)
             
-            # Regional labor rate variations (MH & KA = +15%, AP & TG = +0%)
-            labour_multiplier = Decimal("1.15") if city_name in ("Bengaluru", "Pune") else Decimal("1.0")
-            adj_labour_rate = rate.labour_rate * labour_multiplier
+            # Regional labour-rate variation comes from boq_rules.json (labourCityFactor).
+            adj_labour_rate = rate.labour_rate * rules.labour_city_factor(city_name)
             
             lines.append(
                 _make_line(
@@ -387,15 +386,19 @@ def generate_boq(
     cgst_total = sum((ln.cgst_amount for ln in lines), ZERO)
     sgst_total = sum((ln.sgst_amount for ln in lines), ZERO)
     
-    jugaad_contingency = subtotal * Decimal("0.10")
+    # Site contingency is a policy percentage from boq_rules.json (contingencyPct);
+    # quantised to paise so serialized money never carries sub-paise digits.
+    contingency = (subtotal * rules.contingency_pct()).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
 
     summary = BoqSummary(
         subtotal=subtotal,
         gst_total=gst_total,
         cgst_total=cgst_total,
         sgst_total=sgst_total,
-        jugaad_contingency=jugaad_contingency,
-        grand_total=subtotal + gst_total + jugaad_contingency,
+        contingency=contingency,
+        grand_total=subtotal + gst_total + contingency,
         line_count=len(lines),
     )
 

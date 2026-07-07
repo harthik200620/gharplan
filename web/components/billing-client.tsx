@@ -60,7 +60,7 @@ export function BillingClient({
         key: o.keyId,
         amount: o.amount,
         currency: o.currency,
-        name: "GharPlan",
+        name: "Vastukala AI",
         description: planId ?? `${quantity} export credit(s)`,
         order_id: o.orderId,
         theme: { color: "#1F3A5F" },

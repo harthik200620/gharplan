@@ -1,13 +1,16 @@
 import { BillingClient } from "@/components/billing-client";
-import { getOrCreateProfile, hasActiveSubscription } from "@/lib/db";
+import { DEMO_PROFILE, getOrCreateProfile, hasActiveSubscription } from "@/lib/db";
 import { createClient } from "@/lib/supabase/server";
 
 export default async function BillingPage() {
-  const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  const profile = await getOrCreateProfile(supabase, user!.id, user!.email ?? "");
+  const supabase = createClient(); // null in demo mode (no Supabase env)
+  let profile = DEMO_PROFILE;
+  if (supabase) {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    profile = await getOrCreateProfile(supabase, user!.id, user!.email ?? "");
+  }
 
   return (
     <div className="space-y-8">

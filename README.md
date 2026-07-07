@@ -1,6 +1,6 @@
-# 🏛️ GharPlan — an AI Architect OS for Indian homes
+# 🏛️ Vastukala AI — the autonomous architect platform for India
 
-> Describe a plot and a brief, and GharPlan reasons like an architect: it lays out a Vastu-compliant, building-code-aware floor plan, draws the full 2D CAD set, walks you through it in real-time 3D, and prices it down to the Bill of Quantities.
+> Describe a plot and a brief, and Vastukala AI reasons like an architect: it lays out a Vastu-compliant, building-code-aware floor plan, draws the full 2D CAD set, walks you through it in real-time 3D, and prices it down to the Bill of Quantities.
 
 ![Next.js](https://img.shields.io/badge/Next.js-14-black?logo=next.js)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)
@@ -70,6 +70,19 @@ docs/screenshots/3d.png
 The interesting engineering is the layout solver in `engine/app/generator/designer.py`. Rather than emit one plan, it **sweeps a space of candidate layouts** — varying room bands and placements — and places rooms to satisfy *simultaneous* constraints: Vastu zones (pooja in the NE, master in the SW, a free Brahmasthan), building-code limits (setbacks, FAR, minimum areas), and real-world adjacencies (kitchen next to dining, living at the entrance, ensuite baths in auspicious zones). Each candidate is scored by `_score_candidate`, and the solver keeps the **best** one via a lexicographic ranking tuple — no dropped essential rooms first, then no code failures, then Vastu quality — so the output is the most feasible plan rather than the first one found.
 
 Coordinates are canonical throughout (metres, origin at the plot SW corner, `+x` = East, `+y` = North). The `Plan` schema is defined once as pydantic models in the engine, exported to JSON Schema, and mirrored as TypeScript types in `packages/shared` — so the BOQ is generated from geometry, never typed by hand, and both ends of the stack share one contract.
+
+---
+
+## 📈 Scaling beyond the lean stack
+
+The current deployment is deliberately lean — a **stateless FastAPI engine** plus an **optional Supabase** (auth, profiles, billing state) — which keeps local runs and portfolio deploys a two-command affair. The production scale-out is designed, not improvised:
+
+- **PostgreSQL + PostGIS** as the system of record for plot geometry, generated plans and spatial queries.
+- **Redis + background workers (Celery)** so heavy generation jobs — layout sweeps, drawing sets, exports — run async with job status, retries and backpressure.
+- **S3-compatible object storage** for drawing sets, renders and BIM artifacts, served via signed URLs.
+- **Rule packs versioned as data** (Vastu, NBC, regional bylaws, rates) with a review pipeline, so domain updates ship without code deploys.
+
+The engine stays stateless either way — scaling out means adding workers, not rewriting the core.
 
 ---
 
@@ -161,4 +174,4 @@ archiproj/
 
 ## ⚠️ Disclaimer
 
-GharPlan's outputs are **indicative design explorations** — concept layouts, drawings, 3D views and cost estimates meant to start a conversation. They are **not** approved, stamped or construction-ready drawings. The Vastu interpretation, building-code checks and cost/BOQ data ship as engineering approximations and **must be verified by a licensed architect and a structural engineer**, against the current local bylaws and live market rates, before any real-world construction or commercial use.
+Vastukala AI's outputs are **preliminary design intelligence** — concept layouts, drawings, 3D views and cost estimates meant to accelerate the early design conversation. Everything it produces is **sign-off ready, not signed off**: the Vastu interpretation, building-code checks and cost/BOQ data ship as engineering approximations and **require review and sign-off by a COA-registered architect and a licensed structural engineer**, against the current local bylaws and live market rates, before any statutory submission, construction or commercial use.

@@ -58,6 +58,10 @@ class CodeCheck(CamelModel):
     actual: Optional[str] = None
     required: Optional[str] = None
     message: str
+    # Rule provenance: the GO/clause/IS reference this check is derived from, and
+    # whether that reference has been verified against the authoritative source.
+    citation: Optional[str] = None
+    confidence: Literal["verified", "needs_verification"] = "needs_verification"
 
 
 class CodeMetrics(CamelModel):

@@ -413,7 +413,7 @@ def build_dxf(plan: Plan, code: Optional[CodeReport] = None) -> bytes:
 
     # --- title block / disclaimer below the plan ---
     _ensure(doc, "TITLE", 7)
-    _text(msp, f"GharPlan - {plan.project.name}", 0, -2.4, 0.35, "TITLE")
+    _text(msp, f"Vastukala AI - {plan.project.name}", 0, -2.4, 0.35, "TITLE")
     _text(msp, DISCLAIMER_EXPORT, 0, -3.1, 0.22, "TITLE")
 
     # --- elevations, in a row below the plan ---

@@ -24,9 +24,17 @@ def test_fixture_invariants(sample_plan):
     zero = Decimal("0")
 
     assert all(ln.qty >= 0 for ln in rep.lines)
-    assert rep.summary.grand_total == rep.summary.subtotal + rep.summary.gst_total
+    # Grand total = works subtotal + GST + the data-driven site contingency
+    # (contingencyPct in boq_rules.json), with contingency quantised to paise.
+    assert rep.summary.grand_total == (
+        rep.summary.subtotal + rep.summary.gst_total + rep.summary.contingency
+    )
+    assert rep.summary.contingency == rep.summary.contingency.quantize(Decimal("0.01"))
+    assert rep.summary.contingency > zero  # real rules carry a non-zero policy pct
     assert rep.summary.cgst_total + rep.summary.sgst_total == rep.summary.gst_total
-    assert rep.summary.grand_total == sum((ln.total for ln in rep.lines), zero)
+    assert rep.summary.grand_total == (
+        sum((ln.total for ln in rep.lines), zero) + rep.summary.contingency
+    )
     assert rep.summary.grand_total > zero
 
     for ln in rep.lines:

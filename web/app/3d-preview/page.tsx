@@ -35,7 +35,7 @@ export default function ThreeDPreviewPage() {
           boxShadow: "0 1px 4px rgba(0,0,0,0.08)",
         }}
       >
-        GharPlan — 3D review (30×40 East, G+1). Drag to orbit · scroll to zoom.
+        Vastukala AI — 3D review (30×40 East, G+1). Drag to orbit · scroll to zoom.
         <span style={{ display: "block", fontWeight: 400, fontSize: 11, color: "#64748b" }}>
           Indicative visualisation — not an approved/stamped drawing.
         </span>

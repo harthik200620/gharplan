@@ -41,6 +41,10 @@ export interface CodeCheck {
   actual?: string | null;
   required?: string | null;
   message: string;
+  /** GO/clause/IS reference this check derives from. */
+  citation?: string | null;
+  /** Whether the cited rule has been verified against the authoritative source. */
+  confidence?: "verified" | "needs_verification";
 }
 
 export interface CodeMetrics {

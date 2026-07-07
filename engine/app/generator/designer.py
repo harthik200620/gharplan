@@ -689,7 +689,7 @@ def build_program(
     # A modest comfort floor (a touch above the code minimum) keeps the hall from
     # collapsing to the bare minimum without starving the bedrooms; the living's
     # large target lets it grow to a roomy size whenever the band has slack.
-    living_floor = max(18.0, min_habitable + 1.0)
+    living_floor = max(11.0, min_habitable + 1.0)
     living_target = max(_COMFORT["living"], min_habitable * 1.7) + living_bonus
     if variant is not None:
         # open-plan folds the dining into the hall; big-social variants enlarge it.
@@ -705,8 +705,8 @@ def build_program(
     # -- Kitchen (SE) -- #
     prog.append(
         ProgramRoom("kitchen", RoomType.kitchen, max(_COMFORT["kitchen"], min_kitchen * 1.4),
-                    zones("kitchen"), priority=9, min_area_floor=max(8.0, min_kitchen + 1.0),
-                    design_logic="IS 962 standard 8 sqm minimum, including comfortable work triangle.")
+                    zones("kitchen"), priority=9, min_area_floor=max(6.5, min_kitchen + 1.0),
+                    design_logic="Targets 8.5+ sqm (IS 962), with a comfortable work triangle.")
     )
 
     # Lean bedroom MINIMUMS so several bulky bedroom+bath blocks still fit; targets
@@ -1130,8 +1130,6 @@ class VastuGridPacker:
         total_floor = sum(floor)
 
         if total_floor > self.env_w + 1e-9:
-            hab = [self._column_hab_floor(cols[ci]) for ci in (0, 1, 2)]
-            print(f"Total floor {total_floor} > {self.env_w}, hab: {hab}")
             # Protect code-habitable bands at min_dim; shrink the rest to fit.
             hab = [self._column_hab_floor(cols[ci]) for ci in (0, 1, 2)]
             protected = sum(hab)
@@ -1144,17 +1142,19 @@ class VastuGridPacker:
                 bare = [self._column_bare_floor(cols[ci]) for ci in (0, 1, 2)]
                 # first satisfy every band's bare minimum width out of the slack
                 bare_extra = [max(0.0, bare[ci] - hab[ci]) for ci in (0, 1, 2)]
-                print(f"protected={protected}, slack={slack}, bare={bare}, bare_extra={bare_extra}, sum={sum(bare_extra)}")
                 if sum(bare_extra) <= slack + 1e-9:
                     rem = slack - sum(bare_extra)
                     base = [hab[ci] + bare_extra[ci] for ci in (0, 1, 2)]
                     esum = sum(excess) or 1.0
                     return [base[ci] + rem * excess[ci] / esum for ci in (0, 1, 2)]
-                
-                # We can't even give the service bands their bare width.
-                # Protect hab bands and distribute slack proportionally to bare_extra.
-                besum = sum(bare_extra) or 1.0
-                return [hab[ci] + slack * bare_extra[ci] / besum for ci in (0, 1, 2)]
+            # genuinely can't protect — proportional squeeze (legacy best-effort).
+            # NOTE: deliberately NOT "protect hab bands at min_dim and starve the
+            # service spine": that variant returns a code-LEGAL layout whose
+            # habitable bands sit at the bare 2.4 m minimum — full-depth ribbon
+            # rooms the ranking can no longer reject (fails==0). Falling through
+            # here leaves such over-columned candidates code-failing, so the sweep
+            # picks a band/swap variant (or the two-band collapse) that actually
+            # fits instead.
             s = total_floor or 1.0
             return [self.env_w * fl / s for fl in floor]
 
@@ -1623,7 +1623,6 @@ def _assert_no_overlap(placed: list[PlacedRoom]) -> None:
             ox = min(a.x1, b.x1) - max(a.x0, b.x0)
             oy = min(a.y1, b.y1) - max(a.y0, b.y0)
             if ox > 1e-6 and oy > 1e-6:
-                print(f"Overlap: {a.id} {a.x0},{a.y0} to {a.x1},{a.y1} vs {b.id} {b.x0},{b.y0} to {b.x1},{b.y1}")
                 raise AssertionError(
                     f"rooms '{a.id}' and '{b.id}' overlap by {round(ox * oy, 4)} m2"
                 )
@@ -2168,7 +2167,6 @@ def _enforce_coverage(
             dropped.append(victim.id)
             continue
         s = fac ** 0.5  # nothing optional left: uniform squeeze (rooms well over min)
-        print(f"UNIFORM SQUEEZE fac={fac}, s={s}")
         _shrink(s, s)
         break
     return dropped
@@ -2587,8 +2585,8 @@ def _ground_program(
         # large via the UPPER family living (~20-24 m²); the ground hall stays front
         # and lets the pooja keep its corner. (Owner R3: large + front beats largest.)
         ProgramRoom("living", RoomType.living, living_target,
-                    z("living"), 9, min_area_floor=max(18.0, min_habitable + 2.0),
-                    design_logic="Architectural standard minimum 18 sqm for primary social space."),
+                    z("living"), 9, min_area_floor=max(12.0, min_habitable + 2.0),
+                    design_logic="Front-anchored hall; targets ~19 sqm, kept modest on tight plots so the pooja holds its NE sector."),
         ProgramRoom("kitchen", RoomType.kitchen, max(_COMFORT["kitchen"], min_kitchen * 1.5),
                     z("kitchen"), 9, min_area_floor=max(8.0, min_kitchen + 1.5),
                     design_logic="IS 962 standard 8 sqm minimum, including comfortable work triangle."),
@@ -2678,8 +2676,8 @@ def _upper_program(tier, env_w, env_d, min_habitable, min_toilet, vastu, variant
     # the upper living — the bedrooms are what the user asked to be large.
     prog: list[ProgramRoom] = [
         ProgramRoom("u_living", RoomType.living, u_living_target,
-                    z("living"), 8, min_area_floor=max(18.0, min_habitable),
-                    design_logic="Upper floor family living area, minimum 18 sqm."),
+                    z("living"), 8, min_area_floor=max(11.0, min_habitable),
+                    design_logic="Upper floor family living area."),
     ]
     if (variant and variant.multi_gen) or (family_profile == "eldercare"):
         # Master is downstairs, so put a guest / rental master here
@@ -3010,7 +3008,8 @@ def generate_plan(
 
     program = build_program(
         effective_bhk, floors, env_w, env_d, min_habitable, min_kitchen, min_toilet,
-        vastu=vastu_rules,
+        vastu=vastu_rules, tier=effective_tier, footprint=footprint,
+        variant=variant, edits=edits,
         family_profile=plot.family_profile.value,
         family_persona=plot.family_persona,
     )
@@ -3028,7 +3027,7 @@ def generate_plan(
             plan, vastu, code, meta = _generate_multifloor(
                 bhk, plot, floors, requested_tier, footprint, env, keepout, plot_area,
                 max_cov, min_dim, min_habitable, min_kitchen, min_toilet,
-                min_area_by_type, vastu_rules, project_name,
+                min_area_by_type, vastu_rules, project_name, variant, edits,
                 family_profile=plot.family_profile.value,
                 family_persona=plot.family_persona,
             )

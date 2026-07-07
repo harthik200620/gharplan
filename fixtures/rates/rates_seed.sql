@@ -1,6 +1,6 @@
--- GharPlan seed rates. Researched INDICATIVE 2025-26 ballpark composite
+-- Vastukala AI seed rates. Researched INDICATIVE 2025-26 ballpark composite
 -- (material+labour) rates for Indian residential work (see sources in
--- scripts/build_rates.py). NOT quote-ready: every row is verify:true —
+-- scripts/build_rates.py). NOT quote-ready: every row is verify:true â€”
 -- confirm against current local market quotes and the correct HSN/SAC +
 -- GST slab before quoting a real client.
 create table if not exists rates (

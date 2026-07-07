@@ -1,4 +1,4 @@
-# GharPlan engine — Python 3.11+ (tested on 3.13).
+# Vastukala AI engine â€” Python 3.11+ (tested on 3.13).
 fastapi>=0.110,<1.0
 uvicorn[standard]>=0.29
 pydantic>=2.7,<3.0

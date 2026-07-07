@@ -13,16 +13,16 @@ const sora = Sora({
 const mono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-mono", display: "swap" });
 
 const DESCRIPTION =
-  "Generate Vastu-compliant, building-code-aware Indian home designs — five ranked schemes with 2D CAD drawings, a live 3D walkthrough, MEP coordination, BOQ cost estimates, and client-ready exports.";
+  "Vastukala AI — the autonomous architect platform for India. Vastu-compliant, building-code-aware home designs with 2D CAD drawings, live 3D, structural + MEP intelligence, BOQ estimates, and sign-off-ready exports.";
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://gharplan.app"),
+  metadataBase: new URL("https://vastukala.ai"),
   title: {
-    default: "GharPlan — AI Architect OS for Indian Homes",
-    template: "%s · GharPlan",
+    default: "Vastukala AI — The Autonomous Architect Platform for India",
+    template: "%s · Vastukala AI",
   },
   description: DESCRIPTION,
-  applicationName: "GharPlan",
+  applicationName: "Vastukala AI",
   keywords: [
     "Vastu house plan",
     "Indian home design",
@@ -35,21 +35,21 @@ export const metadata: Metadata = {
     "MEP coordination",
     "Karnataka Telangana Andhra Pradesh",
   ],
-  authors: [{ name: "GharPlan" }],
-  creator: "GharPlan",
-  publisher: "GharPlan",
+  authors: [{ name: "Vastukala AI" }],
+  creator: "Vastukala AI",
+  publisher: "Vastukala AI",
   category: "technology",
   openGraph: {
     type: "website",
     locale: "en_IN",
-    url: "https://gharplan.app",
-    siteName: "GharPlan",
-    title: "GharPlan — AI Architect OS for Indian Homes",
+    url: "https://vastukala.ai",
+    siteName: "Vastukala AI",
+    title: "Vastukala AI — The Autonomous Architect Platform for India",
     description: DESCRIPTION,
   },
   twitter: {
     card: "summary_large_image",
-    title: "GharPlan — AI Architect OS for Indian Homes",
+    title: "Vastukala AI — The Autonomous Architect Platform for India",
     description: DESCRIPTION,
   },
   robots: {
@@ -69,10 +69,10 @@ export const viewport: Viewport = {
 const jsonLd = {
   "@context": "https://schema.org",
   "@type": "SoftwareApplication",
-  name: "GharPlan",
+  name: "Vastukala AI",
   applicationCategory: "DesignApplication",
   operatingSystem: "Web",
-  url: "https://gharplan.app",
+  url: "https://vastukala.ai",
   description: DESCRIPTION,
   featureList: [
     "Vastu-compliant automatic floor-plan layout",

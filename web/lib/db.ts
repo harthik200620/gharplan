@@ -58,6 +58,24 @@ export function brandingFromProfile(p: Profile): Branding {
   };
 }
 
+/** Stand-in profile when Supabase env is absent (demo mode) — keeps the (app)
+    pages renderable/prerenderable without auth; nothing is persisted. */
+export const DEMO_PROFILE: Profile = {
+  id: "demo",
+  studio_name: "Demo Studio",
+  address: "",
+  gstin: "",
+  phone: "",
+  email: "demo@vastukala.local",
+  website: "",
+  logo_data_url: null,
+  terms: "",
+  credits: 99,
+  subscription_plan: "demo",
+  subscription_status: "active",
+  subscription_period_end: null,
+};
+
 export function hasActiveSubscription(p: Profile): boolean {
   if (p.subscription_status !== "active") return false;
   if (!p.subscription_period_end) return true;

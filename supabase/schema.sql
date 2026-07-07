@@ -1,4 +1,4 @@
--- GharPlan — Supabase schema (Postgres). Run in the Supabase SQL editor.
+-- Vastukala AI — Supabase schema (Postgres). Run in the Supabase SQL editor.
 -- Auth is handled by Supabase Auth (auth.users). RLS restricts every row to its owner.
 
 -- ---------- profiles (studio branding + billing state) ----------

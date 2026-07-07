@@ -76,11 +76,11 @@ class BoqSummary(CamelModel):
     gst_total: Decimal
     cgst_total: Decimal
     sgst_total: Decimal
-    jugaad_contingency: Decimal = Decimal("0")
+    contingency: Decimal = Decimal("0")
     grand_total: Decimal
     line_count: int
 
-    @field_serializer("subtotal", "gst_total", "cgst_total", "sgst_total", "jugaad_contingency", "grand_total")
+    @field_serializer("subtotal", "gst_total", "cgst_total", "sgst_total", "contingency", "grand_total")
     def _ser_money(self, v: Decimal) -> float:
         return float(v)
 

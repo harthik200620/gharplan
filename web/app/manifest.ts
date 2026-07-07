@@ -2,8 +2,8 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "GharPlan — AI Architect OS for Indian Homes",
-    short_name: "GharPlan",
+    name: "Vastukala AI — The Autonomous Architect Platform for India",
+    short_name: "Vastukala AI",
     description:
       "Vastu-compliant, building-code-aware Indian home design with 2D CAD, live 3D, MEP coordination and BOQ.",
     start_url: "/",

@@ -1,7 +1,7 @@
 [project]
 name = "gharplan-engine"
 version = "1.0.0"
-description = "GharPlan compute engine — Vastu, building-code & BOQ-from-geometry."
+description = "Vastukala AI compute engine â€” Vastu, building-code & BOQ-from-geometry."
 requires-python = ">=3.11"
 
 [tool.pytest.ini_options]

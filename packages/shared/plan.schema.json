@@ -39,6 +39,16 @@
       "title": "Facing",
       "type": "string"
     },
+    "FamilyProfile": {
+      "enum": [
+        "nuclear",
+        "joint",
+        "extended",
+        "eldercare"
+      ],
+      "title": "FamilyProfile",
+      "type": "string"
+    },
     "Opening": {
       "properties": {
         "id": {
@@ -119,6 +129,99 @@
           "minimum": 1,
           "title": "Floors",
           "type": "integer"
+        },
+        "familyProfile": {
+          "$ref": "#/$defs/FamilyProfile",
+          "default": "nuclear"
+        },
+        "plotShape": {
+          "$ref": "#/$defs/PlotShape",
+          "default": "regular"
+        },
+        "familyPersona": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Familypersona"
+        },
+        "polygon": {
+          "anyOf": [
+            {
+              "items": {
+                "maxItems": 2,
+                "minItems": 2,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "type": "array"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "True plot boundary ring (metres, open or closed); when set, width/depth describe its bounding box",
+          "title": "Polygon"
+        },
+        "roadWidthsM": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "number"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Abutting road width per plot edge, keys N/S/E/W (metres); drives road-width-based setback/height rules",
+          "title": "Roadwidthsm"
+        },
+        "cornerPlot": {
+          "default": false,
+          "title": "Cornerplot",
+          "type": "boolean"
+        },
+        "slopeNote": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Slopenote"
+        },
+        "soilType": {
+          "default": "medium_clay",
+          "description": "Assumed bearing stratum (owner-declared or jurisdiction-typical); sets the SBC default in structural design",
+          "enum": [
+            "hard_rock",
+            "soft_rock",
+            "dense_sand",
+            "medium_clay",
+            "soft_clay",
+            "filled"
+          ],
+          "title": "Soiltype",
+          "type": "string"
         }
       },
       "required": [
@@ -130,6 +233,15 @@
       ],
       "title": "Plot",
       "type": "object"
+    },
+    "PlotShape": {
+      "enum": [
+        "regular",
+        "gomukhi",
+        "shermukhi"
+      ],
+      "title": "PlotShape",
+      "type": "string"
     },
     "Project": {
       "properties": {
@@ -285,6 +397,11 @@
         "utility",
         "balcony",
         "parking",
+        "sitout",
+        "courtyard",
+        "garden",
+        "service_shaft",
+        "future_expansion",
         "overhead_tank",
         "borewell",
         "brahmasthan"
@@ -336,6 +453,49 @@
       },
       "title": "Windows",
       "type": "array"
+    },
+    "variantId": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Variantid"
+    },
+    "designNarrative": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Designnarrative"
+    },
+    "variantHighlights": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Varianthighlights",
+      "type": "array"
+    },
+    "precedentReference": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Precedentreference"
     }
   },
   "required": [
@@ -343,8 +503,8 @@
     "plot",
     "rooms"
   ],
-  "title": "GharPlan Plan",
+  "title": "Vastukala AI Plan",
   "type": "object",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://gharplan.app/schemas/plan-1.0.json"
+  "$id": "https://vastukala.ai/schemas/plan-1.0.json"
 }

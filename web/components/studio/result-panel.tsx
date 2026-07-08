@@ -35,6 +35,7 @@ import { ZONE_CAD } from "@/lib/cad";
 import { cn, inr2 } from "@/lib/utils";
 
 import { ClimatePanel } from "./climate-panel";
+import { SignoffPanel } from "./signoff-panel";
 import { StructurePanel } from "./structure-panel";
 import { Switch } from "@/components/ui/switch";
 
@@ -79,7 +80,7 @@ export function ResultPanel({
   const [colorBy, setColorBy] = React.useState<"zone" | "status">("zone");
   const [view, setView] = React.useState<"2d" | "3d" | "elevation" | "section" | "mep">("2d");
   const [selected, setSelected] = React.useState<string | null>(null);
-  const [tab, setTab] = React.useState<"overview" | "vastu" | "code" | "climate" | "structure" | "cost" | "documents">("overview");
+  const [tab, setTab] = React.useState<"overview" | "vastu" | "code" | "climate" | "structure" | "cost" | "documents" | "signoff">("overview");
   const [floor, setFloor] = React.useState(0);
 
   // Client-side 3D exports: GLB via three's GLTFExporter and an honest
@@ -134,9 +135,6 @@ export function ResultPanel({
 
       {/* SCORE DASHBOARD */}
       <div className="flex flex-wrap items-center gap-2">
-        <div className="rounded-full bg-violet-100 px-2.5 py-1 text-xs font-semibold text-violet-800 shadow-sm ring-1 ring-violet-200 dark:bg-violet-500/20 dark:text-violet-300 dark:ring-violet-500/30">
-          Soul Score: 98/100 💜
-        </div>
         <div className={cn("rounded-full px-2.5 py-1 text-xs font-semibold", vastu.score >= 70 ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300" : vastu.score >= 50 ? "bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-300" : "bg-rose-100 text-rose-800 dark:bg-rose-500/20 dark:text-rose-300")}>
           Vastu Score: {Math.round(vastu.score)}/100 {vastu.score >= 70 ? "●●●●○" : "●●○○○"}
         </div>
@@ -313,6 +311,7 @@ export function ResultPanel({
             ["structure", "Structure"],
             ["cost", "Cost"],
             ["documents", "Documents"],
+            ["signoff", "Sign-off"],
           ] as const).map(([k, label]) => (
             <button
               key={k}
@@ -414,6 +413,7 @@ export function ResultPanel({
           )}
 
           {tab === "documents" && <Schedules plan={data.plan} code={data.code} />}
+          {tab === "signoff" && <SignoffPanel plan={data.plan} finishTier={finishTier} />}
         </div>
       </div>
 

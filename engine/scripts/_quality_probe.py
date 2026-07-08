@@ -98,6 +98,73 @@ def _interior_void(plan, plot) -> tuple[float, int]:
     return worst, worst_fl
 
 
+def _scenario_spot() -> int:
+    """SCENARIO SPOT — inline spot-run of two canonical scenarios from
+    tests/test_scenarios.py (3: Warangal pentagon polygon; 6: TS-bPASS instant
+    tier). One ok/FAIL line each; returns the number of FAILs so main() can
+    flip the exit code. Kept tiny on purpose: the full matrix lives in pytest."""
+    from shapely.geometry import Polygon as ShapelyPolygon
+
+    from app.services.rules import resolve_jurisdiction
+
+    virtual = {
+        "parking", "sitout", "courtyard", "garden", "service_shaft",
+        "future_expansion", "balcony", "overhead_tank", "borewell", "brahmasthan",
+    }
+    bad = 0
+    print("\nSCENARIO SPOT")
+
+    # (3) Warangal irregular pentagon — tg-ulb-common pack, envelope containment.
+    pentagon = [(0.0, 0.0), (12.0, 0.0), (12.0, 8.5), (6.0, 12.4), (0.0, 8.5)]
+    try:
+        pack = resolve_jurisdiction("TG", "Warangal")
+        plot = Plot.model_validate({
+            "widthM": 12.0, "depthM": 12.4, "facing": "E", "state": "TG",
+            "city": "Hyderabad", "floors": 1, "polygon": pentagon,
+        })
+        plan, _, code, meta = generate_plan(2, plot, code_rules=pack)
+        env = ShapelyPolygon(meta["envelopePolygon"]).buffer(1e-6)
+        real = [r for r in plan.rooms if r.type.value not in virtual]
+        contained = bool(real) and all(ShapelyPolygon(r.polygon).within(env) for r in real)
+        fails = code.summary.fail_count
+        ok = (
+            fails == 0 and contained
+            and str(meta.get("polygonMode", "")).startswith("v1-inscribed-rect")
+        )
+        print(
+            f"pentagon-warangal  fails={fails} mode={meta.get('polygonMode')} "
+            f"envUtil={meta.get('envelopeUtilization')} contained={'Y' if contained else 'N'}"
+            f"  {'ok' if ok else '** FAIL'}"
+        )
+        bad += 0 if ok else 1
+    except Exception as e:  # a spot probe must never crash the whole report
+        print(f"pentagon-warangal  ** FAIL ({type(e).__name__}: {e})")
+        bad += 1
+
+    # (6) TS-bPASS instant tier — 59.5 m2 <= 62.71 m2 (75 sq yd), single storey.
+    try:
+        pack = resolve_jurisdiction("TG", "Hyderabad")
+        plot = Plot.model_validate({
+            "widthM": 7.0, "depthM": 8.5, "facing": "E", "state": "TG",
+            "city": "Hyderabad", "floors": 1,
+        })
+        _, _, code, _ = generate_plan(2, plot, code_rules=pack)
+        instant = [c for c in code.checks if c.rule_id == "instant_approval"]
+        fails = code.summary.fail_count
+        ok = fails == 0 and bool(instant) and instant[0].status == "pass"
+        print(
+            f"instant-ghmc       fails={fails} "
+            f"instant_approval={instant[0].status if instant else 'MISSING'}"
+            f"  {'ok' if ok else '** FAIL'}"
+        )
+        bad += 0 if ok else 1
+    except Exception as e:
+        print(f"instant-ghmc       ** FAIL ({type(e).__name__}: {e})")
+        bad += 1
+
+    return bad
+
+
 def main() -> int:
     bad = 0
     for state, facing, w, d, bhk in CASES:
@@ -157,7 +224,8 @@ def main() -> int:
         if fails or not kd or has_void:
             bad += 1
     print(f"\nbad (code-fail / kitchen-dining break / interior-void > {VOID_MAX_SQM} m2) = {bad}")
-    return 1 if bad else 0
+    spot_bad = _scenario_spot()
+    return 1 if (bad or spot_bad) else 0
 
 
 if __name__ == "__main__":

@@ -255,7 +255,7 @@ export function ResultPanel({
             <FloorPlan3D plan={data.plan} structure={data.structure} finishTier={finishTier} exportApiRef={threeDExportRef} className="h-[460px] overflow-hidden rounded-xl border bg-card shadow-soft" />
             <div className="flex flex-wrap items-center gap-2 px-1">
               <p className="text-[11px] text-muted-foreground">
-                Axonometric 3D Â· same geometry as the CAD drawing &amp; DXF
+                Axonometric 3D · same geometry as the CAD drawing &amp; DXF
               </p>
               <span className="flex-1" />
               <Button variant="outline" size="sm" disabled={!!busy3d} onClick={() => download3d("glb")}>
@@ -394,7 +394,7 @@ export function ResultPanel({
                   </div>
                   <div className="flex items-center justify-between rounded-xl bg-primary/5 px-4 py-3">
                     <div>
-                      <div className="text-xs text-muted-foreground">Grand total Â· incl. GST</div>
+                      <div className="text-xs text-muted-foreground">Grand total · incl. GST</div>
                       <div className="font-display text-2xl font-bold text-primary">{inr2(boq.summary.grandTotal)}</div>
                     </div>
                     <div className="text-right text-xs text-muted-foreground">
@@ -403,7 +403,7 @@ export function ResultPanel({
                     </div>
                   </div>
                   <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <Ruler className="h-3 w-3" /> Generated from room geometry Â· {boq.finishTier} finish Â·{" "}
+                    <Ruler className="h-3 w-3" /> Generated from room geometry · {boq.finishTier} finish ·{" "}
                     <button className="underline underline-offset-2" onClick={onOpenInEditor}>edit line items</button>
                   </p>
                 </>
@@ -548,7 +548,29 @@ function SchemeGallery({
   const [compareMode, setCompareMode] = React.useState(false);
   const [compareSelected, setCompareSelected] = React.useState<number>(selected === 0 ? 1 : 0);
 
-  if (!options || options.length <= 1) return null;
+  if (!options || options.length === 0) return null;
+
+  if (options.length === 1) {
+    const merged = options[0].meta?.mergedFromVariants ?? [];
+    if (merged.length === 0) return null; // legacy response with no merge data at all
+    return (
+      <section className="rounded-xl border bg-card p-4 shadow-soft">
+        <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          Architect schemes
+        </div>
+        <h3 className="font-display text-lg font-bold tracking-tight">
+          1 layout, {merged.length + 1} strategies tried
+        </h3>
+        <p className="mt-1.5 text-sm text-muted-foreground">
+          This plot is tight enough that{" "}
+          <strong className="text-foreground">{merged.map((m) => m.variantName).join(", ")}</strong>{" "}
+          converged to the same safe, code-compliant layout shown below — showing five
+          near-identical thumbnails would be noise, not choice. A roomier plot (or a
+          different facing) usually lets these directions diverge.
+        </p>
+      </section>
+    );
+  }
 
   return (
     <section className="rounded-xl border bg-card p-4 shadow-soft space-y-4">
@@ -567,7 +589,7 @@ function SchemeGallery({
           <Badge variant="brand">Tap a card to load it below</Badge>
         </div>
       </div>
-      
+
       {compareMode && (
         <div className="grid grid-cols-2 gap-4 rounded-xl border bg-muted/10 p-4">
           {[selected, compareSelected].map((optIdx, i) => {
@@ -646,19 +668,24 @@ function SchemeGallery({
                 )}
               </div>
               <div className="flex flex-1 flex-col gap-1.5 p-2.5">
-                <h4 className="font-display text-[13px] font-bold leading-snug">{i + 1} Â· {opt.variantName}</h4>
+                <h4 className="font-display text-[13px] font-bold leading-snug">{i + 1} · {opt.variantName}</h4>
                 <p className="line-clamp-2 text-[11px] leading-4 text-muted-foreground">
                   {opt.variantTagline}
                 </p>
+                {(opt.meta?.mergedFromVariants?.length ?? 0) > 0 && (
+                  <p className="text-[10px] italic leading-3.5 text-muted-foreground/80">
+                    Also covers: {opt.meta!.mergedFromVariants!.map((m) => m.variantName).join(", ")}
+                  </p>
+                )}
                 <div className="mt-auto flex flex-wrap items-center gap-1 pt-1 text-[10px]">
                   <span className={cn("rounded px-1.5 py-0.5 font-semibold", scoreChip(vs))}>
                     Vastu {vs}
                   </span>
                   <span className={cn("rounded px-1.5 py-0.5 font-medium", statusChip(opt.code.status))}>
-                    {opt.code.status === "pass" ? "Code âœ“" : opt.code.status === "warn" ? "Code !" : "Code âœ•"}
+                    {opt.code.status === "pass" ? "Code ✓" : opt.code.status === "warn" ? "Code !" : "Code ✕"}
                   </span>
                   <span className="rounded bg-muted px-1.5 py-0.5 text-muted-foreground">
-                    {area.toLocaleString("en-IN")} ftÂ²
+                    {area.toLocaleString("en-IN")} ft²
                   </span>
                 </div>
               </div>

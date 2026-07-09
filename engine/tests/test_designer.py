@@ -18,9 +18,11 @@ import pytest
 from shapely.geometry import box
 
 from app.generator.designer import (
+    VARIANT_PROFILES,
     _envelope_and_keepout,
     build_program,
     buildable_footprint_sqm,
+    generate_options,
     generate_plan,
     resolve_tier,
 )
@@ -667,3 +669,105 @@ def test_4bhk_every_state_is_code_clean(state, city):
         + "; ".join(c.message for c in code.checks if c.status == "fail")
     )
     _no_overlaps(plan, builtup_only=True)
+
+
+# --------------------------------------------------------------------------- #
+# R6 — the courtyard variant carves a GUARANTEED, sensibly-sized, centred court
+# before packing (see ``_courtyard_reservation``), rather than hoping
+# fill_center=False leaves a leftover gap that happens to survive rebalancing.
+# --------------------------------------------------------------------------- #
+def test_courtyard_variant_always_has_a_real_centred_court():
+    # A roomy brief that comfortably clears the courtyard variant's (raised)
+    # min_footprint_sqm gate — same brief as the live HTTP sanity check.
+    plot = _plot("KA", city="Bengaluru", facing="E", w=15.0, d=15.0)
+    options = generate_options(3, plot, floors=1)
+    courtyard_opt = next((o for o in options if o["variantId"] == "courtyard"), None)
+    assert courtyard_opt is not None, (
+        "courtyard variant did not survive to the option list for a brief well "
+        "above its min_footprint_sqm gate"
+    )
+    assert courtyard_opt["code"].summary.fail_count == 0
+
+    plan = courtyard_opt["plan"]
+    courts = [r for r in plan.rooms if r.type.value == "courtyard"]
+    assert courts, "courtyard variant produced no RoomType.courtyard room at all"
+
+    env, _ = _envelope_and_keepout(plan.plot, get_code_rules())
+    minx, miny, maxx, maxy = env
+    env_cx, env_cy = 0.5 * (minx + maxx), 0.5 * (miny + maxy)
+
+    # Pick whichever courtyard room sits closest to the envelope centre — the
+    # HARD reservation, as opposed to any incidental leftover-band courtyard a
+    # side (west/east) band might separately produce (that generic mechanism,
+    # unrelated to the variant, is left untouched — see test_no_interior_void_*
+    # above — and may coexist with the guaranteed one).
+    def _centre_offset(room):
+        x0, y0, x1, y1 = _bbox(room.polygon)
+        cx, cy = 0.5 * (x0 + x1), 0.5 * (y0 + y1)
+        return abs(cx - env_cx) + abs(cy - env_cy)
+
+    court = min(courts, key=_centre_offset)
+    x0, y0, x1, y1 = _bbox(court.polygon)
+    area = (x1 - x0) * (y1 - y0)
+
+    # A real room, not a token sliver (VariantProfile.courtyard docstring: 3x3 m
+    # minimum == 9 sqm; assert a bit below that to leave headroom for the
+    # safety clamps in ``_courtyard_reservation``).
+    assert area >= 6.0, f"guaranteed courtyard is only {area:.1f} m2"
+
+    # Positioned away from every envelope edge (rules out an edge-hugging
+    # strip masquerading as a "courtyard") and roughly centred overall.
+    left, right = x0 - minx, maxx - x1
+    bottom, top = y0 - miny, maxy - y1
+    assert min(left, right, bottom, top) >= 1.5, (
+        f"courtyard hugs an envelope edge: margins L={left:.2f} R={right:.2f} "
+        f"B={bottom:.2f} T={top:.2f}"
+    )
+    cx, cy = 0.5 * (x0 + x1), 0.5 * (y0 + y1)
+    assert abs(cx - env_cx) <= 0.2 * (maxx - minx), "courtyard not centred on the X axis"
+    assert abs(cy - env_cy) <= 0.2 * (maxy - miny), "courtyard not centred on the Y axis"
+
+
+def test_courtyard_min_footprint_gate_still_suppresses_small_plots():
+    # The reservation now costs real floor area, so the gate was raised (95 ->
+    # 110 sqm, see VARIANT_PROFILES) — confirm it still does its job on the
+    # canonical tight 30x40 ft plot (~72.5 m2 buildable) rather than forcing a
+    # court onto a plot that can't afford one.
+    plot = _plot("KA", city="Bengaluru", facing="E")
+    foot = buildable_footprint_sqm(plot, get_code_rules())
+    courtyard_profile = next(v for v in VARIANT_PROFILES if v.id == "courtyard")
+    assert foot < courtyard_profile.min_footprint_sqm
+    options = generate_options(2, plot, floors=1)
+    assert all(o["variantId"] != "courtyard" for o in options)
+
+
+# --------------------------------------------------------------------------- #
+# R7 — generate_options records which variants merged away in a dedup, so the
+# web UI can tell users "N strategies converged to this layout" by name.
+# --------------------------------------------------------------------------- #
+def test_generate_options_records_merged_variants_on_tight_plot():
+    # The canonical 30x40 ft KA E plot at 2BHK: a known tight case where the
+    # courtyard variant is excluded by min_footprint_sqm and (verified empirically)
+    # the vastu and modern schemes are the only two genuinely-distinct survivors —
+    # climate and multigen converge onto (are absorbed by) vastu.
+    plot = _plot("KA", city="Bengaluru", facing="E")
+    options = generate_options(2, plot, floors=1)
+
+    assert all("mergedFromVariants" in o["meta"] for o in options), (
+        "every surviving option must carry a mergedFromVariants list, even if empty"
+    )
+
+    kept_ids = {o["variantId"] for o in options}
+    assert kept_ids == {"vastu", "modern"}, f"unexpected kept variant set: {kept_ids}"
+
+    vastu_opt = next(o for o in options if o["variantId"] == "vastu")
+    merged_ids = {m["variantId"] for m in vastu_opt["meta"]["mergedFromVariants"]}
+    assert merged_ids == {"climate", "multigen"}, (
+        f"expected climate+multigen to merge into vastu, got {merged_ids}"
+    )
+    for m in vastu_opt["meta"]["mergedFromVariants"]:
+        assert set(m) == {"variantId", "variantName"}
+        assert m["variantName"]  # non-empty display name, not just an id
+
+    modern_opt = next(o for o in options if o["variantId"] == "modern")
+    assert modern_opt["meta"]["mergedFromVariants"] == []

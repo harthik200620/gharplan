@@ -506,18 +506,22 @@ const TileMat = ({ color = TILE_WET }: { color?: string }) => (
   <meshPhysicalMaterial color={color} roughness={0.22} metalness={0} clearcoat={0.4} clearcoatRoughness={0.3} envMapIntensity={0.7} />
 );
 
-// Traditional and Modern Window shading Chajjas
+// Traditional, Climate, Modern and Multigen window shading Chajjas — each
+// variant gets a distinct sunshade language rather than one shared "modern" look.
 function Chajja3D({ part, variant, px, headY, pz, span }: { part: GlassPart; variant?: string; px: number; headY: number; pz: number; span: number }) {
-  const isTraditional = getCleanVariant(variant) === 'vastu' || getCleanVariant(variant) === 'courtyard';
+  const cv = getCleanVariant(variant);
+  const isTraditional = cv === 'vastu' || cv === 'courtyard';
+  const isClimate = cv === 'climate';
+  const isModern = cv === 'modern';
   const outDir = part.horiz ? Math.sign(pz) || 1 : Math.sign(px) || 1;
   const hingeOff = WALL_T / 2;
-  
+
   // Hinge position on the wall face
   const hx = part.horiz ? px : px + outDir * hingeOff;
   const hz = part.horiz ? pz + outDir * hingeOff : pz;
-  
+
   const angle = 0.22; // ~12 degrees slope
-  
+
   if (isTraditional) {
     // Traditional: sloped clay-tiled chajja with wooden brackets
     return (
@@ -548,28 +552,96 @@ function Chajja3D({ part, variant, px, headY, pz, span }: { part: GlassPart; var
         })}
       </group>
     );
-  } else {
-    // Modern: flat concrete slab with steel struts
+  }
+
+  if (isClimate) {
+    // Climate-Optimized Passive Design: a deep brise-soleil sunshade — nearly
+    // double the baseline projection — plus angled louver fins that cut direct
+    // high-sun while keeping diffuse daylight, in a pale heat-reflective tone
+    // (never dark terracotta, which absorbs heat).
+    const proj = CHAJJA_PROJ * 1.9;
+    const louverCount = Math.max(3, Math.round(span / 0.5));
     return (
       <group position={[hx, headY, hz]}>
-        <mesh position={part.horiz ? [0, CHAJJA_T / 2, outDir * CHAJJA_PROJ / 2] : [outDir * CHAJJA_PROJ / 2, CHAJJA_T / 2, 0]} castShadow receiveShadow>
-          <boxGeometry args={part.horiz ? [span + 0.2, CHAJJA_T, CHAJJA_PROJ] : [CHAJJA_PROJ, CHAJJA_T, span + 0.2]} />
-          <ConcreteMat />
+        {/* pale reflective RCC sunshade slab, deep projection */}
+        <mesh position={part.horiz ? [0, CHAJJA_T / 2, outDir * proj / 2] : [outDir * proj / 2, CHAJJA_T / 2, 0]} castShadow receiveShadow>
+          <boxGeometry args={part.horiz ? [span + 0.3, CHAJJA_T, proj] : [proj, CHAJJA_T, span + 0.3]} />
+          <meshStandardMaterial color="#e4e0d0" roughness={0.7} />
         </mesh>
-        {[-span / 2 + 0.15, span / 2 - 0.15].map((offset, idx) => {
+        {/* fascia drip edge */}
+        <mesh position={part.horiz ? [0, -0.03, outDir * proj] : [outDir * proj, -0.03, 0]} castShadow>
+          <boxGeometry args={part.horiz ? [span + 0.3, 0.06, 0.03] : [0.03, 0.06, span + 0.3]} />
+          <meshStandardMaterial color="#c8c2ae" roughness={0.65} />
+        </mesh>
+        {/* angled brise-soleil louver fins hung beneath the slab */}
+        {Array.from({ length: louverCount }).map((_, idx) => {
+          const t = louverCount === 1 ? 0.5 : idx / (louverCount - 1);
+          const off = (t - 0.5) * (span - 0.25);
+          const finPos: [number, number, number] = part.horiz
+            ? [off, -0.16, outDir * proj * 0.55]
+            : [outDir * proj * 0.55, -0.16, off];
+          return (
+            <mesh
+              key={idx}
+              position={finPos}
+              rotation={part.horiz ? [outDir * 0.55, 0, 0] : [0, 0, -outDir * 0.55]}
+              castShadow
+            >
+              <boxGeometry args={part.horiz ? [0.05, 0.22, proj * 0.7] : [proj * 0.7, 0.22, 0.05]} />
+              <meshStandardMaterial color="#b8c2b0" roughness={0.55} metalness={0.1} />
+            </mesh>
+          );
+        })}
+        {/* slim support struts */}
+        {[-span / 2 + 0.12, span / 2 - 0.12].map((offset, idx) => {
           const sPos: [number, number, number] = part.horiz
-            ? [offset, -0.12, outDir * (CHAJJA_PROJ * 0.3)]
-            : [outDir * (CHAJJA_PROJ * 0.3), -0.12, offset];
+            ? [offset, -0.18, outDir * (proj * 0.35)]
+            : [outDir * (proj * 0.35), -0.18, offset];
           return (
             <mesh key={idx} position={sPos} castShadow>
-              <boxGeometry args={part.horiz ? [0.02, 0.24, CHAJJA_PROJ * 0.5] : [CHAJJA_PROJ * 0.5, 0.24, 0.02]} />
-              <meshStandardMaterial color="#5a5550" metalness={0.8} roughness={0.2} />
+              <boxGeometry args={part.horiz ? [0.03, 0.32, proj * 0.6] : [proj * 0.6, 0.32, 0.03]} />
+              <meshStandardMaterial color="#8a8f86" metalness={0.5} roughness={0.3} />
             </mesh>
           );
         })}
       </group>
     );
   }
+
+  if (isModern) {
+    // Modern Open-Plan: minimal drip-edge only, no deep overhang — the large
+    // glazing (see Window3D) reads as the signature, not the shade.
+    const proj = CHAJJA_PROJ * 0.32;
+    return (
+      <group position={[hx, headY, hz]}>
+        <mesh position={part.horiz ? [0, -0.01, outDir * proj / 2] : [outDir * proj / 2, -0.01, 0]} castShadow receiveShadow>
+          <boxGeometry args={part.horiz ? [span + 0.06, CHAJJA_T * 0.6, proj] : [proj, CHAJJA_T * 0.6, span + 0.06]} />
+          <ConcreteMat color="#d8d4cf" />
+        </mesh>
+      </group>
+    );
+  }
+
+  // Multigen (and any other/unknown variant): flat concrete slab with steel struts
+  return (
+    <group position={[hx, headY, hz]}>
+      <mesh position={part.horiz ? [0, CHAJJA_T / 2, outDir * CHAJJA_PROJ / 2] : [outDir * CHAJJA_PROJ / 2, CHAJJA_T / 2, 0]} castShadow receiveShadow>
+        <boxGeometry args={part.horiz ? [span + 0.2, CHAJJA_T, CHAJJA_PROJ] : [CHAJJA_PROJ, CHAJJA_T, span + 0.2]} />
+        <ConcreteMat />
+      </mesh>
+      {[-span / 2 + 0.15, span / 2 - 0.15].map((offset, idx) => {
+        const sPos: [number, number, number] = part.horiz
+          ? [offset, -0.12, outDir * (CHAJJA_PROJ * 0.3)]
+          : [outDir * (CHAJJA_PROJ * 0.3), -0.12, offset];
+        return (
+          <mesh key={idx} position={sPos} castShadow>
+            <boxGeometry args={part.horiz ? [0.02, 0.24, CHAJJA_PROJ * 0.5] : [CHAJJA_PROJ * 0.5, 0.24, 0.02]} />
+            <meshStandardMaterial color="#5a5550" metalness={0.8} roughness={0.2} />
+          </mesh>
+        );
+      })}
+    </group>
+  );
 }
 
 // Parapet wall - traditional jaali screen or modern sleek concrete band
@@ -654,7 +726,11 @@ const SITE_TYPES = new Set(["parking", "sitout", "courtyard", "garden", "service
 function floorColor(type: string): string {
   if (type === "parking") return "#cbd5e1";
   if (type === "sitout" || type === "balcony") return "#f4d7a1";
-  if (type === "courtyard" || type === "garden") return "#a7d8aa";
+  // Courtyard reads as a paved, lived-in open court (Furniture3D adds the paved
+  // border + centerpiece); garden stays a green lawn — the two shouldn't look
+  // like the same leftover void.
+  if (type === "courtyard") return "#b8ab8c";
+  if (type === "garden") return "#a7d8aa";
   if (type === "service_shaft") return "#bfdbfe";
   if (type === "future_expansion") return "#ddd6fe";
   if (type === "kitchen" || type === "toilet" || type === "bathroom" || type === "utility") return "#d7dde3";
@@ -788,7 +864,11 @@ function Window3D({ part, W, D, variant }: { part: GlassPart; W: number; D: numb
   // span/up = the two in-plane dimensions of the window; depth runs through the wall
   const span = part.horiz ? sx : sz;
   const up = sy;
-  const F = 0.05; // frame / mullion thickness
+  const isModern = getCleanVariant(variant) === 'modern';
+  // Modern Open-Plan: a slimmer frame + no cross mullions reads as one large
+  // picture-window sheet — a bigger glazing ratio within the same structural
+  // opening (other variants keep the divided, traditionally-proportioned sash).
+  const F = isModern ? 0.03 : 0.05; // frame / mullion thickness
   const paneD = WALL_T * 0.5;
 
   // glass slightly recessed; frame flush with wall face
@@ -807,8 +887,13 @@ function Window3D({ part, W, D, variant }: { part: GlassPart; W: number; D: numb
     { pos: inPlane(0, -up / 2 + F / 2), size: inPlaneSize(span, F) }, // bottom
     { pos: inPlane(span / 2 - F / 2, 0), size: inPlaneSize(F, up) }, // right
     { pos: inPlane(-span / 2 + F / 2, 0), size: inPlaneSize(F, up) }, // left
-    { pos: inPlane(0, 0), size: inPlaneSize(span, F) }, // horizontal mullion
-    { pos: inPlane(0, 0), size: inPlaneSize(F, up) }, // vertical mullion
+    // modern: skip the cross mullions entirely — a single uninterrupted pane
+    ...(isModern
+      ? []
+      : [
+          { pos: inPlane(0, 0), size: inPlaneSize(span, F) }, // horizontal mullion
+          { pos: inPlane(0, 0), size: inPlaneSize(F, up) }, // vertical mullion
+        ]),
   ];
 
   const headY = FLOOR_Y + part.sill + up; // top of the glazed band (lintel)
@@ -1044,53 +1129,151 @@ function Furniture3D({ room, W, D, isTopFloor = false, variant }: { room: Room; 
 
   if (t === "parking") return <Car cx={cx} cz={cz} along={r.h >= r.w} />;
   
-  // Traditional Courtyard Tulsi Vrindavan
-  if (t === "courtyard" && (getCleanVariant(variant) === "vastu" || getCleanVariant(variant) === "courtyard")) {
-    return (
-      <group position={[cx, FLOOR_Y, cz]}>
-        {/* Plinth Base */}
-        <mesh position={[0, 0.15, 0]} castShadow receiveShadow>
-          <boxGeometry args={[0.5, 0.3, 0.5]} />
-          <meshStandardMaterial color="#b2533e" roughness={0.85} />
-        </mesh>
-        {/* Molded cap */}
-        <mesh position={[0, 0.32, 0]} castShadow>
-          <boxGeometry args={[0.54, 0.04, 0.54]} />
-          <meshStandardMaterial color="#8b2635" roughness={0.9} />
-        </mesh>
-        {/* Soil top */}
-        <mesh position={[0, 0.345, 0]}>
-          <boxGeometry args={[0.44, 0.01, 0.44]} />
-          <meshStandardMaterial color="#403024" roughness={1.0} />
-        </mesh>
-        {/* Tulsi Plant */}
-        <group position={[0, 0.35, 0]}>
-          <mesh position={[0, 0.1, 0]} castShadow>
-            <cylinderGeometry args={[0.015, 0.02, 0.2, 5]} />
-            <meshStandardMaterial color="#4a3018" />
+  // Courtyard room: a genuine reserved open-to-sky void (walls already leave it
+  // unenclosed — see SITE_TYPES/exteriorEdges), not a token green rectangle.
+  // Every variant gets a real paved surround; the centerpiece differs by variant.
+  if (t === "courtyard") {
+    const cv = getCleanVariant(variant);
+    const paveInset = Math.min(0.4, Math.min(r.w, r.h) * 0.22);
+    const paveBorder = (
+      <>
+        {([
+          { pos: [0, 0.02, -r.h / 2 + paveInset / 2], size: [r.w - 0.08, 0.03, paveInset] },
+          { pos: [0, 0.02, r.h / 2 - paveInset / 2], size: [r.w - 0.08, 0.03, paveInset] },
+          { pos: [-r.w / 2 + paveInset / 2, 0.02, 0], size: [paveInset, 0.03, r.h - 0.08] },
+          { pos: [r.w / 2 - paveInset / 2, 0.02, 0], size: [paveInset, 0.03, r.h - 0.08] },
+        ] as { pos: [number, number, number]; size: [number, number, number] }[]).map((b, i) => (
+          <mesh key={`cypv${i}`} position={b.pos} receiveShadow>
+            <boxGeometry args={b.size} />
+            <meshStandardMaterial color="#b0a58c" roughness={0.85} />
           </mesh>
-          {[-1, 1].map((dir, idx) => (
-            <group key={idx} position={[dir * 0.05, 0.15, 0]} rotation={[0, 0, dir * 0.5]}>
-              <mesh position={[0, 0.06, 0]} castShadow>
-                <cylinderGeometry args={[0.008, 0.012, 0.12, 4]} />
-                <meshStandardMaterial color="#4a3018" />
+        ))}
+      </>
+    );
+
+    // Vastu-First: private household Tulsi Vrindavan shrine (baseline look, unchanged)
+    if (cv === "vastu") {
+      return (
+        <group position={[cx, FLOOR_Y, cz]}>
+          {paveBorder}
+          {/* Plinth Base */}
+          <mesh position={[0, 0.15, 0]} castShadow receiveShadow>
+            <boxGeometry args={[0.5, 0.3, 0.5]} />
+            <meshStandardMaterial color="#b2533e" roughness={0.85} />
+          </mesh>
+          {/* Molded cap */}
+          <mesh position={[0, 0.32, 0]} castShadow>
+            <boxGeometry args={[0.54, 0.04, 0.54]} />
+            <meshStandardMaterial color="#8b2635" roughness={0.9} />
+          </mesh>
+          {/* Soil top */}
+          <mesh position={[0, 0.345, 0]}>
+            <boxGeometry args={[0.44, 0.01, 0.44]} />
+            <meshStandardMaterial color="#403024" roughness={1.0} />
+          </mesh>
+          {/* Tulsi Plant */}
+          <group position={[0, 0.35, 0]}>
+            <mesh position={[0, 0.1, 0]} castShadow>
+              <cylinderGeometry args={[0.015, 0.02, 0.2, 5]} />
+              <meshStandardMaterial color="#4a3018" />
+            </mesh>
+            {[-1, 1].map((dir, idx) => (
+              <group key={idx} position={[dir * 0.05, 0.15, 0]} rotation={[0, 0, dir * 0.5]}>
+                <mesh position={[0, 0.06, 0]} castShadow>
+                  <cylinderGeometry args={[0.008, 0.012, 0.12, 4]} />
+                  <meshStandardMaterial color="#4a3018" />
+                </mesh>
+                <mesh position={[0, 0.12, 0]}>
+                  <dodecahedronGeometry args={[0.08, 1]} />
+                  <meshStandardMaterial color="#1e5e2e" roughness={0.9} />
+                </mesh>
+              </group>
+            ))}
+            <mesh position={[0, 0.22, 0]} castShadow>
+              <dodecahedronGeometry args={[0.1, 1]} />
+              <meshStandardMaterial color="#2d7c3e" roughness={0.85} />
+            </mesh>
+          </group>
+        </group>
+      );
+    }
+
+    // Courtyard-Centered Indian Vernacular: this room IS the star feature — a
+    // proper paved court with a central brass-finial fountain + corner planters,
+    // scaled to whatever size the reserved void ends up (robust to a small or
+    // generous court, since the engine now guarantees a real one for this variant).
+    if (cv === "courtyard") {
+      const rad = Math.min(r.w, r.h);
+      const scale = Math.min(Math.max(rad * 0.32, 0.7), 1.35);
+      return (
+        <group position={[cx, FLOOR_Y, cz]}>
+          {paveBorder}
+          {/* fountain basin */}
+          <mesh position={[0, 0.05, 0]} castShadow receiveShadow>
+            <cylinderGeometry args={[0.75 * scale, 0.85 * scale, 0.15, 16]} />
+            <meshStandardMaterial color="#3b3530" roughness={0.9} />
+          </mesh>
+          {/* water surface */}
+          <mesh position={[0, 0.13, 0]}>
+            <cylinderGeometry args={[0.7 * scale, 0.7 * scale, 0.03, 16]} />
+            <meshPhysicalMaterial color="#14b8a6" roughness={0.05} transmission={0.85} transparent opacity={0.85} envMapIntensity={1.5} />
+          </mesh>
+          {/* brass spout column + finial */}
+          <mesh position={[0, 0.13 + 0.16 * scale, 0]} castShadow>
+            <cylinderGeometry args={[0.06, 0.09, 0.32 * scale, 8]} />
+            <meshStandardMaterial color={BRASS_GOLD} roughness={0.3} metalness={0.8} />
+          </mesh>
+          <mesh position={[0, 0.13 + 0.34 * scale, 0]} castShadow>
+            <sphereGeometry args={[0.09, 10, 8]} />
+            <meshStandardMaterial color={BRASS_GOLD} roughness={0.25} metalness={0.85} />
+          </mesh>
+          {/* corner potted plants — only when the court is roomy enough to take them */}
+          {rad > 1.8 && ([[-1, -1], [1, -1], [-1, 1], [1, 1]] as [number, number][]).map(([sx, sz], i) => (
+            <group key={`cypot${i}`} position={[sx * (r.w / 2 - 0.42), 0, sz * (r.h / 2 - 0.42)]}>
+              <mesh position={[0, 0.12, 0]} castShadow receiveShadow>
+                <cylinderGeometry args={[0.16, 0.12, 0.24, 8]} />
+                <meshStandardMaterial color="#8b4a2a" roughness={0.9} />
               </mesh>
-              <mesh position={[0, 0.12, 0]}>
-                <dodecahedronGeometry args={[0.08, 1]} />
-                <meshStandardMaterial color="#1e5e2e" roughness={0.9} />
+              <mesh position={[0, 0.34, 0]} castShadow>
+                <dodecahedronGeometry args={[0.22, 0]} />
+                <meshStandardMaterial color="#2d7c3e" roughness={0.85} />
               </mesh>
             </group>
           ))}
-          <mesh position={[0, 0.22, 0]} castShadow>
-            <dodecahedronGeometry args={[0.1, 1]} />
-            <meshStandardMaterial color="#2d7c3e" roughness={0.85} />
-          </mesh>
         </group>
+      );
+    }
+
+    // Climate / Modern / Multigen (or any other variant) that ends up with a real
+    // courtyard room: still a genuine paved court, with a simple shade tree —
+    // never just a bare green rectangle.
+    const rad = Math.min(r.w, r.h);
+    const scale = Math.min(Math.max(rad * 0.35, 0.6), 1.1);
+    const trunkH = 1.2 * scale;
+    return (
+      <group position={[cx, FLOOR_Y, cz]}>
+        {paveBorder}
+        <mesh castShadow position={[0, trunkH / 2, 0]}>
+          <cylinderGeometry args={[0.04 * scale, 0.06 * scale, trunkH, 8]} />
+          <meshStandardMaterial color="#4b3524" roughness={0.95} />
+        </mesh>
+        <mesh castShadow position={[0.12 * scale, trunkH * 0.9, 0.08 * scale]} rotation={[0.3, 0, 0.4]}>
+          <cylinderGeometry args={[0.02 * scale, 0.03 * scale, trunkH * 0.5, 6]} />
+          <meshStandardMaterial color="#4b3524" roughness={0.95} />
+        </mesh>
+        <mesh castShadow position={[0, trunkH * 1.15, 0]}>
+          <dodecahedronGeometry args={[0.5 * scale, 1]} />
+          <meshStandardMaterial color="#224c1e" roughness={0.85} />
+        </mesh>
+        <mesh castShadow position={[0.2 * scale, trunkH * 1.2, 0.15 * scale]}>
+          <dodecahedronGeometry args={[0.36 * scale, 1]} />
+          <meshStandardMaterial color="#305f28" roughness={0.8} />
+        </mesh>
       </group>
     );
   }
 
-  if (t === "garden" || t === "courtyard") {
+  if (t === "garden") {
     // Beautiful branching tree scaled to fit
     const rad = Math.min(r.w, r.h);
     const scale = Math.min(Math.max(rad * 0.35, 0.6), 1.1);
@@ -1450,8 +1633,9 @@ function FloorGroup({
   const exterior = floor === 0; // plinth + exterior render only on ground storey faces
   const allFloors = floorsOf(plan);
   const isTopFloor = floor === allFloors[allFloors.length - 1]; // no slab void above
-  const isTraditional = getCleanVariant(undefined, plan) === 'vastu' || getCleanVariant(undefined, plan) === 'courtyard';
-  
+  const cv = getCleanVariant(undefined, plan);
+  const isTraditional = cv === 'vastu' || cv === 'courtyard';
+
   return (
     <group position={[0, floor * FLOOR_TO_FLOOR, 0]}>
       {rooms.map((room) => {
@@ -1464,16 +1648,20 @@ function FloorGroup({
         const eMap = exteriorEdges(r, fp);
         const hasExt = eMap.N || eMap.S || eMap.E || eMap.W;
         
-        // Dynamic style colors based on variant
+        // Dynamic style colors based on variant — each of the 5 gets its own tone
+        // rather than climate/modern sharing one grey.
         let wallCol = hasExt ? PLASTER_EXT : PLASTER_INT;
         if (hasExt) {
-          const cv = getCleanVariant(undefined, plan);
           if (cv === 'vastu' || cv === 'courtyard') {
             wallCol = '#eedfc2'; // warm mud-plaster yellow
-          } else if (cv === 'climate' || cv === 'modern') {
-            wallCol = '#cbd5e1'; // raw concrete/slate grey
+          } else if (cv === 'climate') {
+            wallCol = '#eef1e6'; // pale cool lime-wash — heat-reflective, passive-cooling cue
+          } else if (cv === 'modern') {
+            wallCol = '#cbd5e1'; // raw concrete/slate grey — sleek open-plan
           } else if (cv === 'multigen') {
-            wallCol = '#eae5db'; // warm off-white
+            // grounded stone-plaster on the elders' ground floor, lighter above —
+            // signals the ground/upper generational split visually.
+            wallCol = floor === 0 ? '#c9bfa4' : '#eae5db';
           }
         }
 
@@ -1548,7 +1736,7 @@ function FloorGroup({
         );
       })}
       {/* darker projecting plinth course around the ground-floor footprint */}
-      {exterior && <Plinth fp={fp} W={W} D={D} />}
+      {exterior && <Plinth fp={fp} W={W} D={D} variant={cv} />}
       {/* Sandstone band molding at lintel height — runs around the exterior footprint
           This is a signature Indian architectural element (Chettinad / Kerala / North Indian) */}
       {fp && (() => {
@@ -1581,7 +1769,18 @@ function FloorGroup({
 }
 
 /** Laterite stone plinth with a sandstone molding cap band — authentic South Indian base. */
-function Plinth({ fp, W, D }: { fp: Rect; W: number; D: number }) {
+function Plinth({ fp, W, D, variant }: { fp: Rect; W: number; D: number; variant?: string }) {
+  const cv = getCleanVariant(variant);
+  // Base course + cap tone read per variant — this band only ever renders on the
+  // ground floor (see the `exterior` gate at the call site), so for Multigen it
+  // doubles as the "grounded" visual cue for the elders'-floor / family-floor split.
+  const baseCol =
+    cv === 'multigen' ? '#4a4238' // dark basalt-toned stone — deliberately grounded
+    : cv === 'climate' ? '#c9bfa0' // pale limestone — cooler than laterite
+    : cv === 'modern' ? '#aab0b8' // sleek grey concrete plinth
+    : LATERITE; // vastu / courtyard — laterite stone (unchanged baseline)
+  const capCol = cv === 'multigen' ? '#332d26' : cv === 'modern' ? CONCRETE : STONE_BAND;
+  const baseRough = cv === 'modern' ? 0.5 : 0.95;
   const cx = fp.x + fp.w / 2 - W / 2;
   const cz = D / 2 - (fp.y + fp.h / 2);
   const out = 0.08; // projection past the wall face — wider for Indian plinth
@@ -1609,13 +1808,13 @@ function Plinth({ fp, W, D }: { fp: Rect; W: number; D: number }) {
       {baseBands.map((b, i) => (
         <mesh key={`bp${i}`} position={b.pos} castShadow receiveShadow>
           <boxGeometry args={b.size} />
-          <meshStandardMaterial color={LATERITE} roughness={0.95} />
+          <meshStandardMaterial color={baseCol} roughness={baseRough} />
         </mesh>
       ))}
       {capBands.map((b, i) => (
         <mesh key={`cp${i}`} position={b.pos} castShadow receiveShadow>
           <boxGeometry args={b.size} />
-          <meshStandardMaterial color={STONE_BAND} roughness={0.8} />
+          <meshStandardMaterial color={capCol} roughness={0.8} />
         </mesh>
       ))}
     </>
@@ -1803,9 +2002,11 @@ function Slabs({ plan, W, D }: { plan: Plan; W: number; D: number }) {
   const roofY = topFloor * FLOOR_TO_FLOOR + WALL_H + SLAB / 2;
   const roofTop = roofY + SLAB / 2; // walking surface of the roof
   const concrete = CONCRETE;
-  const isVastuFirst = getCleanVariant(undefined, plan) === 'vastu';
-  const isCourtyard = getCleanVariant(undefined, plan) === 'courtyard';
+  const roofCv = getCleanVariant(undefined, plan);
+  const isVastuFirst = roofCv === 'vastu';
+  const isCourtyard = roofCv === 'courtyard';
   const isTraditional = isVastuFirst || isCourtyard;
+  const isClimateRoof = roofCv === 'climate';
   const bW = fp.w;
   const bD = fp.h;
 
@@ -1890,10 +2091,12 @@ function Slabs({ plan, W, D }: { plan: Plan; W: number; D: number }) {
           </group>
         );
       })}
-      {/* Roof slab — flat RCC base for all types */}
+      {/* Roof slab — flat RCC base for all types; Climate gets a pale reflective
+          "cool roof" coating instead of the neutral grey (deep chajja overhangs
+          + this pale deck are the passive-cooling signature). */}
       <mesh position={[cx, roofY, cz]} receiveShadow castShadow>
         <boxGeometry args={[fp.w + 0.4, SLAB, fp.h + 0.4]} />
-        <ConcreteMat color={concrete} />
+        <ConcreteMat color={isClimateRoof ? '#e8e6da' : concrete} />
       </mesh>
 
       {/* ===== AUTHENTIC MANGALORE HIP ROOF for Vastu/Traditional ===== */}

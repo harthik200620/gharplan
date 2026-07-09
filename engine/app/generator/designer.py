@@ -477,7 +477,12 @@ VARIANT_PROFILES: list[VariantProfile] = [
         tagline="An open central court brings light and ventilation to inner rooms.",
         courtyard=True,
         sitout=True,
-        min_footprint_sqm=95.0,
+        # The court is now a HARD reservation (see ``_courtyard_reservation``),
+        # not a hoped-for leftover, so it always costs real floor area (roughly
+        # 9-36 sqm). Raised from the old 95 sqm (tuned back when the court was
+        # ~free, just a labelled gap) so the tier's program still has enough
+        # room left over to stay comfortable after the court is carved out.
+        min_footprint_sqm=110.0,
         design_narrative="Courtyard-centered Indian vernacular — borrowed from 2000 years of climate-adapted Indian architecture",
         variant_highlights=[
             "Central void/courtyard (3x3m minimum) in CENTER zone",
@@ -905,6 +910,7 @@ class VastuGridPacker:
         col_overrides: Optional[dict[str, int]] = None,
         force_two_band: bool = False,
         fill_center: bool = False,
+        reserve_center_w: Optional[float] = None,
     ) -> None:
         self.minx, self.miny, self.maxx, self.maxy = env
         self.env_w = self.maxx - self.minx
@@ -917,13 +923,21 @@ class VastuGridPacker:
         self.keep_lo, self.keep_hi = center_keepout
         self.band_fracs = band_fracs
         self.col_overrides = col_overrides or {}
+        # HARD courtyard reservation (see ``_courtyard_reservation``): the centre
+        # column is pinned to exactly this width — never derived from assigned
+        # members/area — so a courtyard variant's court is a guaranteed, sized-up-
+        # front rectangle rather than a leftover the packer happens to leave. When
+        # set, this OVERRIDES force_two_band / fill_center below: a genuine court
+        # needs a real (non-collapsed, non-solid-filled) centre column, so those
+        # two would otherwise silently defeat the reservation.
+        self.reserve_center_w = reserve_center_w
         # Collapse the centre service spine into the two side bands — no narrow
         # central column / open-Brahmasthan corridor (used for the looser multi-
         # floor programs where a real home keeps living & dining adjacent).
-        self.force_two_band = force_two_band
+        self.force_two_band = force_two_band if reserve_center_w is None else False
         # Pack the centre band like a normal column (no open-Brahmasthan gap) so a
         # narrow service spine is filled top-to-bottom rather than leaving a void.
-        self.fill_center = fill_center
+        self.fill_center = fill_center if reserve_center_w is None else False
 
     # -- helpers ----------------------------------------------------------- #
     _HABITABLE = ("living", "master_bedroom", "bedroom", "childrens_bedroom", "study")
@@ -1126,6 +1140,8 @@ class VastuGridPacker:
         (so its living/bedroom never lands under the code-min narrowest side) and
         take the shrink out of the non-habitable spine; only if even the protected
         floors don't fit do we fall back to a proportional squeeze."""
+        if self.reserve_center_w is not None:
+            return self._column_widths_reserved(cols)
         f = self.band_fracs
         floor = [self._column_floor(cols[ci]) for ci in (0, 1, 2)]
         total_floor = sum(floor)
@@ -1169,6 +1185,39 @@ class VastuGridPacker:
                 weight.append(0.65 * area + 0.35 * f[ci] * self.env_w * 3.0)
         wsum = sum(weight) or 1.0
         return [floor[ci] + slack * weight[ci] / wsum for ci in (0, 1, 2)]
+
+    def _column_widths_reserved(self, cols: dict[int, list[ProgramRoom]]) -> list[float]:
+        """Column widths when a courtyard reservation is active (see
+        ``_courtyard_reservation``): column 1 (the centre court) is a FIXED
+        width — never derived from assigned members/area, unlike the normal
+        path above — so the court's footprint cost is deterministic. Columns 0
+        and 2 then split whatever width remains using the same floor+weight
+        blend as the normal path, restricted to just those two bands.
+
+        Falls back to a proportional squeeze of 0/2 if even their bare floors
+        don't fit the remainder — a courtyard-unfriendly envelope, which the
+        variant's ``min_footprint_sqm`` gate is meant to keep rare."""
+        w1 = max(0.0, min(self.reserve_center_w, self.env_w))
+        remaining = max(0.0, self.env_w - w1)
+        f = self.band_fracs
+        floor0 = self._column_floor(cols[0])
+        floor2 = self._column_floor(cols[2])
+        total_floor = floor0 + floor2
+        if total_floor > remaining + 1e-9:
+            s = total_floor or 1.0
+            return [remaining * floor0 / s, w1, remaining * floor2 / s]
+        slack = remaining - total_floor
+        weight = {0: 0.0, 2: 0.0}
+        for ci in (0, 2):
+            if cols[ci]:
+                area = sum(max(r.target_sqm, self._room_min_area(r)) for r in cols[ci])
+                weight[ci] = 0.65 * area + 0.35 * f[ci] * self.env_w * 3.0
+        wsum = weight[0] + weight[2] or 1.0
+        return [
+            floor0 + slack * weight[0] / wsum,
+            w1,
+            floor2 + slack * weight[2] / wsum,
+        ]
 
     def _column_bare_floor(self, members: list[ProgramRoom]) -> float:
         """The widest member's own minimum width (no area-driven inflation) — the
@@ -1272,8 +1321,15 @@ class VastuGridPacker:
         #     envelope is simply too narrow to carry three columns (a 3-band split
         #     would starve the habitable side bands below min width). On narrow
         #     plots two wider bands give every room a workable width.
+        # A hard courtyard reservation must never be folded away: column 1 keeps
+        # whatever compass-neutral members it naturally collected (steps 1/2
+        # above) so they wrap the court's south/north edges instead of being
+        # evicted to the side bands, which would leave the reserved column
+        # emptier (and its footprint-void bigger) than it needs to be.
         too_narrow = self.env_w < 2.0 * self.min_dim + 1.0
-        if cols[1] and (self.force_two_band or too_narrow or len(cols[1]) < 2 or load(1) < 0.30 * self.env_d):
+        if self.reserve_center_w is None and cols[1] and (
+            self.force_two_band or too_narrow or len(cols[1]) < 2 or load(1) < 0.30 * self.env_d
+        ):
             for r in list(cols[1]):
                 side = 0
                 for z in r.ideal_zones:
@@ -1472,7 +1528,17 @@ class VastuGridPacker:
                 desired.append(max(need / col_w if col_w > 0 else mn, mn))
             # cap service rooms in the spine too; any slack simply widens the
             # open Brahmasthan gap (no _stretch_to_fill here) which Vastu rewards.
+            # EXCEPTION: a hard courtyard reservation wants the opposite — the
+            # court's size is the deliberate ``reserve_center_w`` x
+            # [keep_lo, keep_hi] rectangle, not "however much slack capped
+            # service rooms leave behind"; so when active, spare south/north
+            # room stretches its members (still respecting their own caps only
+            # when there's nowhere else for the gap to go) rather than feeding
+            # the gap, so no leftover slack merges into (and inflates) the void
+            # ``_footprint_voids`` later finds around the reservation.
             desired = self._normalise_runs(desired, mins, avail, maxes)
+            if self.reserve_center_w is not None:
+                self._stretch_to_fill(desired, maxes, avail, group)
             if grow_up:
                 y = lo
                 for r, h in zip(group, desired):
@@ -2045,6 +2111,45 @@ def _poly_area(poly: list[tuple[float, float]] | list[list[float]]) -> float:
     for (x1, y1), (x2, y2) in zip(pts, pts[1:]):
         area += x1 * y2 - x2 * y1
     return abs(area) * 0.5
+
+
+# --------------------------------------------------------------------------- #
+# COURTYARD RESERVATION — the courtyard variant's centre court used to be a
+# HOPE: fill_center=False left the generic Brahmasthan gap open and whatever the
+# packer happened not to need became the "courtyard" (see _fill_footprint_voids
+# below). That gap could vanish entirely (folded into the side bands on a
+# narrow/thin centre column) or, when present, land at any size. This function
+# instead sizes a GENUINE court up front — a square, centred in the buildable
+# envelope, scaled off it but clamped to a sensible 3x3 m .. 6x6 m range (see
+# VariantProfile.courtyard's docstring) — which VastuGridPacker then reserves as
+# a hard column-1 width + keep-open y-range (``reserve_center_w`` /
+# ``center_keepout``) BEFORE packing, so rooms are placed around a guaranteed
+# hole rather than one that may or may not be left over.
+# --------------------------------------------------------------------------- #
+_COURTYARD_MIN_SIDE = 3.0    # VariantProfile.courtyard docstring: 3x3 m minimum
+_COURTYARD_MAX_SIDE = 6.0    # generous cap (<= 36 sqm): reads as a real feature
+                              # without ever starving the side bands
+_COURTYARD_SIDE_FRAC = 0.32  # scales with the tighter envelope dimension
+
+
+def _courtyard_reservation(
+    env: tuple[float, float, float, float], min_dim: float,
+) -> tuple[float, float, float]:
+    """(reserved column-1 width, keep_lo, keep_hi) for the courtyard variant's
+    GUARANTEED centre court: a square centred in ``env``, sized off the tighter
+    envelope dimension and clamped to ``_COURTYARD_MIN_SIDE``..``_COURTYARD_MAX_SIDE``.
+
+    A safety clamp keeps the reservation from ever eating so much of either
+    dimension that the west/east bands (or the column-1 strips north/south of
+    the court) can't hold a ``min_dim`` room — a rare corner case the variant's
+    ``min_footprint_sqm`` gate is meant to keep off the table, not something
+    expected to bind in practice."""
+    minx, miny, maxx, maxy = env
+    env_w, env_d = maxx - minx, maxy - miny
+    side = min(_COURTYARD_MAX_SIDE, max(_COURTYARD_MIN_SIDE, _COURTYARD_SIDE_FRAC * min(env_w, env_d)))
+    side = max(2.0, min(side, env_w - 2.0 * min_dim - 1.0, env_d - 2.0 * min_dim - 1.0))
+    mid_y = miny + 0.5 * env_d
+    return side, mid_y - 0.5 * side, mid_y + 0.5 * side
 
 
 def _envelope_and_keepout(
@@ -2746,6 +2851,7 @@ def _layout_floor(
     for r in program:
         if r.attach_bath and r.bath_id:
             prio[r.bath_id] = max(ESS, r.priority)
+    courtyard_active = bool(variant and variant.courtyard)
     # Pin the stair AND the common toilet to the same band on every floor so the
     # centre spine survives (≥2 rooms) and the staircase stays narrow + roughly
     # vertically aligned across floors.
@@ -2757,6 +2863,16 @@ def _layout_floor(
         for r in program
         if r.type.value == "staircase" or r.id in ("toilet_common", "u_toilet_common")
     }
+    if courtyard_active:
+        # Haveli convention: the entrance/foyer opens straight onto the court.
+        # Pinning it to the centre band (present on the ground floor only) gives
+        # column 1 a reliable NORTH-leaning member alongside the (already-pinned)
+        # SOUTH-leaning stair, so the reservation's south/north service strips
+        # are populated on both sides rather than depending on whether overflow
+        # rebalancing happens to exile something there — see
+        # ``_courtyard_reservation`` for why a lopsided (one empty side) split
+        # would leave the court off-centre instead of wrapped by rooms.
+        pins.update({r.id: stair_col for r in program if r.type.value == "entrance"})
     # Sweep the 3-band layouts, and ALSO a 2-band (force_two_band) collapse — but
     # only on the private UPPER floor (no kitchen). On a narrow plot the 3-band split
     # makes side bands ~2.6 m wide, so a full-depth room becomes a 3:1 ribbon; folding
@@ -2772,6 +2888,17 @@ def _layout_floor(
     env_w = env[2] - env[0]
     has_kitchen = any(r.type.value == "kitchen" for r in program)
     two_band_first = env_w < 9.0 and not has_kitchen
+    # Courtyard variant: reserve a GUARANTEED centre court before packing (see
+    # ``_courtyard_reservation``) instead of hoping fill_center=False leaves one.
+    # Computed once per floor — env/min_dim/variant don't change across the sweep
+    # below, and ground + upper floors independently recompute the identical
+    # geometry, so the court lands at the same (x, y) on every floor (a real
+    # light-well courtyard runs the full building height, not just one storey).
+    court_w: Optional[float] = None
+    eff_keepout = keepout
+    if courtyard_active:
+        court_w, court_lo, court_hi = _courtyard_reservation(env, min_dim)
+        eff_keepout = (court_lo, court_hi)
     best: Optional[tuple] = None
     for two_band in ((False, True) if two_band_first else (False,)):
         band_set = _TWO_BAND_VARIANTS if two_band else _BAND_VARIANTS
@@ -2779,10 +2906,11 @@ def _layout_floor(
             for base in _build_swap_sets(program):
                 overrides = dict(pins, **(base or {}))
                 packer = VastuGridPacker(
-                    env, min_dim, min_habitable, min_area_by_type, keepout,
-                    band_fracs=bands, col_overrides=overrides, 
-                    fill_center=not bool(variant and variant.courtyard),
+                    env, min_dim, min_habitable, min_area_by_type, eff_keepout,
+                    band_fracs=bands, col_overrides=overrides,
+                    fill_center=not courtyard_active,
                     force_two_band=two_band,
+                    reserve_center_w=court_w,
                 )
                 result = packer.pack(program)
                 if not result.placed:
@@ -3277,14 +3405,33 @@ def generate_plan(
     # displace them.
     band_plan = [(False, b) for b in _BAND_VARIANTS]
 
+    # Courtyard variant: reserve a GUARANTEED centre court before packing (see
+    # ``_courtyard_reservation``) instead of hoping fill_center=False leaves one.
+    courtyard_active = bool(variant and variant.courtyard)
+    court_w: Optional[float] = None
+    eff_keepout = keepout
+    courtyard_pins: dict[str, int] = {}
+    if courtyard_active:
+        court_w, court_lo, court_hi = _courtyard_reservation(env, min_dim)
+        eff_keepout = (court_lo, court_hi)
+        # Haveli convention: entrance/foyer + stair flank the court (see the
+        # matching pin in ``_layout_floor``) so column 1 reliably gets a
+        # SOUTH-leaning AND a NORTH-leaning member instead of depending on
+        # whether overflow rebalancing happens to exile one there — a lopsided
+        # (one empty side) split would leave the court off-centre.
+        courtyard_pins = {
+            r.id: 1 for r in program if r.type.value in ("staircase", "entrance")
+        }
+
     for force_two_band, bands in band_plan:
         for overrides in swap_sets:
             attempts += 1
             packer = VastuGridPacker(
-                env, min_dim, min_habitable, min_area_by_type, keepout,
-                band_fracs=bands, col_overrides=overrides,
-                fill_center=bool(variant and variant.fill_center),
+                env, min_dim, min_habitable, min_area_by_type, eff_keepout,
+                band_fracs=bands, col_overrides={**(overrides or {}), **courtyard_pins},
+                fill_center=bool(variant and variant.fill_center) and not courtyard_active,
                 force_two_band=force_two_band,
+                reserve_center_w=court_w,
             )
             result = packer.pack(program)
             if not result.placed:
@@ -3485,10 +3632,20 @@ def generate_options(
         }]
 
     # Best-first, then greedily keep only options far enough from the kept set.
+    # A dropped variant isn't just discarded — it's recorded on whichever kept
+    # option it merged into (``_merged_from``), so the caller can tell the user
+    # "N strategies converged to this layout" instead of silently losing them.
     raw.sort(key=lambda o: o["_quality"])
     kept: list[dict] = []
     for opt in raw:
-        if any(_signature_similarity(opt["_sig"], k["_sig"]) >= similarity_threshold for k in kept):
+        match = next(
+            (k for k in kept if _signature_similarity(opt["_sig"], k["_sig"]) >= similarity_threshold),
+            None,
+        )
+        if match is not None:
+            match.setdefault("_merged_from", []).append(
+                {"variantId": opt["variantId"], "variantName": opt["variantName"]}
+            )
             continue
         kept.append(opt)
         if len(kept) >= max_options:
@@ -3498,7 +3655,8 @@ def generate_options(
         {
             "variantId": o["variantId"], "variantName": o["variantName"],
             "variantTagline": o["variantTagline"], "plan": o["plan"],
-            "vastu": o["vastu"], "code": o["code"], "meta": o["meta"],
+            "vastu": o["vastu"], "code": o["code"],
+            "meta": {**o["meta"], "mergedFromVariants": o.get("_merged_from", [])},
         }
         for o in kept
     ]

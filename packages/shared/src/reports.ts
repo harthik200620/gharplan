@@ -108,6 +108,10 @@ export interface GenerateMeta {
   variantTagline?: string;
   courtyard?: boolean;
   openKitchen?: boolean;
+  /** Other design-variant strategies whose plan converged to this one and were
+   * dropped as near-duplicates during /plan/options de-duplication (empty/absent
+   * when nothing merged into this option). */
+  mergedFromVariants?: { variantId: string; variantName: string }[];
   /** Set on responses from /plan/refine. */
   appliedEdits?: string[];
   unmatchedEdits?: string[];

@@ -904,3 +904,83 @@ def test_multigen_second_stair_never_orphaned_on_one_floor():
     g_has = any(r.id == "stair2" for r in ground)
     u_has = any(r.id == "u_stair2" for r in upper)
     assert g_has == u_has, f"second stair present on only one floor: ground={g_has} upper={u_has}"
+
+
+# --------------------------------------------------------------------------- #
+# R9 — a genuinely different LAYOUT ALGORITHM (not a VastuGridPacker config)
+# for the open-plan variant: a single front-to-back linear sequence instead
+# of column bands. Tested directly (deterministic, no dependency on it
+# winning the sweep) plus a wiring/regression check via generate_plan.
+# --------------------------------------------------------------------------- #
+def test_linear_bar_pack_produces_a_full_depth_sequence_not_bands():
+    from app.generator.designer import ProgramRoom, RoomType, _linear_bar_pack
+
+    env = (0.0, 0.0, 20.0, 8.0)  # wide, shallow: bar should run along X (the longer axis)
+    program = [
+        ProgramRoom("entrance", RoomType.entrance, 3.0, ["E"], 4),
+        ProgramRoom("living", RoomType.living, 24.0, ["NE"], 8),
+        ProgramRoom("kitchen", RoomType.kitchen, 10.0, ["SE"], 8),
+        ProgramRoom("stair", RoomType.staircase, 4.0, ["S"], 6),
+        ProgramRoom("bedroom", RoomType.bedroom, 14.0, ["SW"], 7),
+    ]
+    placed = _linear_bar_pack(program, env, min_dim=2.4)
+    assert len(placed) == len(program), "every program room must be placed"
+
+    # The defining trait of a BAR layout vs a BANDED one: every room spans the
+    # FULL envelope depth (no stacking/bands) -- a categorically different
+    # circulation shape from VastuGridPacker's column-and-band grid.
+    for p in placed:
+        assert abs(p.y0 - 0.0) < 1e-6 and abs(p.y1 - 8.0) < 1e-6, (
+            f"room {p.id} doesn't span the full depth ({p.y0:.2f}, {p.y1:.2f}) -- not a real bar layout"
+        )
+
+    # Rooms tile the bar left-to-right with no gaps and no overlaps.
+    ordered = sorted(placed, key=lambda p: p.x0)
+    assert abs(ordered[0].x0 - 0.0) < 1e-6
+    assert abs(ordered[-1].x1 - 20.0) < 1e-6
+    for a, b in zip(ordered, ordered[1:]):
+        assert abs(a.x1 - b.x0) < 1e-6, f"gap/overlap between {a.id} and {b.id}"
+
+    # Sequence order approximates public-to-private: entrance/living before
+    # the bedroom, not scattered by band the way a grid packer would place them.
+    order_ids = [p.id for p in ordered]
+    assert order_ids.index("entrance") < order_ids.index("bedroom")
+    assert order_ids.index("living") < order_ids.index("bedroom")
+
+
+def test_linear_bar_pack_scales_down_when_overfull_and_grows_living_when_slack():
+    from app.generator.designer import ProgramRoom, RoomType, _linear_bar_pack
+
+    program = [
+        ProgramRoom("living", RoomType.living, 20.0, ["NE"], 8),
+        ProgramRoom("bedroom", RoomType.bedroom, 20.0, ["SW"], 7),
+    ]
+    # Overfull: requested widths exceed the bar length -> uniform scale-down,
+    # never an overlap or an out-of-envelope placement.
+    tight_env = (0.0, 0.0, 10.0, 5.0)
+    placed_tight = _linear_bar_pack(program, tight_env, min_dim=2.0)
+    assert placed_tight
+    xs = sorted(p.x1 for p in placed_tight)
+    assert xs[-1] <= 10.0 + 1e-6
+
+    # Slack: living (a habitable room) should absorb the extra width, not the
+    # bedroom -- matches the "big open living" intent of the variant this
+    # feeds (Modern Open-Plan).
+    roomy_env = (0.0, 0.0, 30.0, 5.0)
+    placed_roomy = _linear_bar_pack(program, roomy_env, min_dim=2.0)
+    living = next(p for p in placed_roomy if p.id == "living")
+    bedroom = next(p for p in placed_roomy if p.id == "bedroom")
+    assert living.width > bedroom.width
+
+
+def test_modern_variant_with_linear_bar_candidate_stays_valid_on_extreme_aspect_plots():
+    # Wiring/regression check: the open-plan variant now sweeps a genuinely
+    # different algorithm (see _linear_bar_pack) alongside the banded ones on
+    # EVERY brief. Confirm this stays 0-fail-valid across plot shapes where a
+    # bar layout is architecturally most plausible (very wide/shallow or very
+    # narrow/deep), not just the square-ish briefs exercised elsewhere.
+    modern_vp = next(v for v in VARIANT_PROFILES if v.id == "modern")
+    for w, d in [(20.0, 8.0), (8.0, 20.0), (25.0, 7.0)]:
+        plot = _plot("KA", city="Bengaluru", facing="E", w=w, d=d)
+        plan, _, code, _ = generate_plan(3, plot, floors=1, variant=modern_vp)
+        assert code.summary.fail_count == 0, f"modern variant fails on {w}x{d} plot"

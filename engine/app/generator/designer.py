@@ -2187,6 +2187,76 @@ def _climate_pack_env(
     return minx, mid_y - 0.5 * new_d, maxx, mid_y + 0.5 * new_d
 
 
+# --------------------------------------------------------------------------- #
+# LINEAR BAR PACK — a GENUINELY DIFFERENT layout algorithm, not a parameter
+# within VastuGridPacker. Every other variant differentiator so far (the
+# courtyard reservation, the climate sub-rect, the modern 2-band topology,
+# multigen's second stair) works BY CONFIGURING the same column-banded grid
+# packer. This one doesn't call VastuGridPacker at all: it arranges rooms as
+# a single front-to-back SEQUENCE of full-depth slices along the envelope's
+# longer axis (a "shotgun"/bar massing) — no bands, no centre service spine,
+# no column overrides. The circulation is categorically different: moving
+# through the house means walking along ONE line end to end, not crossing
+# between parallel bands via a shared corridor. Strict single-file ordering
+# can't hit every Vastu ideal zone simultaneously the way a 2D grid can, so
+# this typically scores lower on Vastu than a banded layout on most briefs —
+# an honest trade, not hidden — and is wired in as an ADDITIONAL candidate
+# for the open-plan variant (see the sweep loops), so it only ever adds an
+# option alongside the existing banded ones; the same ranking key picks
+# whichever genuinely wins for a given brief.
+# --------------------------------------------------------------------------- #
+_BAR_SEQUENCE_RANK = {
+    "entrance": 0, "pooja": 1, "sitout": 1, "living": 2, "dining": 3,
+    "kitchen": 4, "staircase": 5, "toilet": 6, "bathroom": 6,
+    "utility": 6, "store": 6,
+}
+
+
+def _linear_bar_pack(
+    program: list["ProgramRoom"], env: tuple[float, float, float, float], min_dim: float,
+) -> list[PlacedRoom]:
+    """Lay ``program`` out as a single full-depth sequence along the longer
+    envelope axis instead of VastuGridPacker's column bands. Deterministic,
+    no swapping/sweeping of its own (the caller's existing swap-set sweep
+    already searches the banded alternative; this contributes one more,
+    genuinely different, candidate rather than its own search space)."""
+    minx, miny, maxx, maxy = env
+    env_w, env_d = maxx - minx, maxy - miny
+    along_x = env_w >= env_d  # bar runs along the LONGER axis
+    bar_len = env_w if along_x else env_d
+    bar_depth = env_d if along_x else env_w
+    if bar_depth <= 1e-6 or bar_len <= 1e-6:
+        return []
+
+    def _rank(r: "ProgramRoom") -> tuple:
+        return (_BAR_SEQUENCE_RANK.get(r.type.value, 7), -r.priority)
+
+    ordered = sorted(program, key=_rank)
+    widths = [max(r.target_sqm / bar_depth, min_dim) for r in ordered]
+    total = sum(widths)
+    if total <= 1e-6:
+        return []
+    if total > bar_len:
+        scale = bar_len / total
+        widths = [w * scale for w in widths]
+    elif total < bar_len:
+        _HAB = ("living", "master_bedroom", "bedroom", "childrens_bedroom", "study")
+        hab_idx = [i for i, r in enumerate(ordered) if r.type.value in _HAB]
+        grow_i = max(hab_idx, key=lambda i: widths[i]) if hab_idx else 0
+        widths[grow_i] += (bar_len - total)
+
+    placed: list[PlacedRoom] = []
+    cursor = 0.0
+    for r, w in zip(ordered, widths):
+        if along_x:
+            x0, x1, y0, y1 = minx + cursor, minx + cursor + w, miny, maxy
+        else:
+            y0, y1, x0, x1 = miny + cursor, miny + cursor + w, minx, maxx
+        placed.append(PlacedRoom(r.id, r.type, x0, y0, x1, y1, r.ceiling_height_m))
+        cursor += w
+    return placed
+
+
 def _envelope_and_keepout(
     plot: Plot, code_rules: CodeRules
 ) -> tuple[tuple[float, float, float, float], tuple[float, float]]:
@@ -2990,6 +3060,38 @@ def _layout_floor(
     if variant and variant.climate_first:
         pack_env = _climate_pack_env(env, min_dim)
     best: Optional[tuple] = None
+
+    def _eval_candidate(placed_rooms: list[PlacedRoom], base_dropped: list[str]) -> None:
+        """Post-process one candidate placement (carve baths, enforce coverage,
+        fill voids, validate, score, rank) and fold it into ``best`` if it wins.
+        Shared by BOTH the VastuGridPacker sweep below and the linear-bar
+        candidate, so a genuinely different algorithm's output is judged by
+        the identical correctness/Vastu bar as every banded candidate."""
+        nonlocal best
+        placed = list(placed_rooms)
+        placed[:] = _carve_attached_baths(placed, program_by_id, plot, min_dim)
+        cov_dropped = _enforce_coverage(placed, env, plot_area, max_cov, prio, ESS, min_dim)
+        _fill_footprint_voids(
+            placed, env, cov_cap=(max_cov - 1.0) / 100.0 * plot_area, plot_area=plot_area,
+        )
+        try:
+            _assert_no_overlap(placed)
+            _assert_inside(placed, env)
+        except AssertionError:
+            return
+        all_dropped = base_dropped + cov_dropped
+        ess_drop = sum(1 for d in all_dropped if prio.get(d, 0) >= ESS)
+        plan, vastu, code = _score_candidate(_build_plan(list(placed), plot, env, "floor", edits=None, variant=variant), code_rules)
+        kd_bad = 0 if _kitchen_dining_adjacent(placed) else 1
+        aspect_bad = _aspect_bad(placed)
+        worst_asp = _worst_aspect(placed)
+        liv_center = _living_in_center(plan)
+        liv_not_largest = _living_not_largest(placed)
+        key = (ess_drop, code.summary.fail_count, kd_bad, aspect_bad, liv_center,
+               -round(vastu.score), worst_asp, len(all_dropped), liv_not_largest)
+        if best is None or key < best[0]:
+            best = (key, placed, all_dropped)
+
     for two_band in ((False, True) if two_band_first else (False,)):
         band_set = _TWO_BAND_VARIANTS if two_band else _BAND_VARIANTS
         for bands in band_set:
@@ -3005,40 +3107,15 @@ def _layout_floor(
                 result = packer.pack(program)
                 if not result.placed:
                     continue
-                result.placed[:] = _carve_attached_baths(result.placed, program_by_id, plot, min_dim)
-                cov_dropped = _enforce_coverage(result.placed, env, plot_area, max_cov, prio, ESS, min_dim)
-                # Any leftover band space inside the footprint becomes a labelled
-                # courtyard (or is welded into a neighbour where coverage allows) so
-                # the floor never renders a blank gap; the courtyard is virtual, so it
-                # never affects code/coverage.
-                _fill_footprint_voids(
-                    result.placed, env, cov_cap=(max_cov - 1.0) / 100.0 * plot_area,
-                    plot_area=plot_area,
-                )
-                try:
-                    _assert_no_overlap(result.placed)
-                    _assert_inside(result.placed, env)
-                except AssertionError:
-                    continue
-                all_dropped = result.dropped + cov_dropped
-                ess_drop = sum(1 for d in all_dropped if prio.get(d, 0) >= ESS)
-                plan, vastu, code = _score_candidate(_build_plan(list(result.placed), plot, env, "floor", edits=None, variant=variant), code_rules)
-                kd_bad = 0 if _kitchen_dining_adjacent(result.placed) else 1
-                aspect_bad = _aspect_bad(result.placed)
-                worst_asp = _worst_aspect(result.placed)
-                liv_center = _living_in_center(plan)
-                liv_not_largest = _living_not_largest(result.placed)
-                # Ladder (best = smallest): no essential drop, then no code fail, then
-                # kitchen-dining adjacent, then good room PROPORTIONS (ribbon COUNT),
-                # then keep the hall OFF the Brahmasthan centre (front hall, E/NE),
-                # then highest Vastu, then the worst single aspect as a FINE squareness
-                # tie-break (placed below Vastu so a marginally squarer layout never
-                # displaces the pooja/stair from their sectors), then fewest drops;
-                # "living is largest" is only a last-resort tiebreaker.
-                key = (ess_drop, code.summary.fail_count, kd_bad, aspect_bad, liv_center,
-                       -round(vastu.score), worst_asp, len(all_dropped), liv_not_largest)
-                if best is None or key < best[0]:
-                    best = (key, list(result.placed), all_dropped)
+                _eval_candidate(result.placed, result.dropped)
+    # Open-plan variant: ALSO try the linear-bar algorithm (see
+    # _linear_bar_pack) — a genuinely different layout strategy, not a
+    # VastuGridPacker configuration, contributed as one more candidate the
+    # SAME ranking key above judges on equal terms.
+    if open_plan_active:
+        bar_placed = _linear_bar_pack(program, pack_env, min_dim)
+        if bar_placed:
+            _eval_candidate(bar_placed, [])
     if best is None:
         return [], [r.id for r in program]
     return best[1], best[2]
@@ -3547,6 +3624,55 @@ def generate_plan(
     if variant and variant.climate_first:
         pack_env = _climate_pack_env(env, min_dim)
 
+    def _eval_and_collect(placed_rooms: list[PlacedRoom], base_dropped: list[str], safe: bool = False) -> None:
+        """Post-process one candidate placement and append it to ``candidates``
+        if it's geometrically valid. Shared by the VastuGridPacker sweep below
+        and the linear-bar candidate so both are judged by the identical
+        correctness/Vastu bar. ``safe=True`` (used for the less-proven
+        linear-bar candidate) catches an AssertionError instead of propagating
+        it, so a rare bad layout is silently skipped rather than crashing
+        generation for a variant with an otherwise-fine banded fallback."""
+        placed = list(placed_rooms)
+        placed[:] = _carve_attached_baths(placed, program_by_id, plot, min_dim)
+        cov_dropped = _enforce_coverage(
+            placed, env, plot_area, max_cov, prio, _ESSENTIAL_PRIORITY, min_dim
+        )
+        _fill_footprint_voids(
+            placed, env, cov_cap=(max_cov - 1.0) / 100.0 * plot_area, plot_area=plot_area,
+        )
+        all_dropped = base_dropped + cov_dropped
+        if safe:
+            try:
+                _assert_no_overlap(placed)
+                _assert_inside(placed, env)
+            except AssertionError:
+                return
+        else:
+            _assert_no_overlap(placed)
+            _assert_inside(placed, env)
+        plan = _build_plan(placed, plot, env, name, edits, variant)
+        plan, vastu, code = _score_candidate(plan, code_rules)
+        cov = getattr(code.metrics, "ground_coverage_pct", 0.0) or 0.0
+        kd_bad = 0 if _kitchen_dining_adjacent(placed) else 1
+        aspect_bad = _aspect_bad(placed)
+        worst_asp = _worst_aspect(placed)
+        liv_center = _living_in_center(plan)
+        liv_not_largest = _living_not_largest(placed)
+        if variant is not None and variant.prefer_area:
+            key = (
+                essential_dropped(all_dropped), code.summary.fail_count, kd_bad, aspect_bad,
+                liv_center, len(all_dropped), -round(cov), -round(vastu.score), worst_asp,
+                liv_not_largest,
+            )
+        else:
+            key = (
+                essential_dropped(all_dropped), code.summary.fail_count, kd_bad, aspect_bad,
+                liv_center, -round(vastu.score), worst_asp, len(all_dropped), liv_not_largest,
+            )
+        candidates.append(
+            _Candidate(plan=plan, vastu=vastu, code=code, dropped=all_dropped, score_key=key)
+        )
+
     for force_two_band, bands in band_plan:
         for overrides in swap_sets:
             attempts += 1
@@ -3560,77 +3686,17 @@ def generate_plan(
             result = packer.pack(program)
             if not result.placed:
                 continue
-            # Carve each bedroom block into bedroom + attached toilet (guillotine
-            # cut) BEFORE coverage trimming, so the bath counts toward footprint.
-            result.placed[:] = _carve_attached_baths(
-                result.placed, program_by_id, plot, min_dim
-            )
-            # trim the footprint under the coverage limit (drops optional rooms,
-            # never undersizes a habitable one).
-            cov_dropped = _enforce_coverage(
-                result.placed, env, plot_area, max_cov, prio, _ESSENTIAL_PRIORITY, min_dim
-            )
-            # Fill any leftover footprint band space with a labelled courtyard (or
-            # weld a thin strip into a neighbour where coverage allows) so the floor
-            # never ships an unassigned blank gap; the courtyard is virtual — it
-            # neither counts toward coverage nor triggers a min-area/dim code fail.
-            _fill_footprint_voids(
-                result.placed, env, cov_cap=(max_cov - 1.0) / 100.0 * plot_area,
-                plot_area=plot_area,
-            )
-            all_dropped = result.dropped + cov_dropped
-            _assert_no_overlap(result.placed)
-            _assert_inside(result.placed, env)
-            plan = _build_plan(result.placed, plot, env, name, edits, variant)
-            plan, vastu, code = _score_candidate(plan, code_rules)
-            # Ranking (best = smallest): correctness first — never sacrifice an
-            # essential room, then minimise code fails — then quality per the
-            # brief (higher Vastu), and finally prefer fewer optional drops. Vastu
-            # is rounded so a marginal score gain never justifies dropping a room,
-            # but a real gain (e.g. kitchen reaching its ideal SE) does.
-            cov = getattr(code.metrics, "ground_coverage_pct", 0.0) or 0.0
-            # dining must abut the kitchen (functional must, just under code safety).
-            kd_bad = 0 if _kitchen_dining_adjacent(result.placed) else 1
-            # good room proportions (ribbon COUNT) rank just below the hard code +
-            # kitchen-dining invariants and above Vastu; the worst single aspect is a
-            # finer squareness tie-break placed just below the front-living term so a
-            # marginally squarer layout can never shove the hall into the centre.
-            aspect_bad = _aspect_bad(result.placed)
-            worst_asp = _worst_aspect(result.placed)
-            # keep the big hall off the dead-centre Brahmasthan (front living), and
-            # only use "hall is largest" as a last-resort tiebreaker so it never
-            # forces the hall central on a narrow plot.
-            liv_center = _living_in_center(plan)
-            liv_not_largest = _living_not_largest(result.placed)
-            if variant is not None and variant.prefer_area:
-                # value plan: prefer denser / fewer-drops, then Vastu
-                key = (
-                    essential_dropped(all_dropped),
-                    code.summary.fail_count,
-                    kd_bad,
-                    aspect_bad,
-                    liv_center,
-                    len(all_dropped),
-                    -round(cov),
-                    -round(vastu.score),
-                    worst_asp,
-                    liv_not_largest,
-                )
-            else:
-                key = (
-                    essential_dropped(all_dropped),
-                    code.summary.fail_count,
-                    kd_bad,
-                    aspect_bad,
-                    liv_center,
-                    -round(vastu.score),
-                    worst_asp,
-                    len(all_dropped),
-                    liv_not_largest,
-                )
-            candidates.append(
-                _Candidate(plan=plan, vastu=vastu, code=code, dropped=all_dropped, score_key=key)
-            )
+            _eval_and_collect(result.placed, result.dropped)
+
+    # Open-plan variant: ALSO try the linear-bar algorithm (see
+    # _linear_bar_pack) — a genuinely different layout strategy, not a
+    # VastuGridPacker configuration, contributed as one more candidate the
+    # SAME ranking key judges on equal terms.
+    if open_plan_active:
+        attempts += 1
+        bar_placed = _linear_bar_pack(program, pack_env, min_dim)
+        if bar_placed:
+            _eval_and_collect(bar_placed, [], safe=True)
 
     if not candidates:
         raise ValueError("could not generate a feasible plan for the given brief")

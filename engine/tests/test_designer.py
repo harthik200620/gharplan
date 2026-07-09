@@ -747,9 +747,12 @@ def test_courtyard_min_footprint_gate_still_suppresses_small_plots():
 # --------------------------------------------------------------------------- #
 def test_generate_options_records_merged_variants_on_tight_plot():
     # The canonical 30x40 ft KA E plot at 2BHK: a known tight case where the
-    # courtyard variant is excluded by min_footprint_sqm and (verified empirically)
-    # the vastu and modern schemes are the only two genuinely-distinct survivors —
-    # climate and multigen converge onto (are absorbed by) vastu.
+    # courtyard variant is excluded by min_footprint_sqm. Climate now packs a
+    # genuinely shallower (E-W elongated) footprint (see _climate_pack_env),
+    # so its plan signature no longer reads as a near-duplicate of vastu's —
+    # it survives dedup as its own distinct scheme. Multigen has no shape/
+    # topology differentiator of its own and (verified empirically) still
+    # converges onto vastu on this tight a plot.
     plot = _plot("KA", city="Bengaluru", facing="E")
     options = generate_options(2, plot, floors=1)
 
@@ -758,16 +761,100 @@ def test_generate_options_records_merged_variants_on_tight_plot():
     )
 
     kept_ids = {o["variantId"] for o in options}
-    assert kept_ids == {"vastu", "modern"}, f"unexpected kept variant set: {kept_ids}"
+    assert kept_ids == {"vastu", "climate", "modern"}, f"unexpected kept variant set: {kept_ids}"
 
     vastu_opt = next(o for o in options if o["variantId"] == "vastu")
     merged_ids = {m["variantId"] for m in vastu_opt["meta"]["mergedFromVariants"]}
-    assert merged_ids == {"climate", "multigen"}, (
-        f"expected climate+multigen to merge into vastu, got {merged_ids}"
-    )
+    assert merged_ids == {"multigen"}, f"expected multigen to merge into vastu, got {merged_ids}"
     for m in vastu_opt["meta"]["mergedFromVariants"]:
         assert set(m) == {"variantId", "variantName"}
         assert m["variantName"]  # non-empty display name, not just an id
 
     modern_opt = next(o for o in options if o["variantId"] == "modern")
     assert modern_opt["meta"]["mergedFromVariants"] == []
+
+
+# --------------------------------------------------------------------------- #
+# R8 — variety shouldn't be bounded by one algorithm's vocabulary: climate and
+# modern now get a genuine BUILDING-SHAPE / CIRCULATION difference (not just a
+# different room mix in the same 3-band grid every variant used to share).
+# --------------------------------------------------------------------------- #
+def test_climate_variant_footprint_is_shallower_and_wider_than_vastu():
+    # Same roomy brief, two variants: climate's own highlights promise
+    # "Elongate plan E-W for N/S glazing" — confirm the FOOTPRINT actually
+    # elongates now (see _climate_pack_env), not just a ventilation-window
+    # priority tweak.
+    plot = _plot("KA", city="Bengaluru", facing="E", w=15.0, d=15.0)
+    climate_vp = next(v for v in VARIANT_PROFILES if v.id == "climate")
+    vastu_vp = next(v for v in VARIANT_PROFILES if v.id == "vastu")
+
+    c_plan, _, c_code, _ = generate_plan(3, plot, floors=1, variant=climate_vp)
+    v_plan, _, v_code, _ = generate_plan(3, plot, floors=1, variant=vastu_vp)
+    assert c_code.summary.fail_count == 0
+    assert v_code.summary.fail_count == 0
+
+    # Only the BUILT-UP rooms trace the actual building outline — a shallower
+    # pack_env leaves the trimmed north/south strip to the existing void-fill
+    # machinery, which (correctly) labels it a virtual garden/courtyard; that
+    # strip is the point of the fix, not noise to include in "how deep is the
+    # building" — so virtual/site room types are excluded here.
+    _VIRTUAL = {
+        "courtyard", "garden", "parking", "sitout", "service_shaft",
+        "future_expansion", "balcony", "brahmasthan", "borewell", "overhead_tank",
+    }
+
+    def _footprint_bbox(plan):
+        xs, ys = [], []
+        for r in plan.rooms:
+            if r.type.value in _VIRTUAL:
+                continue
+            x0, y0, x1, y1 = _bbox(r.polygon)
+            xs += [x0, x1]
+            ys += [y0, y1]
+        return max(xs) - min(xs), max(ys) - min(ys)
+
+    c_w, c_d = _footprint_bbox(c_plan)
+    v_w, v_d = _footprint_bbox(v_plan)
+    assert c_d < v_d - 0.5, f"climate footprint isn't shallower: climate depth={c_d:.2f} vastu depth={v_d:.2f}"
+    assert (c_w / c_d) > (v_w / v_d) + 0.05, (
+        f"climate aspect ratio isn't more elongated: climate={c_w/c_d:.2f} vastu={v_w/v_d:.2f}"
+    )
+
+
+def test_climate_pack_env_safety_clamp_on_already_shallow_envelope():
+    # A pathologically shallow envelope should degrade to unchanged rather than
+    # risk an infeasible pack.
+    from app.generator.designer import _climate_pack_env
+
+    env = (0.0, 0.0, 20.0, 6.0)  # env_d = 6.0, already shallow
+    assert _climate_pack_env(env, min_dim=2.4) == env
+
+    env2 = (0.0, 0.0, 20.0, 14.0)  # plenty of depth: trim should engage
+    trimmed = _climate_pack_env(env2, min_dim=2.4)
+    assert trimmed != env2
+    minx, miny, maxx, maxy = trimmed
+    assert maxx - minx == 20.0  # east-west width untouched
+    assert 0.0 < (maxy - miny) < 14.0  # depth genuinely reduced
+    # still centred on the same y-midpoint
+    assert abs((miny + maxy) / 2.0 - 7.0) < 1e-9
+
+
+def test_modern_variant_reaches_a_genuinely_different_shape_than_vastu():
+    # Same brief the tight-plot dedup test uses: before this fix modern only
+    # differed from vastu in room mix within the identical 3-band grid. Confirm
+    # the plan signatures now diverge enough that generate_options keeps both
+    # as distinct schemes (already exercised end-to-end above) AND that the
+    # underlying geometry genuinely differs — not merely re-labelled.
+    from app.generator.designer import _plan_signature, _signature_similarity
+
+    plot = _plot("KA", city="Bengaluru", facing="E", w=15.0, d=15.0)
+    modern_vp = next(v for v in VARIANT_PROFILES if v.id == "modern")
+    vastu_vp = next(v for v in VARIANT_PROFILES if v.id == "vastu")
+
+    m_plan, _, m_code, _ = generate_plan(3, plot, floors=1, variant=modern_vp)
+    v_plan, _, v_code, _ = generate_plan(3, plot, floors=1, variant=vastu_vp)
+    assert m_code.summary.fail_count == 0
+    assert v_code.summary.fail_count == 0
+
+    sim = _signature_similarity(_plan_signature(m_plan), _plan_signature(v_plan))
+    assert sim < 0.90, f"modern reads as a near-duplicate of vastu (similarity={sim:.2f})"

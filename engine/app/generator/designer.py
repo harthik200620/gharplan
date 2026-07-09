@@ -2152,6 +2152,41 @@ def _courtyard_reservation(
     return side, mid_y - 0.5 * side, mid_y + 0.5 * side
 
 
+# --------------------------------------------------------------------------- #
+# CLIMATE ELONGATION — the climate-first variant's own highlights promise
+# "Elongate plan E-W for N/S glazing" (a shallow, wide bar building is the
+# actual passive-cooling move: more N/S-facing wall for cross-ventilation,
+# less E/W-facing wall for solar gain), but nothing ever implemented it —
+# climate_first only nudged a ventilation-window priority, so the building's
+# FOOTPRINT was identical in shape to every other variant. This carves a
+# shallower (reduced north-south depth, full east-west width) sub-rectangle
+# of the buildable envelope for the PACKER to work within; every other
+# consumer (coverage, void-fill, assert_inside, scoring) still sees the full
+# ``env``, so the strip trimmed off the north and south is picked up by the
+# EXISTING _fill_footprint_voids machinery as a labelled open/garden void —
+# a real front-and-rear yard, not a missing feature.
+# --------------------------------------------------------------------------- #
+_CLIMATE_DEPTH_TRIM_FRAC = 0.12  # conservative: shallower, not starved
+
+
+def _climate_pack_env(
+    env: tuple[float, float, float, float], min_dim: float,
+) -> tuple[float, float, float, float]:
+    """A shallower (reduced env_d, full env_w) sub-rect of ``env`` for the
+    climate-first variant's packer to work within, centred on the same
+    Brahmasthan y-midpoint. Clamped so the trim never eats into ``min_dim``
+    headroom — on an already-shallow envelope this degrades to ``env``
+    unchanged rather than risking an infeasible pack."""
+    minx, miny, maxx, maxy = env
+    env_w, env_d = maxx - minx, maxy - miny
+    trim = _CLIMATE_DEPTH_TRIM_FRAC * env_d
+    new_d = env_d - 2.0 * trim
+    if new_d < max(3.0 * min_dim, 8.0):
+        return env  # too shallow already — elongating further isn't safe
+    mid_y = miny + 0.5 * env_d
+    return minx, mid_y - 0.5 * new_d, maxx, mid_y + 0.5 * new_d
+
+
 def _envelope_and_keepout(
     plot: Plot, code_rules: CodeRules
 ) -> tuple[tuple[float, float, float, float], tuple[float, float]]:
@@ -2885,9 +2920,22 @@ def _layout_floor(
     # and tests forbid). Its lone guest/parents bedroom is squared instead by the
     # bedroom-block area cap PLUS leaving the freed band depth as front circulation
     # rather than re-inflating the bedroom to a ribbon (see ``_stack_column``).
+    #
+    # EXCEPTION: the open-plan variant (``merge_dining``) never has a separate
+    # dining room to begin with (``_tier_program_spec`` drops it — absorbed into
+    # a bigger living hall instead), so the "dining shoved to CENTER" failure
+    # mode this guard exists for cannot occur for it. Widening the sweep to
+    # ALSO try 2-band for that variant only ADDS candidates alongside the
+    # existing 3-band ones — the ranking key below (code fails, then Vastu
+    # score) already picks the best of whatever is tried, so a genuinely worse
+    # 2-band layout simply loses to a 3-band one already in the same sweep;
+    # this is the mechanism that gives "Modern Open-Plan" an actual open
+    # two-band social volume instead of only ever seeing the same 3-band grid
+    # every other variant sees.
+    open_plan_active = bool(variant and variant.merge_dining)
     env_w = env[2] - env[0]
     has_kitchen = any(r.type.value == "kitchen" for r in program)
-    two_band_first = env_w < 9.0 and not has_kitchen
+    two_band_first = (env_w < 9.0 and not has_kitchen) or open_plan_active
     # Courtyard variant: reserve a GUARANTEED centre court before packing (see
     # ``_courtyard_reservation``) instead of hoping fill_center=False leaves one.
     # Computed once per floor — env/min_dim/variant don't change across the sweep
@@ -2899,6 +2947,13 @@ def _layout_floor(
     if courtyard_active:
         court_w, court_lo, court_hi = _courtyard_reservation(env, min_dim)
         eff_keepout = (court_lo, court_hi)
+    # Climate-first variant: pack into a shallower (E-W elongated) sub-rect —
+    # see ``_climate_pack_env``. Coverage/void-fill/assert_inside below still
+    # use the full ``env``, so the north/south strip trimmed off the pack
+    # becomes a real labelled front/rear yard via the existing void machinery.
+    pack_env = env
+    if variant and variant.climate_first:
+        pack_env = _climate_pack_env(env, min_dim)
     best: Optional[tuple] = None
     for two_band in ((False, True) if two_band_first else (False,)):
         band_set = _TWO_BAND_VARIANTS if two_band else _BAND_VARIANTS
@@ -2906,7 +2961,7 @@ def _layout_floor(
             for base in _build_swap_sets(program):
                 overrides = dict(pins, **(base or {}))
                 packer = VastuGridPacker(
-                    env, min_dim, min_habitable, min_area_by_type, eff_keepout,
+                    pack_env, min_dim, min_habitable, min_area_by_type, eff_keepout,
                     band_fracs=bands, col_overrides=overrides,
                     fill_center=not courtyard_active,
                     force_two_band=two_band,
@@ -3403,7 +3458,19 @@ def generate_plan(
     # the single-floor social plan keeps the Vastu-friendly 3-band sweep (kitchen SE,
     # pooja NE, stair on the central spine) rather than a 2-band collapse that would
     # displace them.
+    #
+    # EXCEPTION: the open-plan variant (``merge_dining``) has no separate dining
+    # room to begin with, so it cannot suffer the "dining shoved to CENTER"
+    # failure this guard protects against. ADDING the 2-band layouts alongside
+    # the 3-band ones (not replacing them) only widens the candidate set the
+    # ranking key below picks from — a worse 2-band result simply loses to a
+    # 3-band one already in the same sweep. This is what gives "Modern
+    # Open-Plan" an actual open two-band social volume as an option, instead
+    # of the same 3-band grid every other variant is confined to.
     band_plan = [(False, b) for b in _BAND_VARIANTS]
+    open_plan_active = bool(variant and variant.merge_dining)
+    if open_plan_active:
+        band_plan = band_plan + [(True, b) for b in _TWO_BAND_VARIANTS]
 
     # Courtyard variant: reserve a GUARANTEED centre court before packing (see
     # ``_courtyard_reservation``) instead of hoping fill_center=False leaves one.
@@ -3423,11 +3490,19 @@ def generate_plan(
             r.id: 1 for r in program if r.type.value in ("staircase", "entrance")
         }
 
+    # Climate-first variant: pack into a shallower (E-W elongated) sub-rect —
+    # see ``_climate_pack_env``. Coverage/void-fill/assert_inside below still
+    # use the full ``env``, so the north/south strip trimmed off the pack
+    # becomes a real labelled front/rear yard via the existing void machinery.
+    pack_env = env
+    if variant and variant.climate_first:
+        pack_env = _climate_pack_env(env, min_dim)
+
     for force_two_band, bands in band_plan:
         for overrides in swap_sets:
             attempts += 1
             packer = VastuGridPacker(
-                env, min_dim, min_habitable, min_area_by_type, eff_keepout,
+                pack_env, min_dim, min_habitable, min_area_by_type, eff_keepout,
                 band_fracs=bands, col_overrides={**(overrides or {}), **courtyard_pins},
                 fill_center=bool(variant and variant.fill_center) and not courtyard_active,
                 force_two_band=force_two_band,

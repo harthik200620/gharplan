@@ -2770,6 +2770,19 @@ def _ground_program(
                                 z("toilet"), 7, design_logic="Powder room for ground-floor guests."))
     prog.append(ProgramRoom("stair", RoomType.staircase, max(0.05 * env_area, 3.4), z("staircase"), 6, design_logic="Vertical circulation core."))
     prog.append(ProgramRoom("entrance", RoomType.entrance, max(_COMFORT["entrance"], 2.2), z("entrance"), 4, design_logic="Foyer/transition space."))
+    if variant and variant.multi_gen:
+        # VariantProfile.courtyard's own docstring has always promised this:
+        # "If 2+ floors: separate entrance/stair option for rental unit" — a
+        # genuinely different CIRCULATION topology (two independent vertical/
+        # entry paths instead of one shared stair), not a room-mix tweak. Was
+        # never implemented until now (see _layout_floor's "2" pin routing,
+        # which sends this pair to the column opposite the primary stair).
+        prog.append(ProgramRoom("stair2", RoomType.staircase, max(0.05 * env_area, 3.0),
+                                z("staircase"), 4, min_area_floor=2.6,
+                                design_logic="Independent second staircase serving the upper family/rental unit."))
+        prog.append(ProgramRoom("entrance2", RoomType.entrance, max(_COMFORT["entrance"] * 0.85, 2.0),
+                                z("entrance"), 3, min_area_floor=1.8,
+                                design_logic="Independent entrance for the upper family/rental unit."))
     if (variant and variant.sitout) or (family_profile in ["joint", "extended"]):
         prio = 8 if (variant and variant.climate_first) else 3
         if family_profile in ["joint", "extended"]:
@@ -2859,6 +2872,15 @@ def _upper_program(tier, env_w, env_d, min_habitable, min_toilet, vastu, variant
     prog.append(
         ProgramRoom("u_stair", RoomType.staircase, max(0.05 * env_area, 3.4), z("staircase"), 6, design_logic="Vertical circulation core.")
     )
+    if variant and variant.multi_gen:
+        # Matches _ground_program's "stair2" — the second staircase must reach
+        # every floor to actually function as an independent access path, not
+        # just exist on the ground floor.
+        prog.append(
+            ProgramRoom("u_stair2", RoomType.staircase, max(0.05 * env_area, 3.0),
+                        z("staircase"), 4, min_area_floor=2.6,
+                        design_logic="Independent second staircase serving the upper family/rental unit.")
+        )
 
     if family_persona:
         persona_lower = family_persona.lower()
@@ -2896,8 +2918,21 @@ def _layout_floor(
     pins = {
         r.id: stair_col
         for r in program
-        if r.type.value == "staircase" or r.id in ("toilet_common", "u_toilet_common")
+        if (r.type.value == "staircase" and not r.id.endswith("2"))
+        or r.id in ("toilet_common", "u_toilet_common")
     }
+    # Multi-generational variant's SECOND staircase/entrance (see
+    # _ground_program/_upper_program, id suffix "2") is an independently
+    # usable access path for the upstairs family/rental unit — a genuine
+    # circulation-topology difference, not a relabelled room. Pin it to the
+    # column OPPOSITE the primary stair so the two never compete for the same
+    # band and the building ends up with two real, separated vertical/entry
+    # paths rather than two staircases stacked in one spine.
+    second_col = 0 if stair_col != 0 else 2
+    pins.update({
+        r.id: second_col for r in program
+        if r.id in ("stair2", "u_stair2", "entrance2")
+    })
     if courtyard_active:
         # Haveli convention: the entrance/foyer opens straight onto the court.
         # Pinning it to the centre band (present on the ground floor only) gives
@@ -3064,6 +3099,20 @@ def _generate_multifloor(
     )
     if not g_placed or not u_placed:
         raise ValueError("could not lay out a multi-floor plan for the given brief")
+
+    # The multi-gen second staircase (see _ground_program/_upper_program) is
+    # laid out independently per floor and is priority-optional (droppable
+    # under tight coverage), so the two floors' sweeps can, in principle,
+    # keep it on one floor and drop it on the other. A second stair that
+    # doesn't reach every floor isn't an independent access path, it's a
+    # disconnected room — strip it from wherever it DID survive so the plan
+    # never ships that inconsistency.
+    if variant and variant.multi_gen:
+        g_has_stair2 = any(p.id == "stair2" for p in g_placed)
+        u_has_stair2 = any(p.id == "u_stair2" for p in u_placed)
+        if g_has_stair2 != u_has_stair2:
+            g_placed[:] = [p for p in g_placed if p.id not in ("stair2", "entrance2")]
+            u_placed[:] = [p for p in u_placed if p.id != "u_stair2"]
 
     for p in g_placed:
         p.floor = 0

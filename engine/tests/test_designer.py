@@ -858,3 +858,49 @@ def test_modern_variant_reaches_a_genuinely_different_shape_than_vastu():
 
     sim = _signature_similarity(_plan_signature(m_plan), _plan_signature(v_plan))
     assert sim < 0.90, f"modern reads as a near-duplicate of vastu (similarity={sim:.2f})"
+
+
+def test_multigen_variant_gets_an_independent_second_staircase_on_a_roomy_plot():
+    # VariantProfile.multigen's own docstring has always promised "If 2+ floors:
+    # separate entrance/stair option for rental unit" — a genuine circulation
+    # topology difference (two independent vertical/entry paths), not a room
+    # mix change. On a plot roomy enough to afford it, both floors should carry
+    # it — and it must reach EVERY floor to be a real second access path.
+    plot = _plot("KA", city="Bengaluru", facing="E", w=15.0, d=15.0)
+    multigen_vp = next(v for v in VARIANT_PROFILES if v.id == "multigen")
+    plan, _, code, _ = generate_plan(3, plot, floors=2, variant=multigen_vp)
+    assert code.summary.fail_count == 0
+
+    ground = [r for r in plan.rooms if (r.floor or 0) == 0]
+    upper = [r for r in plan.rooms if (r.floor or 0) == 1]
+    g_stair2 = [r for r in ground if r.id == "stair2"]
+    u_stair2 = [r for r in upper if r.id == "u_stair2"]
+    assert g_stair2 and u_stair2, "second staircase didn't reach both floors on a roomy plot"
+    assert g_stair2[0].type.value == "staircase"
+    assert u_stair2[0].type.value == "staircase"
+    assert any(r.id == "entrance2" and r.type.value == "entrance" for r in ground), (
+        "second entrance missing for the independent upstairs access"
+    )
+    # The two staircases must not overlap/collide with the primary ones.
+    primary_ground = [r for r in ground if r.type.value == "staircase" and r.id == "stair"]
+    assert primary_ground
+    from shapely.geometry import box as _box
+    s1 = _box(*_bbox(primary_ground[0].polygon))
+    s2 = _box(*_bbox(g_stair2[0].polygon))
+    assert not s1.intersects(s2) or s1.touches(s2), "primary and second staircase overlap"
+
+
+def test_multigen_second_stair_never_orphaned_on_one_floor():
+    # If either floor's independent sweep can't afford the second stair, the
+    # reconciliation step in _generate_multifloor must strip it from BOTH
+    # floors rather than ship a staircase that only exists on one level.
+    plot = _plot("KA", city="Bengaluru", facing="E")  # canonical tight 30x40 ft
+    multigen_vp = next(v for v in VARIANT_PROFILES if v.id == "multigen")
+    plan, _, code, _ = generate_plan(3, plot, floors=2, variant=multigen_vp)
+    assert code.summary.fail_count == 0
+
+    ground = [r for r in plan.rooms if (r.floor or 0) == 0]
+    upper = [r for r in plan.rooms if (r.floor or 0) == 1]
+    g_has = any(r.id == "stair2" for r in ground)
+    u_has = any(r.id == "u_stair2" for r in upper)
+    assert g_has == u_has, f"second stair present on only one floor: ground={g_has} upper={u_has}"

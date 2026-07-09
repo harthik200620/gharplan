@@ -152,14 +152,28 @@ def test_scenario_ghmc_corner_g2_duplex():
     assert _check(code, "rwh_mandate").status == "pass"
 
     # Three storeys, with a DIFFERENTIATED top floor (home office or terrace),
-    # and the master suite kept intact upstairs.
+    # and the primary upstairs suite kept intact (not swapped away by the
+    # differentiation). Which room IS the primary suite depends on the winning
+    # variant: every variant except multi-gen puts the master upstairs; multi-gen
+    # deliberately puts the master on the GROUND floor (elders avoid stairs) and
+    # gives the upper floor a secondary master/guest suite instead ("u_guest",
+    # RoomType.bedroom) — that is the correct, by-design top-floor room for it,
+    # not a differentiation bug.
     plan = best["plan"]
     assert {r.floor for r in plan.rooms} == {0, 1, 2}
     top = [r for r in plan.rooms if (r.floor or 0) == 2]
     has_office = any(r.id == "home_office" and r.type.value == "study" for r in top)
     has_terrace = any(r.id == "terrace" and r.type.value == "balcony" for r in top)
     assert has_office or has_terrace, "top floor was cloned without differentiation"
-    assert any(r.type.value == "master_bedroom" for r in top)
+    if best["variantId"] == "multigen":
+        # G+2/G+3 clones the upper-floor template onto every floor above the
+        # first with an "_f{n}" id suffix (see _generate_multifloor) — match
+        # by prefix rather than exact id.
+        assert any(r.id.startswith("u_guest") and r.type.value == "bedroom" for r in top), (
+            "multi-gen's upstairs secondary suite was stripped by top-floor differentiation"
+        )
+    else:
+        assert any(r.type.value == "master_bedroom" for r in top)
 
 
 # --------------------------------------------------------------------------- #

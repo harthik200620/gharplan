@@ -2970,10 +2970,23 @@ function Scene({ plan, structure, mepMode, finishTier }: { plan: Plan; structure
       {/* auto-fit the building + site on first mount, then hand off to OrbitControls */}
       <Bounds clip margin={1.2}>
         <AutoFrame>
-          {floors.map((f) => (
-            <FloorGroup key={f} plan={plan} floor={f} W={W} D={D} openings={openings} entranceId={entranceId} mepMode={mepMode} />
-          ))}
-          <Slabs plan={plan} W={W} D={D} />
+          {/* Ultimate tier renders the whole building through PremiumGlassHouseScene
+              (floor-to-ceiling glazing, steel columns, marble slabs, infinity-pool-
+              style roof deck, sculptural landscaping) instead of the standard
+              FloorGroup/Slabs pass — a real geometry-level swap, not a lighting-only
+              tweak. Structural grid, entrance porch, compound wall and MEP pipes
+              stay unconditional: they're overlay/site elements independent of which
+              building renderer produced the walls underneath them. */}
+          {isPremium ? (
+            <PremiumGlassHouseScene plan={plan} />
+          ) : (
+            <>
+              {floors.map((f) => (
+                <FloorGroup key={f} plan={plan} floor={f} W={W} D={D} openings={openings} entranceId={entranceId} mepMode={mepMode} />
+              ))}
+              <Slabs plan={plan} W={W} D={D} />
+            </>
+          )}
           {structure && <StructuralGrid structure={structure} plan={plan} W={W} D={D} mepMode={mepMode} />}
           <EntrancePorch plan={plan} W={W} D={D} />
           <CompoundWall W={W} D={D} />

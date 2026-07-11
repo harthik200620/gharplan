@@ -60,9 +60,10 @@ export function facingRoadEdge(f: Facing): "N" | "S" | "E" | "W" {
   return f === "NE" || f === "SE" ? "E" : "W";
 }
 
-export function briefToRequest(b: BriefForm): GenerateRequest {
+export function briefToRequest(b: BriefForm, seed?: number): GenerateRequest {
   return {
     bhk: b.bhk,
+    seed: seed && seed > 0 ? seed : undefined,
     plotWidthM: r3(toM(b.widthFt)),
     plotDepthM: r3(toM(b.depthFt)),
     facing: b.facing,

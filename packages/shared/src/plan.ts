@@ -144,4 +144,8 @@ export interface GenerateRequest {
   slopeNote?: string;
   /** Jurisdiction packId override (e.g. "tg-ulb-common") when the real ULB city isn't in the City enum. */
   ulbHint?: string;
+  /** Per-Generate variation seed. 0 or omitted = the deterministic default plan; a
+   *  fresh nonzero seed each click surfaces a different equally-legal, equally-Vastu
+   *  layout (the engine only re-orders candidates already tied on the hard quality gates). */
+  seed?: number;
 }

@@ -21,6 +21,7 @@ ruleset where present (classical fallbacks fill the gaps).
 
 from __future__ import annotations
 
+import random
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -3105,6 +3106,7 @@ def _upper_program(tier, env_w, env_d, min_habitable, min_toilet, vastu, variant
 def _layout_floor(
     program, program_by_id, env, keepout, plot, min_dim, min_habitable,
     min_area_by_type, plot_area, max_cov, stair_col=0, variant=None, code_rules=None,
+    seed: int = 0,
 ) -> tuple[list[PlacedRoom], list[str]]:
     """Optimise ONE floor's program (band sweep + swaps) and return the best placed
     rooms + dropped ids. The stair is pinned to ``stair_col`` so it sits in the
@@ -3196,6 +3198,7 @@ def _layout_floor(
     if variant and variant.climate_first:
         pack_env = _climate_pack_env(env, min_dim)
     best: Optional[tuple] = None
+    rng = random.Random(seed)  # local; only consulted when seed != 0
 
     def _eval_candidate(placed_rooms: list[PlacedRoom], base_dropped: list[str]) -> None:
         """Post-process one candidate placement (carve baths, enforce coverage,
@@ -3223,8 +3226,16 @@ def _layout_floor(
         worst_asp = _worst_aspect(placed)
         liv_center = _living_in_center(plan)
         liv_not_largest = _living_not_largest(placed)
-        key = (ess_drop, code.summary.fail_count, kd_bad, aspect_bad, liv_center,
-               -round(vastu.score), worst_asp, len(all_dropped), liv_not_largest)
+        if seed:
+            # (essential-dropped, code-fails, thin-room) stay inviolable; a seeded
+            # tie-break then dominates the softer preferences so a different but
+            # equally-legal, equally-proportioned layout wins each seed.
+            key = (ess_drop, code.summary.fail_count, aspect_bad, rng.random(),
+                   kd_bad, liv_center, -round(vastu.score), worst_asp, len(all_dropped),
+                   liv_not_largest)
+        else:
+            key = (ess_drop, code.summary.fail_count, kd_bad, aspect_bad, liv_center,
+                   -round(vastu.score), worst_asp, len(all_dropped), liv_not_largest)
         if best is None or key < best[0]:
             best = (key, placed, all_dropped)
 
@@ -3268,7 +3279,7 @@ def _generate_multifloor(
     bhk, plot, floors, tier, footprint, env, keepout, plot_area, max_cov,
     min_dim, min_habitable, min_kitchen, min_toilet, min_area_by_type,
     vastu_rules, project_name, variant=None, edits=None, family_profile="nuclear",
-    family_persona=None, code_rules=None,
+    family_persona=None, code_rules=None, seed: int = 0,
 ) -> tuple[Plan, object, object, dict]:
     """G+1 / G+2: a social ground floor + an upper floor of family living and
     ensuite bedrooms, each room tagged with its ``floor``. The bhk is honoured
@@ -3310,12 +3321,12 @@ def _generate_multifloor(
     g_placed, g_drop = _layout_floor(
         ground, {r.id: r for r in ground}, env, keepout, plot, min_dim,
         min_habitable, min_area_by_type, plot_area, max_cov, stair_col=1, variant=variant,
-        code_rules=code_rules,
+        code_rules=code_rules, seed=seed,
     )
     u_placed, u_drop = _layout_floor(
         upper, {r.id: r for r in upper}, env, keepout, plot, min_dim,
         min_habitable, min_area_by_type, plot_area, max_cov, stair_col=1, variant=variant,
-        code_rules=code_rules,
+        code_rules=code_rules, seed=(seed + 7919 if seed else 0),
     )
     if not g_placed or not u_placed:
         raise ValueError("could not lay out a multi-floor plan for the given brief")
@@ -3435,8 +3446,18 @@ def generate_plan(
     vastu_rules: Optional[VastuRules] = None,
     variant: Optional["VariantProfile"] = None,
     edits: Optional["EditOverrides"] = None,
+    seed: int = 0,
 ) -> tuple[Plan, object, object, dict]:
     """Deterministically generate a Vastu-aware plan for the brief.
+
+    ``seed`` drives per-Generate variation. ``seed == 0`` (the default) is a strict
+    no-op: the candidate ranking is byte-identical to the original deterministic
+    sweep, so every determinism test stays green. A nonzero ``seed`` inserts a
+    seeded tie-break into the ranking key *after* the hard quality gates
+    (no essential room dropped, zero code fails, no thin/ugly rooms) but *before*
+    the softer preferences (Vastu score, kitchen-dining adjacency, coverage) — so a
+    different but equally-legal, equally-sound layout wins each seed while quality can
+    never regress below those gates. Same seed → same plan (reproducible).
 
     Returns ``(plan, vastu_report, code_report, meta)`` where ``meta`` carries
     ``{vastuScore, vastuGrade, codeFails, droppedRooms, attempts, tier,
@@ -3594,6 +3615,9 @@ def generate_plan(
     name = project_name or (
         f"Generated {effective_tier} — {plot.facing.value}-facing ({plot.state.value})"
     )
+    # Per-Generate variation: a local, isolated RNG consulted ONLY when seed != 0.
+    # seed == 0 leaves every ranking key byte-identical to the deterministic default.
+    rng = random.Random(seed)
 
     # --- MULTI-FLOOR (G+1/G+2): a social ground floor + upper floor(s) of family
     # living and ensuite bedrooms. Bedrooms move upstairs, so the requested bhk is
@@ -3607,6 +3631,7 @@ def generate_plan(
                 family_profile=plot.family_profile.value,
                 family_persona=plot.family_persona,
                 code_rules=code_rules,
+                seed=seed,
             )
         except ValueError:
             if not auto_storey:
@@ -3632,7 +3657,10 @@ def generate_plan(
             _assert_inside(placed, env)
             plan = _build_plan(placed, plot, env, name, edits, variant)
             plan, vastu, code = _score_candidate(plan, code_rules)
-            key = (code.summary.fail_count, -round(vastu.score))
+            key = (
+                (code.summary.fail_count, rng.random()) if seed
+                else (code.summary.fail_count, -round(vastu.score))
+            )
             if best_studio is None or key < best_studio.score_key:
                 best_studio = _Candidate(plan=plan, vastu=vastu, code=code, dropped=[], score_key=key)
         assert best_studio is not None
@@ -3801,17 +3829,33 @@ def generate_plan(
         worst_asp = _worst_aspect(placed)
         liv_center = _living_in_center(plan)
         liv_not_largest = _living_not_largest(placed)
+        ed = essential_dropped(all_dropped)
+        cf = code.summary.fail_count
         if variant is not None and variant.prefer_area:
-            key = (
-                essential_dropped(all_dropped), code.summary.fail_count, kd_bad, aspect_bad,
+            default_key = (
+                ed, cf, kd_bad, aspect_bad,
                 liv_center, len(all_dropped), -round(cov), -round(vastu.score), worst_asp,
                 liv_not_largest,
             )
+            seeded_rest = (
+                kd_bad, liv_center, len(all_dropped), -round(cov), -round(vastu.score),
+                worst_asp, liv_not_largest,
+            )
         else:
-            key = (
-                essential_dropped(all_dropped), code.summary.fail_count, kd_bad, aspect_bad,
+            default_key = (
+                ed, cf, kd_bad, aspect_bad,
                 liv_center, -round(vastu.score), worst_asp, len(all_dropped), liv_not_largest,
             )
+            seeded_rest = (
+                kd_bad, liv_center, -round(vastu.score), worst_asp, len(all_dropped),
+                liv_not_largest,
+            )
+        # seed != 0: keep (essential-dropped, code-fails, thin-room) as inviolable hard
+        # gates, then let a seeded tie-break dominate the softer preferences — a
+        # different but equally-legal, equally-well-proportioned layout wins each seed.
+        # seed == 0 uses the original ranking key byte-for-byte (rng.random() is never
+        # evaluated), so every determinism test stays green.
+        key = (ed, cf, aspect_bad, rng.random(), *seeded_rest) if seed else default_key
         candidates.append(
             _Candidate(plan=plan, vastu=vastu, code=code, dropped=all_dropped, score_key=key)
         )
@@ -3917,6 +3961,7 @@ def generate_options(
     vastu_rules: Optional[VastuRules] = None,
     max_options: int = 5,
     similarity_threshold: float = 0.90,
+    seed: int = 0,
 ) -> list[dict]:
     """Run the brief through every :data:`VARIANT_PROFILES` strategy and return up
     to ``max_options`` options, each a dict ``{variantId, variantName,
@@ -3936,14 +3981,18 @@ def generate_options(
     foot = buildable_footprint_sqm(plot, code_rules)
 
     raw: list[dict] = []
-    for vp in VARIANT_PROFILES:
+    for vi, vp in enumerate(VARIANT_PROFILES):
         if vp.min_footprint_sqm and foot < vp.min_footprint_sqm:
             continue  # e.g. a courtyard isn't worth its floor area on a small plot
+        # Offset the seed per variant (distinct prime stride) so the five schemes
+        # don't all shift to the same alternate layout in lockstep. seed == 0 keeps
+        # every variant on its deterministic default.
+        v_seed = seed + vi * 1009 if seed else 0
         try:
             plan, vastu, code, meta = generate_plan(
                 bhk=bhk, plot=plot, floors=floors, vastu_priority=vastu_priority,
                 project_name=project_name, code_rules=code_rules,
-                vastu_rules=vastu_rules, variant=vp,
+                vastu_rules=vastu_rules, variant=vp, seed=v_seed,
             )
         except ValueError:
             continue
@@ -3973,6 +4022,7 @@ def generate_options(
         plan, vastu, code, meta = generate_plan(
             bhk=bhk, plot=plot, floors=floors, vastu_priority=vastu_priority,
             project_name=project_name, code_rules=code_rules, vastu_rules=vastu_rules,
+            seed=seed,
         )
         return [{
             "variantId": "default", "variantName": "Recommended Plan",

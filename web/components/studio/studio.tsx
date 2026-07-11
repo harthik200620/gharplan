@@ -76,7 +76,10 @@ export function Studio() {
     setEdits([]);
     setEditNote(null);
     try {
-      const res = await engine.generateOptions(briefToRequest(brief));
+      // A fresh seed each click so Generate explores a different (still legal, still
+      // Vastu) layout instead of returning the byte-identical deterministic default.
+      const seed = Math.floor(Math.random() * 2_000_000_000) + 1;
+      const res = await engine.generateOptions(briefToRequest(brief, seed));
       if (!res.options.length) throw new Error("No feasible design for this brief");
       setOptions(res.options);
       setSelected(0);

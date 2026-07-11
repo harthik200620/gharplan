@@ -89,6 +89,11 @@ class GenerateRequest(CamelModel):
         description="Jurisdiction packId override (e.g. 'tg-ulb-common') used when the "
         "real ULB city is not in the City enum",
     )
+    seed: int = Field(
+        default=0,
+        description="Per-Generate variation seed. 0 = the deterministic default plan; "
+        "a fresh nonzero seed surfaces a different equally-legal, equally-Vastu layout.",
+    )
 
     @field_validator("plot_width_m", "plot_depth_m")
     @classmethod
@@ -185,6 +190,7 @@ def plan_generate(req: GenerateRequest) -> GenerateResponse:
                 plot.state.value, plot.city.value, ulb_hint=req.ulb_hint
             ),
             vastu_rules=get_vastu_rules(),
+            seed=req.seed,
         )
     except ValueError as exc:
         raise HTTPException(
@@ -232,6 +238,7 @@ def plan_options(req: GenerateRequest) -> GenerateOptionsResponse:
                 plot.state.value, plot.city.value, ulb_hint=req.ulb_hint
             ),
             vastu_rules=get_vastu_rules(),
+            seed=req.seed,
         )
     except ValueError as exc:
         raise HTTPException(

@@ -73,3 +73,45 @@ def test_area_statement_matches_code_metrics(sample_plan):
     rows = area_statement(plan, code.metrics)
     labels = [r["label"] for r in rows]
     assert labels == ["Plot area", "Built-up area", "Ground coverage", "FAR (used / allowed)", "Number of floors"]
+
+
+def test_dxf_wiring_on_separate_conduit_layers(sample_plan):
+    """Sub-mains, switch-legs and dedicated radials each land on their own CAD layer,
+    and switch-legs (board → every light / fan / socket) outnumber the sub-mains."""
+    from collections import Counter
+
+    plan, _ = normalize(sample_plan)
+    code = check_code(plan, get_code_rules())
+    doc = ezdxf.read(io.StringIO(build_dxf(plan, code).decode("latin-1")))
+    counts = Counter(e.dxf.layer for e in doc.modelspace() if e.dxf.layer.startswith("MEP_CONDUIT"))
+    assert counts["MEP_CONDUIT_SUBMAIN"] > 0
+    assert counts["MEP_CONDUIT_DEDICATED"] > 0
+    assert counts["MEP_CONDUIT_SWITCHLEG"] > counts["MEP_CONDUIT_SUBMAIN"]
+
+
+def test_pdf_ships_the_mep_section(sample_plan, monkeypatch):
+    """The client PDF now renders the MEP services sheets (previously the MepFlowable
+    render code was orphaned and never added to the story). build_mep_model is
+    invoked once per MepFlowable + the legend, so a nonzero call count proves the
+    section reached the document."""
+    from app.exporters import pdf as pdf_mod
+    from app.services.rules import get_vastu_rules
+    from app.services.vastu_service import check_vastu
+
+    plan, _ = normalize(sample_plan)
+    calls = {"n": 0}
+    real = pdf_mod.build_mep_model
+
+    def spy(*a, **k):
+        calls["n"] += 1
+        return real(*a, **k)
+
+    monkeypatch.setattr(pdf_mod, "build_mep_model", spy)
+    out = pdf_mod.build_pdf(
+        plan,
+        check_vastu(plan, get_vastu_rules()),
+        check_code(plan, get_code_rules()),
+        _boq(plan),
+    )
+    assert out[:5] == b"%PDF-"
+    assert calls["n"] >= 3  # electrical + plumbing sheet + services legend

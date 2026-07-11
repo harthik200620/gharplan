@@ -852,6 +852,34 @@ def build_pdf(
         story.append(Spacer(1, 6))
     story.append(PageBreak())
 
+    # 3b. MEP SERVICES — electrical + plumbing coordination sheets. The MepFlowable
+    # render code existed but was never appended to the story, so the client PDF
+    # shipped no services drawing at all despite advertising "MEP services". Wire it
+    # in: an electrical sheet and a plumbing sheet per floor, plus the services legend.
+    story.append(Paragraph("MEP Services", h1))
+    story.append(Paragraph("Electrical, water-supply & drainage coordination", h2))
+    story.append(
+        Paragraph(
+            "Indicative services coordination — switchboards, distribution board, "
+            "lighting and power circuits, water supply and drainage. Not for tendering; "
+            "verify with a licensed MEP consultant.",
+            small,
+        )
+    )
+    story.append(Spacer(1, 8))
+    for f in floors:
+        fl = f if len(floors) > 1 else None
+        if len(floors) > 1:
+            story.append(Paragraph(f"Floor {f}", h3))
+        story.append(Paragraph("Electrical layout", h3))
+        story.append(MepFlowable(plan, fl, "electrical"))
+        story.append(Spacer(1, 6))
+        story.append(Paragraph("Plumbing layout", h3))
+        story.append(MepFlowable(plan, fl, "plumbing"))
+        story.append(Spacer(1, 10))
+    story.append(_mep_legend(plan, floors[0] if len(floors) > 1 else None, small))
+    story.append(PageBreak())
+
     # 4. VASTU ANALYSIS
     story.append(Paragraph("Vastu Analysis", h1))
     story.append(Paragraph(f"Overall Score: {vastu.score}/100 — Grade: {vastu.grade}", h2))

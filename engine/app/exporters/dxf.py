@@ -282,7 +282,10 @@ def _draw_mep(msp, doc, plan: Plan, floor: Optional[int], dx: float, dy: float):
     m = build_mep_model(plan, floor)
     for name, aci in [
         ("MEP_SHAFT", 2), ("MEP_FIXTURE", 7), ("MEP_ELEC", 2), ("MEP_DB", 1),
-        ("MEP_CONDUIT", 8), ("MEP_NODE", 30), ("MEP_TEXT", 7),
+        # conductor runs on separate layers by class, the way a real electrical DXF
+        # keeps sub-mains, switch-legs and dedicated radials independently toggleable
+        ("MEP_CONDUIT_SUBMAIN", 6), ("MEP_CONDUIT_SWITCHLEG", 8),
+        ("MEP_CONDUIT_DEDICATED", 4), ("MEP_NODE", 30), ("MEP_TEXT", 7),
     ]:
         _ensure(doc, name, aci)
     for s, aci in SERVICE_ACI.items():
@@ -299,8 +302,16 @@ def _draw_mep(msp, doc, plan: Plan, floor: Optional[int], dx: float, dy: float):
         msp.add_circle((dx + fx.x, dy + fx.y), 0.18, dxfattribs={"layer": "MEP_FIXTURE"})
         _text(msp, FIXTURE_CODE.get(fx.kind, "?"), dx + fx.x, dy + fx.y, 0.12, "MEP_FIXTURE", TextEntityAlignment.MIDDLE_CENTER)
 
+    _conduit_layer = {
+        "home_run": "MEP_CONDUIT_SUBMAIN",
+        "switch_leg": "MEP_CONDUIT_SWITCHLEG",
+        "dedicated": "MEP_CONDUIT_DEDICATED",
+    }
     for cd in m.conduits:
-        msp.add_lwpolyline(_off(cd.points, dx, dy), dxfattribs={"layer": "MEP_CONDUIT"})
+        msp.add_lwpolyline(
+            _off(cd.points, dx, dy),
+            dxfattribs={"layer": _conduit_layer.get(cd.kind, "MEP_CONDUIT_SUBMAIN")},
+        )
     for ep in m.elec:
         if ep.kind == "db":
             continue
@@ -516,13 +527,20 @@ def build_dxf(
     if structural is not None:
         _draw_structural(msp, doc, plan, structural, 0.0, sec_ffl - (LEVELS.FOOTING + gap + 4.0) - d)
 
-    # --- MEP overlay, to the right of the plan ---
+    # --- MEP overlay, one block per floor to the right of the plan (previously only
+    #     the ground floor's services were exported for a multi-storey house) ---
     mep_x = plan_span_x + 4.0
-    _draw_mep(msp, doc, plan, floors[0] if multi else None, mep_x, 0.0)
+    for i, f in enumerate(floors):
+        fx = mep_x + i * (w + gap)
+        _draw_mep(msp, doc, plan, f if multi else None, fx, 0.0)
+        if multi:
+            _text(msp, f"{sched.floor_name(f).upper()} - MEP", fx, d + 0.6, 0.3, "MEP_TEXT")
+    mep_span_x = max(1, len(floors)) * (w + gap)
 
     # --- schedules, to the right of the MEP overlay ---
-    _draw_schedules(msp, doc, plan, code, mep_x + w + 4.0, d)
-    _draw_general_notes(msp, doc, plan, mep_x + w + 4.0, d - 10.0)
+    sched_x = mep_x + mep_span_x + 4.0
+    _draw_schedules(msp, doc, plan, code, sched_x, d)
+    _draw_general_notes(msp, doc, plan, sched_x, d - 10.0)
 
 
     stream = io.StringIO()

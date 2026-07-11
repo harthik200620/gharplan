@@ -118,7 +118,10 @@ export type Circuit = {
 export type Conduit = {
   id: string;
   roomId: string;
-  /** switchboard → DB, Manhattan polyline. */
+  /** Wiring class: "home_run" (room board → DB sub-main), "switch_leg" (board →
+   *  a light/fan/exhaust/6A socket/bell) or "dedicated" (DB → AC/geyser/16A radial). */
+  kind: "home_run" | "switch_leg" | "dedicated";
+  /** Manhattan polyline for this conductor run. */
   points: [number, number][];
 };
 
@@ -520,14 +523,43 @@ function placeDb(rooms: Room[]): ElecPoint | null {
   };
 }
 
+// Points a room switchboard directly feeds (lighting sub-circuit + small power).
+const BOARD_FED = new Set(["light", "fan", "exhaust", "socket6a", "bell"]);
+// Heavy points wired on their own dedicated radial straight from the DB.
+const DEDICATED = new Set(["ac", "geyser", "socket16a"]);
+
+// The room-level wiring an electrician actually draws — every point joined to the
+// network by a real conductor run: home_run (board→DB sub-main), switch_leg
+// (board→each controlled point), dedicated (DB→each heavy point). Mirrors
+// engine/app/services/mep_model.py::build_conduits exactly.
 function buildConduits(elec: ElecPoint[], db: ElecPoint | null): Conduit[] {
   if (!db) return [];
+  const out: Conduit[] = [];
   const boards = elec.filter((p) => p.kind === "switchboard");
-  return boards.map((b) => ({
-    id: `cd-${b.roomId}`,
-    roomId: b.roomId,
-    points: manhattan([b.x, b.y], [db.x, db.y]),
-  }));
+  const boardByRoom = new Map<string, ElecPoint>();
+  for (const b of boards) boardByRoom.set(b.roomId, b);
+  // sub-mains: room board -> DB
+  for (const b of boards) {
+    out.push({ id: `cd-${b.roomId}`, roomId: b.roomId, kind: "home_run", points: manhattan([b.x, b.y], [db.x, db.y]) });
+  }
+  // switch-legs: room board -> each point it controls (same room)
+  let i = 0;
+  for (const p of elec) {
+    const b = boardByRoom.get(p.roomId);
+    if (BOARD_FED.has(p.kind) && b) {
+      out.push({ id: `sl-${p.roomId}-${i}`, roomId: p.roomId, kind: "switch_leg", points: manhattan([b.x, b.y], [p.x, p.y]) });
+      i++;
+    }
+  }
+  // dedicated radials: DB -> each heavy point
+  let j = 0;
+  for (const p of elec) {
+    if (DEDICATED.has(p.kind)) {
+      out.push({ id: `dc-${p.roomId}-${j}`, roomId: p.roomId, kind: "dedicated", points: manhattan([db.x, db.y], [p.x, p.y]) });
+      j++;
+    }
+  }
+  return out;
 }
 
 // --------------------------------------------------------------------------- //
@@ -893,7 +925,7 @@ export function buildMepModel(plan: Plan, floor?: number): MepModel {
   if (db) {
     const meter = clampPt([db.x, db.y - 0.9], W, D);
     nodes.push({ id: "meter", kind: "meter", x: meter[0], y: meter[1], label: "Meter" });
-    conduits.push({ id: "cd-main", roomId: "service", points: [meter, [db.x, db.y]] });
+    conduits.push({ id: "cd-main", roomId: "service", kind: "home_run", points: [meter, [db.x, db.y]] });
   }
   const circuits = assignCircuits(elec);
 

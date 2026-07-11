@@ -22,7 +22,20 @@ const S = 46; // px per metre
 const PAD = 30; // px margin around the plot
 const ROOM_FILL = "#fafafa";
 
-type Layer = "plumbing" | "electrical";
+// A real architect issues MEP as separate coordinated sheets, not one overlay:
+// Electrical splits into Lighting and Power; Plumbing into Water-Supply and Drainage.
+type Sheet = "lighting" | "power" | "supply" | "drainage";
+const SHEETS: { id: Sheet; label: string; group: "electrical" | "plumbing" }[] = [
+  { id: "lighting", label: "Lighting", group: "electrical" },
+  { id: "power", label: "Power", group: "electrical" },
+  { id: "supply", label: "Water Supply", group: "plumbing" },
+  { id: "drainage", label: "Drainage", group: "plumbing" },
+];
+// Which pipe services / electrical points belong on each sheet.
+const SUPPLY_SERVICES = new Set(["cold", "hot"]);
+const DRAIN_SERVICES = new Set(["soil", "waste", "vent", "rainwater"]);
+const LIGHTING_POINTS = new Set(["light", "fan", "exhaust", "switchboard", "db", "bell"]);
+const POWER_POINTS = new Set(["socket6a", "socket16a", "ac", "geyser", "switchboard", "db"]);
 
 // Every on-drawing label gets a white halo so it stays legible over pipes,
 // conduits, glyphs and room fills. paintOrder="stroke" paints the (white) stroke
@@ -44,8 +57,9 @@ function HaloText({
 }
 
 export function MepPlan({ plan, floor }: { plan: Plan; floor?: number }) {
-  const [layer, setLayer] = React.useState<Layer>("plumbing");
+  const [sheet, setSheet] = React.useState<Sheet>("lighting");
   const model = React.useMemo(() => buildMepModel(plan, floor), [plan, floor]);
+  const group = SHEETS.find((s) => s.id === sheet)!.group;
 
   const W = plan.plot.widthM;
   const D = plan.plot.depthM;
@@ -58,28 +72,37 @@ export function MepPlan({ plan, floor }: { plan: Plan; floor?: number }) {
 
   return (
     <div className="grid gap-3">
-      {/* layer toggle */}
+      {/* sheet toggle — Electrical (Lighting / Power) and Plumbing (Supply / Drainage)
+          issued as separate coordinated sheets, the way an architect draws them */}
       <div className="flex items-center justify-between gap-3">
-        <div className="inline-flex gap-1 rounded-lg border bg-card p-1">
-          {(["plumbing", "electrical"] as Layer[]).map((l) => (
-            <button
-              key={l}
-              onClick={() => setLayer(l)}
-              className={cn(
-                "rounded-md border px-2 py-1 text-xs capitalize transition",
-                layer === l
-                  ? "border-transparent bg-primary text-primary-foreground"
-                  : "border-transparent text-muted-foreground hover:bg-muted",
+        <div className="inline-flex flex-wrap items-center gap-1 rounded-lg border bg-card p-1">
+          {SHEETS.map((s, i) => (
+            <React.Fragment key={s.id}>
+              {i > 0 && SHEETS[i - 1].group !== s.group && (
+                <span className="mx-0.5 h-4 w-px bg-border" aria-hidden />
               )}
-            >
-              {l}
-            </button>
+              <button
+                onClick={() => setSheet(s.id)}
+                className={cn(
+                  "rounded-md border px-2 py-1 text-xs transition",
+                  sheet === s.id
+                    ? "border-transparent bg-primary text-primary-foreground"
+                    : "border-transparent text-muted-foreground hover:bg-muted",
+                )}
+              >
+                {s.label}
+              </button>
+            </React.Fragment>
           ))}
         </div>
         <span className="text-[11px] text-muted-foreground">
-          {layer === "plumbing"
-            ? `${model.wetRooms.length} wet rooms · ${model.fixtures.length} fixtures`
-            : `${model.elec.filter((p) => p.kind === "switchboard").length} boards · ${model.circuits.length} circuits · 1 DB`}
+          {sheet === "lighting"
+            ? `${model.elec.filter((p) => p.kind === "light" || p.kind === "fan").length} light/fan pts · ${model.elec.filter((p) => p.kind === "switchboard").length} boards`
+            : sheet === "power"
+              ? `${model.elec.filter((p) => ["socket6a", "socket16a", "ac", "geyser"].includes(p.kind)).length} power pts · 1 DB`
+              : sheet === "supply"
+                ? `${model.pipes.filter((p) => SUPPLY_SERVICES.has(p.service)).length} supply runs · ${model.fixtures.length} fixtures`
+                : `${model.pipes.filter((p) => DRAIN_SERVICES.has(p.service)).length} drain runs · ${model.wetRooms.length} wet rooms`}
         </span>
       </div>
 
@@ -89,7 +112,7 @@ export function MepPlan({ plan, floor }: { plan: Plan; floor?: number }) {
           width="100%"
           style={{ display: "block", background: "#fff" }}
           role="img"
-          aria-label={`${layer} services plan`}
+          aria-label={`${sheet} services plan`}
         >
           <Defs />
 
@@ -110,10 +133,10 @@ export function MepPlan({ plan, floor }: { plan: Plan; floor?: number }) {
             );
           })}
 
-          {layer === "plumbing" ? (
-            <PlumbingLayer model={model} X={X} Y={Y} />
+          {group === "plumbing" ? (
+            <PlumbingLayer model={model} X={X} Y={Y} sheet={sheet as "supply" | "drainage"} />
           ) : (
-            <ElectricalLayer model={model} X={X} Y={Y} />
+            <ElectricalLayer model={model} X={X} Y={Y} sheet={sheet as "lighting" | "power"} />
           )}
 
           {/* room name tags, tucked into the top-left corner so they don't sit
@@ -138,7 +161,7 @@ export function MepPlan({ plan, floor }: { plan: Plan; floor?: number }) {
         </svg>
 
         <div className="border-t bg-muted/30 px-3 py-2">
-          {layer === "plumbing" ? (
+          {group === "plumbing" ? (
             <PlumbingLegend model={model} />
           ) : (
             <>
@@ -190,7 +213,10 @@ const NODE_STYLE: Record<string, { color: string; sym: string }> = {
   septic: { color: "#6b4423", sym: "ST" },
   rainpit: { color: "#7c3aed", sym: "RWH" },
 };
-const PLUMB_NODES = new Set(["oht", "sump", "pump", "inspection", "septic", "rainpit"]);
+// Whole-house plant split across the two plumbing sheets: storage/boost on Supply,
+// disposal on Drainage. The energy meter is the only plant on the electrical sheets.
+const SUPPLY_NODES = new Set(["oht", "sump", "pump"]);
+const DRAIN_NODES = new Set(["inspection", "septic", "rainpit"]);
 const ELEC_NODES = new Set(["meter"]);
 
 function NodeGlyph({ node, X, Y }: { node: MepNode; X: Proj; Y: Proj }) {
@@ -254,16 +280,19 @@ function CircuitSchedule({ model }: { model: MepModel }) {
 /* PLUMBING                                                                     */
 /* --------------------------------------------------------------------------- */
 
-function PlumbingLayer({ model, X, Y }: { model: MepModel; X: Proj; Y: Proj }) {
+function PlumbingLayer({ model, X, Y, sheet }: { model: MepModel; X: Proj; Y: Proj; sheet: "supply" | "drainage" }) {
+  const services = sheet === "supply" ? SUPPLY_SERVICES : DRAIN_SERVICES;
+  const nodeKinds = sheet === "supply" ? SUPPLY_NODES : DRAIN_NODES;
+  const pipes = model.pipes.filter((p) => services.has(p.service));
   return (
     <g>
       {/* pipe runs first, so fixtures/shaft draw on top of the ends */}
-      {model.pipes.map((p) => (
+      {pipes.map((p) => (
         <Pipe key={p.id} run={p} X={X} Y={Y} />
       ))}
 
-      {/* shaft */}
-      {model.shaft && (
+      {/* shaft — the drainage riser; only on the drainage sheet */}
+      {sheet === "drainage" && model.shaft && (
         <g>
           <rect
             x={X(model.shaft.x)}
@@ -292,11 +321,11 @@ function PlumbingLayer({ model, X, Y }: { model: MepModel; X: Proj; Y: Proj }) {
         <FixtureGlyph key={f.id} fx={f} X={X} Y={Y} />
       ))}
 
-      {/* whole-house plant: OHT, sump + pump, inspection chamber, septic, rain pit */}
-      <ServiceNodes nodes={model.nodes} X={X} Y={Y} kinds={PLUMB_NODES} />
+      {/* whole-house plant for this sheet: storage/boost on Supply, disposal on Drainage */}
+      <ServiceNodes nodes={model.nodes} X={X} Y={Y} kinds={nodeKinds} />
 
       {/* pipe size/slope labels last → always on top of lines & glyphs, with halo */}
-      {dedupePipeLabels(model.pipes).map((p) => (
+      {dedupePipeLabels(pipes).map((p) => (
         <PipeLabel key={`lbl-${p.id}`} run={p} X={X} Y={Y} />
       ))}
     </g>
@@ -486,14 +515,19 @@ function PlumbingLegend({ model }: { model: MepModel }) {
 /* ELECTRICAL                                                                   */
 /* --------------------------------------------------------------------------- */
 
-function ElectricalLayer({ model, X, Y }: { model: MepModel; X: Proj; Y: Proj }) {
+function ElectricalLayer({ model, X, Y, sheet }: { model: MepModel; X: Proj; Y: Proj; sheet: "lighting" | "power" }) {
+  const pointKinds = sheet === "lighting" ? LIGHTING_POINTS : POWER_POINTS;
+  // Lighting sheet shows the switched network (sub-mains + switch-legs); Power sheet
+  // shows the sub-mains + the dedicated radials to heavy points.
+  const conduitKinds =
+    sheet === "lighting" ? new Set(["home_run", "switch_leg"]) : new Set(["home_run", "dedicated"]);
   return (
     <g>
-      {/* conduits behind the symbols */}
-      {model.conduits.map((c) => (
+      {/* conductor runs behind the symbols */}
+      {model.conduits.filter((c) => conduitKinds.has(c.kind)).map((c) => (
         <ConduitLine key={c.id} cd={c} X={X} Y={Y} />
       ))}
-      {model.elec.map((p) => (
+      {model.elec.filter((p) => pointKinds.has(p.kind)).map((p) => (
         <ElecGlyph key={p.id} pt={p} X={X} Y={Y} />
       ))}
       {/* energy meter at the entry */}
@@ -520,15 +554,24 @@ function buildConduitPath(points: [number, number][]): string {
   return d;
 }
 
+// Each conductor class reads distinctly, the way an electrician's key differentiates
+// them: sub-main solid & heavy, switch-leg thin dashed, dedicated radial dotted.
+const CONDUIT_STYLE: Record<string, { stroke: string; width: number; dash?: string }> = {
+  home_run: { stroke: "#b45309", width: 1.7 },
+  switch_leg: { stroke: "#ca8a04", width: 1.0, dash: "4 4" },
+  dedicated: { stroke: "#0891b2", width: 1.4, dash: "1 4" },
+};
+
 function ConduitLine({ cd, X, Y }: { cd: Conduit; X: Proj; Y: Proj }) {
   const pts = cd.points.map((p) => [X(p[0]), Y(p[1])] as [number, number]);
+  const st = CONDUIT_STYLE[cd.kind] ?? CONDUIT_STYLE.home_run;
   return (
     <path
       d={buildConduitPath(pts)}
       fill="none"
-      stroke="#ca8a04" // richer color for better visibility
-      strokeWidth={1.2}
-      strokeDasharray="4 4"
+      stroke={st.stroke}
+      strokeWidth={st.width}
+      strokeDasharray={st.dash}
       strokeLinejoin="round"
       strokeLinecap="round"
     />
@@ -671,6 +714,30 @@ function ElectricalLegend() {
       ),
     },
     { label: "EF exhaust · GS geyser · B bell", node: null },
+    {
+      label: "Sub-main (board→DB)",
+      node: (
+        <svg width="18" height="10">
+          <line x1="1" y1="5" x2="17" y2="5" stroke="#b45309" strokeWidth="1.7" />
+        </svg>
+      ),
+    },
+    {
+      label: "Switch-leg (board→light/fan)",
+      node: (
+        <svg width="18" height="10">
+          <line x1="1" y1="5" x2="17" y2="5" stroke="#ca8a04" strokeWidth="1" strokeDasharray="4 4" />
+        </svg>
+      ),
+    },
+    {
+      label: "Dedicated radial (DB→AC/geyser)",
+      node: (
+        <svg width="18" height="10">
+          <line x1="1" y1="5" x2="17" y2="5" stroke="#0891b2" strokeWidth="1.4" strokeDasharray="1 4" />
+        </svg>
+      ),
+    },
   ];
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-muted-foreground">

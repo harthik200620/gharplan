@@ -99,6 +99,10 @@ class Conduit:
     id: str
     room_id: str
     points: list[tuple[float, float]]
+    # Wiring class: "home_run" (room board -> DB sub-main), "switch_leg" (board ->
+    # a light / fan / exhaust / 6A socket / bell it controls) or "dedicated" (a
+    # radial straight from the DB to a heavy point: AC / geyser / 16A socket).
+    kind: str = "home_run"
 
 
 @dataclass
@@ -452,14 +456,58 @@ def place_db(rooms: list[Room]) -> Optional[ElecPoint]:
     )
 
 
+# Points a room switchboard directly feeds (lighting sub-circuit + small power).
+_BOARD_FED = {"light", "fan", "exhaust", "socket6a", "bell"}
+# Heavy points wired on their own dedicated radial straight from the DB.
+_DEDICATED = {"ac", "geyser", "socket16a"}
+
+
 def build_conduits(elec: list[ElecPoint], db: Optional[ElecPoint]) -> list[Conduit]:
+    """The room-level wiring an electrician actually draws — every point joined to
+    the network by a real conductor run, not left floating:
+      * ``home_run``  — each room's switchboard back to the DB (the sub-main),
+      * ``switch_leg`` — the board out to each light / fan / exhaust / 6A socket /
+        bell it controls,
+      * ``dedicated`` — a radial from the DB to each heavy point (AC / geyser /
+        16A socket) on its own circuit.
+    """
     if not db:
         return []
+    out: list[Conduit] = []
     boards = [p for p in elec if p.kind == "switchboard"]
-    return [
-        Conduit(id=f"cd-{b.room_id}", room_id=b.room_id, points=manhattan((b.x, b.y), (db.x, db.y)))
-        for b in boards
-    ]
+    board_by_room: dict[str, ElecPoint] = {b.room_id: b for b in boards}
+    # sub-mains: room board -> DB
+    for b in boards:
+        out.append(
+            Conduit(
+                id=f"cd-{b.room_id}", room_id=b.room_id,
+                points=manhattan((b.x, b.y), (db.x, db.y)), kind="home_run",
+            )
+        )
+    # switch-legs: room board -> each point it controls (same room)
+    i = 0
+    for p in elec:
+        b = board_by_room.get(p.room_id)
+        if p.kind in _BOARD_FED and b is not None:
+            out.append(
+                Conduit(
+                    id=f"sl-{p.room_id}-{i}", room_id=p.room_id,
+                    points=manhattan((b.x, b.y), (p.x, p.y)), kind="switch_leg",
+                )
+            )
+            i += 1
+    # dedicated radials: DB -> each heavy point
+    j = 0
+    for p in elec:
+        if p.kind in _DEDICATED:
+            out.append(
+                Conduit(
+                    id=f"dc-{p.room_id}-{j}", room_id=p.room_id,
+                    points=manhattan((db.x, db.y), (p.x, p.y)), kind="dedicated",
+                )
+            )
+            j += 1
+    return out
 
 
 # --------------------------------------------------------------------------- #

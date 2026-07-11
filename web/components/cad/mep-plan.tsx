@@ -540,6 +540,27 @@ function ElectricalLayer({ model, X, Y, sheet }: { model: MepModel; X: Proj; Y: 
       ))}
       {/* energy meter at the entry */}
       <ServiceNodes nodes={model.nodes} X={X} Y={Y} kinds={ELEC_NODES} />
+      {/* cooling load (tons of refrigeration) beside each AC point on the Power sheet */}
+      {sheet === "power" &&
+        model.elec
+          .filter((p) => p.kind === "ac")
+          .map((ac) => {
+            const h = model.hvac.find((x) => x.roomId === ac.roomId);
+            return h ? (
+              <HaloText
+                key={`tr-${ac.id}`}
+                x={X(ac.x)}
+                y={Y(ac.y) - 9}
+                textAnchor="middle"
+                fontSize={7.5}
+                fontWeight={700}
+                fill="#0891b2"
+                halo={2.4}
+              >
+                {h.tons.toFixed(1)} TR
+              </HaloText>
+            ) : null;
+          })}
     </g>
   );
 }

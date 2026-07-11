@@ -984,3 +984,91 @@ def test_modern_variant_with_linear_bar_candidate_stays_valid_on_extreme_aspect_
         plot = _plot("KA", city="Bengaluru", facing="E", w=w, d=d)
         plan, _, code, _ = generate_plan(3, plot, floors=1, variant=modern_vp)
         assert code.summary.fail_count == 0, f"modern variant fails on {w}x{d} plot"
+
+
+# --------------------------------------------------------------------------- #
+# R10 — a genuinely different algorithm for Vastu-First too: direct 3x3 pada
+# assignment (the classical Pada Vinyasa method) instead of VastuGridPacker's
+# band-then-swap search. Tested directly plus a wiring/regression check.
+# --------------------------------------------------------------------------- #
+def test_mandala_grid_pack_places_every_room_in_its_compass_pada_with_no_overlap():
+    from shapely.geometry import box as shapely_box
+
+    from app.generator.designer import ProgramRoom, RoomType, _mandala_grid_pack
+
+    env = (0.0, 0.0, 12.0, 12.0)
+    program = [
+        ProgramRoom("pooja", RoomType.pooja, 4.0, ["NE"], 3),
+        ProgramRoom("living", RoomType.living, 20.0, ["E"], 8),
+        ProgramRoom("kitchen", RoomType.kitchen, 10.0, ["SE"], 8),
+        ProgramRoom("master", RoomType.master_bedroom, 16.0, ["SW"], 9),
+        ProgramRoom("bedroom", RoomType.bedroom, 12.0, ["N"], 7),
+        ProgramRoom("stair", RoomType.staircase, 4.0, ["S"], 6),
+        ProgramRoom("entrance", RoomType.entrance, 3.0, ["NE"], 4),
+    ]
+    placed = _mandala_grid_pack(program, env, min_dim=2.4)
+    assert len(placed) == len(program), "every program room must land somewhere"
+
+    boxes = {p.id: shapely_box(p.x0, p.y0, p.x1, p.y1) for p in placed}
+    ids = list(boxes)
+    for i in range(len(ids)):
+        for j in range(i + 1, len(ids)):
+            assert boxes[ids[i]].intersection(boxes[ids[j]]).area < 1e-6, (
+                f"{ids[i]} overlaps {ids[j]}"
+            )
+    for p in placed:
+        assert p.x0 >= -1e-6 and p.x1 <= 12.0 + 1e-6
+        assert p.y0 >= -1e-6 and p.y1 <= 12.0 + 1e-6
+
+    # Compass placement is real, not incidental: master (SW) anchors in the
+    # west-south corner, pooja/entrance (NE) anchor in the east-north corner.
+    # (A room can still grow into a neighbouring row/column that drew nothing
+    # of its own — e.g. master is the sole occupant of column 0 here and
+    # legitimately fills its whole height — so this checks the room's ANCHOR
+    # corner, not that its full extent never crosses the envelope's midline.)
+    master = next(p for p in placed if p.id == "master")
+    pooja = next(p for p in placed if p.id == "pooja")
+    assert master.x0 < 6.0 and master.y0 < 6.0, "master (SW) isn't anchored in the SW corner"
+    assert pooja.x1 > 6.0 and pooja.y1 > 6.0, "pooja (NE) isn't anchored in the NE corner"
+
+
+def test_mandala_grid_pack_reserves_a_real_open_brahmasthan():
+    # The defining trait vs. hoping neighbours leave a gap: the centre pada
+    # is an EXPLICIT reservation (mirrors _courtyard_reservation's sizing),
+    # so it survives even when a column's other two rows don't both have
+    # content to naturally box it in.
+    from shapely.geometry import box as shapely_box
+
+    from app.generator.designer import ProgramRoom, RoomType, _mandala_grid_pack
+
+    env = (0.0, 0.0, 14.0, 14.0)
+    program = [
+        ProgramRoom("living", RoomType.living, 22.0, ["E"], 8),
+        ProgramRoom("master", RoomType.master_bedroom, 16.0, ["SW"], 9),
+        ProgramRoom("kitchen", RoomType.kitchen, 10.0, ["SE"], 8),
+        ProgramRoom("stair", RoomType.staircase, 4.0, ["S"], 6),  # only S populated -> col 1 row 0 only
+    ]
+    placed = _mandala_grid_pack(program, env, min_dim=2.4)
+    assert placed
+
+    full = shapely_box(0.0, 0.0, 14.0, 14.0)
+    union = shapely_box(placed[0].x0, placed[0].y0, placed[0].x1, placed[0].y1)
+    for p in placed[1:]:
+        union = union.union(shapely_box(p.x0, p.y0, p.x1, p.y1))
+    gap = full.difference(union)
+    assert gap.area > 4.0, (
+        f"no real Brahmasthan gap survived (area={gap.area:.2f}) — a lone "
+        "occupant of column 1 swallowed the reserved centre instead of "
+        "leaving it open"
+    )
+
+
+def test_vastu_variant_with_mandala_candidate_stays_valid_on_a_range_of_plots():
+    # Wiring/regression check: the vastu-first variant now also sweeps a
+    # genuinely different algorithm (see _mandala_grid_pack) alongside the
+    # banded ones. Confirm this stays 0-fail-valid, not just non-crashing.
+    vastu_vp = next(v for v in VARIANT_PROFILES if v.id == "vastu")
+    for w, d in [(9.144, 12.192), (12.0, 15.0), (15.0, 12.0)]:
+        plot = _plot("KA", city="Bengaluru", facing="E", w=w, d=d)
+        plan, _, code, _ = generate_plan(3, plot, floors=1, variant=vastu_vp)
+        assert code.summary.fail_count == 0, f"vastu variant fails on {w}x{d} plot"

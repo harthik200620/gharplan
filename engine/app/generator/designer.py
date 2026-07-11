@@ -2257,6 +2257,142 @@ def _linear_bar_pack(
     return placed
 
 
+# --------------------------------------------------------------------------- #
+# VASTU PURUSHA MANDALA PADA-ASSIGNMENT — a second genuinely different
+# algorithm, for the Vastu-First variant. Not another VastuGridPacker config:
+# this doesn't band-then-swap-then-rank at all. It directly partitions the
+# envelope into the classical 3x3 grid of PADAS (using _ZONE_CELL, an
+# already-designed-but-never-wired compass->cell mapping) and assigns each
+# room to its pada by straight zone lookup — the textbook Pada Vinyasa method
+# real Vastu consultants use, not a constraint-ranking search. The centre
+# pada is NEVER built on (classical Brahmasthan) — it naturally comes out as
+# a hole that the existing void-fill machinery already dresses as a proper
+# open courtyard, so "keep Brahmasthan open" falls out of the algorithm's
+# structure instead of being a packer flag.
+# --------------------------------------------------------------------------- #
+def _mandala_zone_of(r: "ProgramRoom") -> str:
+    """The first ideal zone usable as a pada key (never CENTER — a room that
+    only wants CENTER is bumped to its next preference, or W as a last resort,
+    since the centre pada is reserved as the open Brahmasthan)."""
+    for z in r.ideal_zones:
+        if z in _ZONE_CELL and z != "CENTER":
+            return z
+    return "W"
+
+
+def _pack_sequence_in_rect(
+    rooms: list["ProgramRoom"], rect: tuple[float, float, float, float], min_dim: float,
+) -> list[PlacedRoom]:
+    """Slice >=1 rooms into a single rect as a mini bar-pack (area-proportional,
+    along the rect's longer axis, each slice floored at ``min_dim`` and
+    rescaled like ``_linear_bar_pack``) — used to fill one pada that drew more
+    than one room. The floor matters: a small-area room (e.g. a stair) sharing
+    a pada with a bigger one must never be sliced down to a code-illegal
+    sliver by pure area proportion."""
+    x0, y0, x1, y1 = rect
+    w, d = x1 - x0, y1 - y0
+    if not rooms or w <= 1e-6 or d <= 1e-6:
+        return []
+    along_x = w >= d
+    length = w if along_x else d
+    total_area = sum(max(r.target_sqm, 0.5) for r in rooms)
+    shares = [max(length * (max(r.target_sqm, 0.5) / total_area), min_dim) for r in rooms]
+    total_share = sum(shares)
+    if total_share > length:
+        shares = [s * (length / total_share) for s in shares]
+    elif total_share < length:
+        _HAB = ("living", "master_bedroom", "bedroom", "childrens_bedroom", "study")
+        hab_idx = [i for i, r in enumerate(rooms) if r.type.value in _HAB]
+        grow_i = max(hab_idx, key=lambda i: shares[i]) if hab_idx else 0
+        shares[grow_i] += (length - total_share)
+    placed: list[PlacedRoom] = []
+    cursor = 0.0
+    for r, share in zip(rooms, shares):
+        if along_x:
+            placed.append(PlacedRoom(r.id, r.type, x0 + cursor, y0, x0 + cursor + share, y1, r.ceiling_height_m))
+        else:
+            placed.append(PlacedRoom(r.id, r.type, x0, y0 + cursor, x1, y0 + cursor + share, r.ceiling_height_m))
+        cursor += share
+    return placed
+
+
+def _mandala_grid_pack(
+    program: list["ProgramRoom"], env: tuple[float, float, float, float], min_dim: float,
+) -> list[PlacedRoom]:
+    """Direct 3x3 Vastu Purusha Mandala pada assignment (see module comment
+    above _mandala_zone_of). Column/row extents are sized proportional to the
+    AGGREGATE target area assigned to them (a direct sizing pass, not the
+    packer's iterative band-then-swap search). The Brahmasthan (grid cell
+    (1,1), the middle row of the middle column) is an EXPLICIT reservation —
+    sized the same way ``_courtyard_reservation`` sizes the courtyard
+    variant's court — not just "whatever's left after two other rooms happen
+    to not claim it": a column that ends up with only one occupied row would
+    otherwise silently expand that room to swallow the centre's space too, so
+    the open Brahmasthan has to be carved out up front, not hoped for.
+    Deterministic — no sweeping of its own; contributes exactly one additional
+    candidate to the caller's sweep, scored by the same ranking key as every
+    banded candidate."""
+    minx, miny, maxx, maxy = env
+    env_w, env_d = maxx - minx, maxy - miny
+    if env_w <= 3 * min_dim or env_d <= 3 * min_dim:
+        return []  # too small for a genuine 3x3 subdivision — let the banded sweep handle it
+
+    center_side, _, _ = _courtyard_reservation(env, min_dim)
+
+    by_cell: dict[tuple[int, int], list["ProgramRoom"]] = {}
+    for r in program:
+        cell = _ZONE_CELL[_mandala_zone_of(r)]
+        by_cell.setdefault(cell, []).append(r)
+
+    def _cell_area(c: int, row_: int) -> float:
+        return sum(max(x.target_sqm, 0.5) for x in by_cell.get((c, row_), []))
+
+    # Column widths: proportional to each column's total assigned area (all 3
+    # rows), falling back to an even split for a column that drew nothing so
+    # it never collapses to zero width (a real, if quiet, pada). The middle
+    # column must be at least wide enough to hold the Brahmasthan square.
+    col_totals = [sum(_cell_area(c, row_) for row_ in range(3)) for c in range(3)]
+    if sum(col_totals) <= 1e-6:
+        return []
+    col_w = [max((t / sum(col_totals)) * env_w, min_dim) if t > 0 else env_w / 3.0 for t in col_totals]
+    col_w[1] = max(col_w[1], center_side)
+    scale_w = env_w / sum(col_w)
+    col_w = [w * scale_w for w in col_w]
+    col_x0 = [minx]
+    for w in col_w[:-1]:
+        col_x0.append(col_x0[-1] + w)
+
+    placed: list[PlacedRoom] = []
+    for c in range(3):
+        if c == 1:
+            # Middle column: row 1 (the Brahmasthan) is a hard reservation —
+            # row 0 (S) and row 2 (N) split whatever depth remains, falling
+            # back to an even split if one/both drew nothing.
+            reserved = min(center_side, env_d - 2 * min_dim - 1.0) if env_d > 2 * min_dim + 1.0 else 0.0
+            remaining = env_d - reserved
+            r0_area, r2_area = _cell_area(1, 0), _cell_area(1, 2)
+            if r0_area + r2_area <= 1e-6:
+                row_h = [remaining / 2.0, reserved, remaining / 2.0]
+            else:
+                row_h = [remaining * r0_area / (r0_area + r2_area), reserved,
+                          remaining * r2_area / (r0_area + r2_area)]
+        else:
+            row_totals = [_cell_area(c, row_) for row_ in range(3)]
+            if sum(row_totals) <= 1e-6:
+                continue  # a genuinely empty outer pada stays open
+            row_h = [max((t / sum(row_totals)) * env_d, min_dim) if t > 0 else 0.0 for t in row_totals]
+            scale_h = env_d / sum(row_h) if sum(row_h) > 1e-6 else 1.0
+            row_h = [h * scale_h for h in row_h]
+        y0 = miny
+        for row_ in range(3):
+            h = row_h[row_]
+            rooms = [] if (c == 1 and row_ == 1) else by_cell.get((c, row_), [])
+            if rooms and h > 1e-6:
+                placed.extend(_pack_sequence_in_rect(rooms, (col_x0[c], y0, col_x0[c] + col_w[c], y0 + h), min_dim))
+            y0 += h
+    return placed
+
+
 def _envelope_and_keepout(
     plot: Plot, code_rules: CodeRules
 ) -> tuple[tuple[float, float, float, float], tuple[float, float]]:
@@ -3116,6 +3252,13 @@ def _layout_floor(
         bar_placed = _linear_bar_pack(program, pack_env, min_dim)
         if bar_placed:
             _eval_candidate(bar_placed, [])
+    # Vastu-First variant: ALSO try the direct 3x3 mandala pada assignment
+    # (see _mandala_grid_pack) — the classical Pada Vinyasa method, not a
+    # VastuGridPacker search — as one more candidate on the same ranking key.
+    if variant is not None and variant.prefer_vastu:
+        mandala_placed = _mandala_grid_pack(program, pack_env, min_dim)
+        if mandala_placed:
+            _eval_candidate(mandala_placed, [])
     if best is None:
         return [], [r.id for r in program]
     return best[1], best[2]
@@ -3697,6 +3840,15 @@ def generate_plan(
         bar_placed = _linear_bar_pack(program, pack_env, min_dim)
         if bar_placed:
             _eval_and_collect(bar_placed, [], safe=True)
+
+    # Vastu-First variant: ALSO try the direct 3x3 mandala pada assignment
+    # (see _mandala_grid_pack) — the classical Pada Vinyasa method, not a
+    # VastuGridPacker search — as one more candidate on the same ranking key.
+    if variant is not None and variant.prefer_vastu:
+        attempts += 1
+        mandala_placed = _mandala_grid_pack(program, pack_env, min_dim)
+        if mandala_placed:
+            _eval_and_collect(mandala_placed, [], safe=True)
 
     if not candidates:
         raise ValueError("could not generate a feasible plan for the given brief")

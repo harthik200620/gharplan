@@ -858,17 +858,24 @@ function buildWallParts(room: Room, openings: PlacedOpening[], W: number, D: num
 
 /** A four-pane glazed window: dark frame border + one horizontal + one vertical
  *  glazing bar, with tinted glass behind. Exterior windows also get a chajja. */
-function Window3D({ part, W, D, variant }: { part: GlassPart; W: number; D: number; variant?: string }) {
+/** Finish tier that drives geometry/material quality: Basic = plain plastered RCC,
+ *  Standard = the detailed per-variant default look, Premium = the glass house. */
+type BuildTier = 'basic' | 'standard' | 'premium';
+
+function Window3D({ part, W, D, variant, tier = 'standard' }: { part: GlassPart; W: number; D: number; variant?: string; tier?: BuildTier }) {
   const [px, py, pz] = part.pos;
   const [sx, sy, sz] = part.size;
   // span/up = the two in-plane dimensions of the window; depth runs through the wall
   const span = part.horiz ? sx : sz;
   const up = sy;
   const isModern = getCleanVariant(variant) === 'modern';
+  const isBasic = tier === 'basic';
   // Modern Open-Plan: a slimmer frame + no cross mullions reads as one large
   // picture-window sheet — a bigger glazing ratio within the same structural
   // opening (other variants keep the divided, traditionally-proportioned sash).
-  const F = isModern ? 0.03 : 0.05; // frame / mullion thickness
+  // Basic tier: a thick plain frame, no mullions and no chajja — a deliberately
+  // budget punched window versus Standard's detailed, sun-shaded sash.
+  const F = isBasic ? 0.065 : isModern ? 0.03 : 0.05; // frame / mullion thickness
   const paneD = WALL_T * 0.5;
 
   // glass slightly recessed; frame flush with wall face
@@ -887,8 +894,8 @@ function Window3D({ part, W, D, variant }: { part: GlassPart; W: number; D: numb
     { pos: inPlane(0, -up / 2 + F / 2), size: inPlaneSize(span, F) }, // bottom
     { pos: inPlane(span / 2 - F / 2, 0), size: inPlaneSize(F, up) }, // right
     { pos: inPlane(-span / 2 + F / 2, 0), size: inPlaneSize(F, up) }, // left
-    // modern: skip the cross mullions entirely — a single uninterrupted pane
-    ...(isModern
+    // modern / basic: skip the cross mullions entirely — a single uninterrupted pane
+    ...(isModern || isBasic
       ? []
       : [
           { pos: inPlane(0, 0), size: inPlaneSize(span, F) }, // horizontal mullion
@@ -910,7 +917,7 @@ function Window3D({ part, W, D, variant }: { part: GlassPart; W: number; D: numb
           <FrameMat />
         </mesh>
       ))}
-      {part.exterior && (
+      {part.exterior && !isBasic && (
         <Chajja3D part={part} variant={variant} px={px} headY={headY} pz={pz} span={span} />
       )}
     </group>
@@ -1619,6 +1626,7 @@ function FloorGroup({
   openings,
   entranceId,
   mepMode = false,
+  tier = 'standard',
 }: {
   plan: Plan;
   floor: number;
@@ -1627,6 +1635,7 @@ function FloorGroup({
   openings: PlacedOpening[];
   entranceId: string | null;
   mepMode?: boolean;
+  tier?: BuildTier;
 }) {
   const rooms = plan.rooms.filter((r) => !VIRTUAL.has(r.type) && (r.floor ?? 0) === floor);
   const fp = buildingFootprint(plan, floor);
@@ -1651,7 +1660,9 @@ function FloorGroup({
         // Dynamic style colors based on variant — each of the 5 gets its own tone
         // rather than climate/modern sharing one grey.
         let wallCol = hasExt ? PLASTER_EXT : PLASTER_INT;
-        if (hasExt) {
+        if (hasExt && tier === 'basic') {
+          wallCol = '#d8d2c6'; // plain cement plaster — budget finish, no decorative variant tint
+        } else if (hasExt) {
           if (cv === 'vastu' || cv === 'courtyard') {
             wallCol = '#eedfc2'; // warm mud-plaster yellow
           } else if (cv === 'climate') {
@@ -1700,7 +1711,7 @@ function FloorGroup({
               </mesh>
             ))}
             {glass.map((g, i) => (
-              <Window3D key={`g${i}`} part={g} W={W} D={D} variant={plan.variantId} />
+              <Window3D key={`g${i}`} part={g} W={W} D={D} variant={plan.variantId} tier={tier} />
             ))}
             {doors.map((d, i) => (
               <Door3D key={`d${i}`} part={d} W={W} D={D} />
@@ -1736,10 +1747,11 @@ function FloorGroup({
         );
       })}
       {/* darker projecting plinth course around the ground-floor footprint */}
-      {exterior && <Plinth fp={fp} W={W} D={D} variant={cv} />}
+      {exterior && <Plinth fp={fp} W={W} D={D} variant={cv} tier={tier} />}
       {/* Sandstone band molding at lintel height — runs around the exterior footprint
-          This is a signature Indian architectural element (Chettinad / Kerala / North Indian) */}
-      {fp && (() => {
+          This is a signature Indian architectural element (Chettinad / Kerala / North Indian).
+          Basic tier omits it (plain plastered budget finish). */}
+      {tier !== 'basic' && fp && (() => {
         const fcx = fp.x + fp.w / 2 - W / 2;
         const fcz = D / 2 - (fp.y + fp.h / 2);
         const out = 0.06;
@@ -1769,18 +1781,19 @@ function FloorGroup({
 }
 
 /** Laterite stone plinth with a sandstone molding cap band — authentic South Indian base. */
-function Plinth({ fp, W, D, variant }: { fp: Rect; W: number; D: number; variant?: string }) {
+function Plinth({ fp, W, D, variant, tier = 'standard' }: { fp: Rect; W: number; D: number; variant?: string; tier?: BuildTier }) {
   const cv = getCleanVariant(variant);
+  const isBasic = tier === 'basic';
   // Base course + cap tone read per variant — this band only ever renders on the
   // ground floor (see the `exterior` gate at the call site), so for Multigen it
   // doubles as the "grounded" visual cue for the elders'-floor / family-floor split.
-  const baseCol =
-    cv === 'multigen' ? '#4a4238' // dark basalt-toned stone — deliberately grounded
+  const baseCol = isBasic ? '#b8b4ac' // plain low cement plinth — budget finish
+    : cv === 'multigen' ? '#4a4238' // dark basalt-toned stone — deliberately grounded
     : cv === 'climate' ? '#c9bfa0' // pale limestone — cooler than laterite
     : cv === 'modern' ? '#aab0b8' // sleek grey concrete plinth
     : LATERITE; // vastu / courtyard — laterite stone (unchanged baseline)
-  const capCol = cv === 'multigen' ? '#332d26' : cv === 'modern' ? CONCRETE : STONE_BAND;
-  const baseRough = cv === 'modern' ? 0.5 : 0.95;
+  const capCol = isBasic ? CONCRETE : cv === 'multigen' ? '#332d26' : cv === 'modern' ? CONCRETE : STONE_BAND;
+  const baseRough = cv === 'modern' && !isBasic ? 0.5 : 0.95;
   const cx = fp.x + fp.w / 2 - W / 2;
   const cz = D / 2 - (fp.y + fp.h / 2);
   const out = 0.08; // projection past the wall face — wider for Indian plinth
@@ -1992,7 +2005,7 @@ function EntrancePorch({ plan, W, D }: { plan: Plan; W: number; D: number }) {
   );
 }
 
-function Slabs({ plan, W, D }: { plan: Plan; W: number; D: number }) {
+function Slabs({ plan, W, D, tier = 'standard' }: { plan: Plan; W: number; D: number; tier?: BuildTier }) {
   const floors = floorsOf(plan);
   const fp = footprint(plan.rooms);
   if (!fp) return null;
@@ -2005,7 +2018,7 @@ function Slabs({ plan, W, D }: { plan: Plan; W: number; D: number }) {
   const roofCv = getCleanVariant(undefined, plan);
   const isVastuFirst = roofCv === 'vastu';
   const isCourtyard = roofCv === 'courtyard';
-  const isTraditional = isVastuFirst || isCourtyard;
+  const isTraditional = (isVastuFirst || isCourtyard) && tier !== 'basic'; // Basic: plain flat parapet roof, no hip/jaali
   const isClimateRoof = roofCv === 'climate';
   const bW = fp.w;
   const bD = fp.h;
@@ -2323,10 +2336,10 @@ function Slabs({ plan, W, D }: { plan: Plan; W: number; D: number }) {
 
         /* Modern flat roof with jaali (Courtyard) or sleek parapet (modern/other) */
         <group>
-          <ParapetSide start={[cx - (fp.w + 0.4) / 2, D / 2 - fp.y]} end={[cx + (fp.w + 0.4) / 2, D / 2 - fp.y]} yBase={roofTop} isTraditional={isCourtyard} horiz={true} />
-          <ParapetSide start={[cx - (fp.w + 0.4) / 2, D / 2 - (fp.y + fp.h)]} end={[cx + (fp.w + 0.4) / 2, D / 2 - (fp.y + fp.h)]} yBase={roofTop} isTraditional={isCourtyard} horiz={true} />
-          <ParapetSide start={[fp.x - W / 2, cz - (fp.h + 0.4) / 2]} end={[fp.x - W / 2, cz + (fp.h + 0.4) / 2]} yBase={roofTop} isTraditional={isCourtyard} horiz={false} />
-          <ParapetSide start={[fp.x + fp.w - W / 2, cz - (fp.h + 0.4) / 2]} end={[fp.x + fp.w - W / 2, cz + (fp.h + 0.4) / 2]} yBase={roofTop} isTraditional={isCourtyard} horiz={false} />
+          <ParapetSide start={[cx - (fp.w + 0.4) / 2, D / 2 - fp.y]} end={[cx + (fp.w + 0.4) / 2, D / 2 - fp.y]} yBase={roofTop} isTraditional={isCourtyard && tier !== 'basic'} horiz={true} />
+          <ParapetSide start={[cx - (fp.w + 0.4) / 2, D / 2 - (fp.y + fp.h)]} end={[cx + (fp.w + 0.4) / 2, D / 2 - (fp.y + fp.h)]} yBase={roofTop} isTraditional={isCourtyard && tier !== 'basic'} horiz={true} />
+          <ParapetSide start={[fp.x - W / 2, cz - (fp.h + 0.4) / 2]} end={[fp.x - W / 2, cz + (fp.h + 0.4) / 2]} yBase={roofTop} isTraditional={isCourtyard && tier !== 'basic'} horiz={false} />
+          <ParapetSide start={[fp.x + fp.w - W / 2, cz - (fp.h + 0.4) / 2]} end={[fp.x + fp.w - W / 2, cz + (fp.h + 0.4) / 2]} yBase={roofTop} isTraditional={isCourtyard && tier !== 'basic'} horiz={false} />
         </group>
       )}
       
@@ -2882,6 +2895,11 @@ function Scene({ plan, structure, mepMode, finishTier }: { plan: Plan; structure
 
   const span = Math.max(W, D);
   const isPremium = finishTier === 'premium';
+  // Three genuinely different buildings: Basic = plain plastered RCC, Standard =
+  // the detailed per-variant look, Premium = the glass house (PremiumGlassHouseScene).
+  // Only an explicit 'economy' tier downgrades to Basic; anything else (incl. an
+  // omitted tier) keeps the richer Standard look, so no existing caller regresses.
+  const tier: BuildTier = isPremium ? 'premium' : finishTier === 'economy' ? 'basic' : 'standard';
   return (
     <>
       {/* perceptually-soft contact shadows from the directional sun */}
@@ -2982,9 +3000,9 @@ function Scene({ plan, structure, mepMode, finishTier }: { plan: Plan; structure
           ) : (
             <>
               {floors.map((f) => (
-                <FloorGroup key={f} plan={plan} floor={f} W={W} D={D} openings={openings} entranceId={entranceId} mepMode={mepMode} />
+                <FloorGroup key={f} plan={plan} floor={f} W={W} D={D} openings={openings} entranceId={entranceId} mepMode={mepMode} tier={tier} />
               ))}
-              <Slabs plan={plan} W={W} D={D} />
+              <Slabs plan={plan} W={W} D={D} tier={tier} />
             </>
           )}
           {structure && <StructuralGrid structure={structure} plan={plan} W={W} D={D} mepMode={mepMode} />}

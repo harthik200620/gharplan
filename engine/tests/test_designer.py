@@ -774,6 +774,50 @@ def test_generate_options_records_merged_variants_on_tight_plot():
     assert modern_opt["meta"]["mergedFromVariants"] == []
 
 
+def test_dedupe_escalates_past_the_base_threshold_before_merging(monkeypatch):
+    # Owner decision (explicit, informed choice — see conversation): on a tight
+    # plot, prefer surfacing more VISUALLY DISTINCT options over merging
+    # aggressively, even if a surviving option scores lower than the one it
+    # would otherwise have folded into. Mechanism: near-duplicates (similarity
+    # in [0.90, 1.0)) get a second chance at looser thresholds before actually
+    # merging; only TRUE duplicates (similarity == 1.0) always merge, since
+    # showing the literally identical plan twice under different labels would
+    # be confusing clutter, not real diversity — not something forcing divergence
+    # should manufacture.
+    import app.generator.designer as d
+
+    monkeypatch.setattr(d, "_signature_similarity", lambda a, b: 0.93)
+    plot = _plot("KA", city="Bengaluru", facing="E")
+    options = d.generate_options(2, plot, floors=1)
+
+    # At a fixed 0.93 similarity every pair is "near-identical" under the base
+    # 0.90 cutoff (would collapse to 1 option) but NOT under any escalated
+    # rung (0.97/0.995/1.0), so escalation should keep every generated variant
+    # as its own distinct, honestly-scored option.
+    assert len(options) >= 2, (
+        "escalation should have kept multiple options apart at a fixed "
+        "similarity of 0.93 (below every escalated rung)"
+    )
+    for o in options:
+        assert o["meta"]["mergedFromVariants"] == [], (
+            f"{o['variantId']} should not show any merges once escalation kept it separate"
+        )
+
+
+def test_dedupe_still_merges_when_two_plans_are_truly_identical(monkeypatch):
+    # The one case escalation must NOT rescue: a similarity of exactly 1.0
+    # (the plans are the same layout) merges even at the loosest rung, so the
+    # UI never shows the literal same floor plan twice under different names.
+    import app.generator.designer as d
+
+    monkeypatch.setattr(d, "_signature_similarity", lambda a, b: 1.0)
+    plot = _plot("KA", city="Bengaluru", facing="E")
+    options = d.generate_options(2, plot, floors=1)
+
+    assert len(options) == 1, "truly-identical plans must still collapse to one option"
+    assert len(options[0]["meta"]["mergedFromVariants"]) >= 1
+
+
 # --------------------------------------------------------------------------- #
 # R8 — variety shouldn't be bounded by one algorithm's vocabulary: climate and
 # modern now get a genuine BUILDING-SHAPE / CIRCULATION difference (not just a

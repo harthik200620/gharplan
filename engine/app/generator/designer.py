@@ -3919,11 +3919,18 @@ def generate_options(
     similarity_threshold: float = 0.90,
 ) -> list[dict]:
     """Run the brief through every :data:`VARIANT_PROFILES` strategy and return up
-    to ``max_options`` genuinely-distinct options, each a dict ``{variantId,
-    variantName, variantTagline, plan, vastu, code, meta}``. Near-identical results
-    (a brief so tight only one good layout exists) are de-duplicated, keeping the
-    higher-scoring one, so the gallery never shows the same plan twice. The list is
-    ordered best-first (fewest code fails, then highest Vastu)."""
+    to ``max_options`` options, each a dict ``{variantId, variantName,
+    variantTagline, plan, vastu, code, meta}``, ordered best-first (fewest code
+    fails, then highest Vastu).
+
+    Owner decision: on a tight plot, prefer surfacing more VISUALLY DISTINCT
+    options over merging aggressively — even when a surviving option scores
+    materially lower on Vastu (or, rarely, carries a code fail a stricter pass
+    would have folded away) than the option it would otherwise have merged
+    into. Every kept option's real score/fail-count is still reported exactly
+    as computed — this never touches the underlying Vastu/code measurement,
+    only how readily two plans are treated as "the same design" for display
+    purposes. See ``_DEDUPE_ESCALATION``."""
     code_rules = code_rules or get_code_rules()
     vastu_rules = vastu_rules or get_vastu_rules()
     foot = buildable_footprint_sqm(plot, code_rules)
@@ -3976,22 +3983,40 @@ def generate_options(
     # Best-first, then greedily keep only options far enough from the kept set.
     # A dropped variant isn't just discarded — it's recorded on whichever kept
     # option it merged into (``_merged_from``), so the caller can tell the user
-    # "N strategies converged to this layout" instead of silently losing them.
+    # "N strategies converged to this layout" when a merge does still happen.
     raw.sort(key=lambda o: o["_quality"])
-    kept: list[dict] = []
-    for opt in raw:
-        match = next(
-            (k for k in kept if _signature_similarity(opt["_sig"], k["_sig"]) >= similarity_threshold),
-            None,
-        )
-        if match is not None:
-            match.setdefault("_merged_from", []).append(
-                {"variantId": opt["variantId"], "variantName": opt["variantName"]}
+    ceiling = min(max_options, len(raw))
+
+    def _dedupe_pass(threshold: float) -> list[dict]:
+        for o in raw:
+            o.pop("_merged_from", None)  # a retry starts each option fresh
+        kept: list[dict] = []
+        for opt in raw:
+            match = next(
+                (k for k in kept if _signature_similarity(opt["_sig"], k["_sig"]) >= threshold),
+                None,
             )
-            continue
-        kept.append(opt)
-        if len(kept) >= max_options:
+            if match is not None:
+                match.setdefault("_merged_from", []).append(
+                    {"variantId": opt["variantId"], "variantName": opt["variantName"]}
+                )
+                continue
+            kept.append(opt)
+            if len(kept) >= max_options:
+                break
+        return kept
+
+    # Escalate past the caller's threshold on a tight plot rather than settle
+    # for fewer options: two plans this similar still read as visually near-
+    # identical, but the owner's call is that seeing them side by side (each
+    # honestly scored) beats silently collapsing to one recommendation. 1.0
+    # is the true ceiling — merge only bit-identical signatures — so this
+    # always terminates having kept every genuinely distinct plan on offer.
+    kept = _dedupe_pass(similarity_threshold)
+    for threshold in (0.97, 0.995, 1.0):
+        if len(kept) >= ceiling or threshold <= similarity_threshold:
             break
+        kept = _dedupe_pass(threshold)
 
     return [
         {

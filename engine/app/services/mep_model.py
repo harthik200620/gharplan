@@ -123,6 +123,19 @@ class ServiceLegendItem:
 
 
 @dataclass
+class FireElement:
+    """A placed fire-safety symbol: a ceiling smoke/heat detector, a portable
+    extinguisher, or an EXIT sign. ``kind`` is one of
+    "smoke_detector" | "extinguisher" | "exit_sign"."""
+
+    id: str
+    room_id: str
+    kind: str
+    x: float
+    y: float
+
+
+@dataclass
 class MepModel:
     floor: Optional[int]
     rooms: list[Room]
@@ -144,6 +157,10 @@ class MepModel:
     hvac: list[dict] = field(default_factory=list)
     # NBC 2016 Part 4 fire checklist {"item", "ref"} rows (empty when height <= 15 m).
     fire: list[dict] = field(default_factory=list)
+    # Placed fire-safety symbols (detectors / extinguishers / exit signs) + the
+    # indicative escape route from the farthest habitable room to the main exit.
+    fire_points: list[FireElement] = field(default_factory=list)
+    fire_route: list[tuple[float, float]] = field(default_factory=list)
 
 
 SERVICE_STYLE: dict[str, ServiceLegendItem] = {
@@ -880,6 +897,40 @@ def fire_checklist(building_height_m: float) -> list[dict]:
     ]
 
 
+_FIRE_HABITABLE = re.compile(r"living|bed|kitchen|dining|pooja|study")
+
+
+def build_fire(rooms: list[Room], exit_pt: Optional[tuple[float, float]]) -> list[FireElement]:
+    """An indicative residential fire-safety layout (NBC 2016 Part 4 spirit): a
+    ceiling smoke/heat detector in every habitable room + kitchen, a portable
+    extinguisher by the kitchen and by the main exit, and an EXIT sign at the exit."""
+    out: list[FireElement] = []
+    for r in rooms:
+        if _FIRE_HABITABLE.search(r.type.value):
+            c = room_center(r)
+            out.append(FireElement(id=f"fd-{r.id}", room_id=r.id, kind="smoke_detector", x=c[0], y=c[1]))
+    kitchen = next((r for r in rooms if r.type.value == "kitchen"), None)
+    if kitchen:
+        kb = bounds(kitchen.polygon)
+        out.append(FireElement(id="fe-kitchen", room_id=kitchen.id, kind="extinguisher", x=kb.x + 0.45, y=kb.y + 0.45))
+    if exit_pt is not None:
+        out.append(FireElement(id="fe-exit", room_id="exit", kind="extinguisher", x=exit_pt[0], y=exit_pt[1]))
+        out.append(FireElement(id="fx-exit", room_id="exit", kind="exit_sign", x=exit_pt[0], y=exit_pt[1]))
+    return out
+
+
+def build_fire_route(rooms: list[Room], exit_pt: Optional[tuple[float, float]]) -> list[tuple[float, float]]:
+    """Escape route: an L-path from the farthest sleeping/living room to the exit —
+    the travel-distance an NBC review checks (<= 22.5 m to an exit)."""
+    if exit_pt is None:
+        return []
+    hab = [r for r in rooms if re.search(r"living|bed", r.type.value)]
+    if not hab:
+        return []
+    far = max(hab, key=lambda r: (room_center(r)[0] - exit_pt[0]) ** 2 + (room_center(r)[1] - exit_pt[1]) ** 2)
+    return manhattan(room_center(far), exit_pt)
+
+
 def build_mep_model(plan: Plan, floor: Optional[int] = None) -> MepModel:
     w = plan.plot.width_m
     d = plan.plot.depth_m
@@ -934,6 +985,15 @@ def build_mep_model(plan: Plan, floor: Optional[int] = None) -> MepModel:
         hvac.append({"roomId": r.id, "tons": room_tonnage(r.area_sqm or rb.w * rb.h)})
     # NBC Part 4 trigger with indicative height = floors x 3.0 m + 1.0 m parapet.
     fire = fire_checklist(plan.plot.floors * 3.0 + 1.0)
+    # Fire-safety layout: detectors / extinguishers / exit signs + an escape route
+    # around the main exit (entrance/sitout, else living, else the DB near the entry).
+    exit_room = (
+        next((r for r in rooms if r.type.value in ("entrance", "sitout")), None)
+        or next((r for r in rooms if r.type.value == "living"), None)
+    )
+    exit_pt = room_center(exit_room) if exit_room else ((db.x, db.y) if db else None)
+    fire_points = build_fire(rooms, exit_pt)
+    fire_route = build_fire_route(rooms, exit_pt)
 
     return MepModel(
         floor=floor,
@@ -952,4 +1012,6 @@ def build_mep_model(plan: Plan, floor: Optional[int] = None) -> MepModel:
         legend=legend,
         hvac=hvac,
         fire=fire,
+        fire_points=fire_points,
+        fire_route=fire_route,
     )

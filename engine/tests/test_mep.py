@@ -171,3 +171,16 @@ def test_low_rise_plans_are_fire_exempt(sample_plan):
     plan.plot.floors = 5  # 16 m > 15 m — the NBC checklist kicks in
     m = build_mep_model(plan)
     assert m.fire and all("NBC 2016 Part 4" in r["ref"] for r in m.fire)
+
+
+def test_fire_safety_layout_is_placed_on_every_house(sample_plan):
+    """Independent of the >15 m NBC checklist trigger, every house gets an
+    indicative fire-safety LAYOUT: a detector in each habitable room + kitchen,
+    extinguishers by the kitchen and the exit, an EXIT sign, and an escape route."""
+    plan, _ = normalize(sample_plan)
+    m = build_mep_model(plan)
+    kinds = [f.kind for f in m.fire_points]
+    assert kinds.count("smoke_detector") >= 3  # living + bedrooms + kitchen
+    assert kinds.count("extinguisher") == 2  # kitchen + main exit
+    assert kinds.count("exit_sign") == 1
+    assert len(m.fire_route) >= 2  # a real escape polyline to the exit

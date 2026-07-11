@@ -9,6 +9,7 @@ import {
   SERVICE_STYLE,
   type Conduit,
   type ElecPoint,
+  type FireElement,
   type Fixture,
   type MepModel,
   type MepNode,
@@ -24,12 +25,13 @@ const ROOM_FILL = "#fafafa";
 
 // A real architect issues MEP as separate coordinated sheets, not one overlay:
 // Electrical splits into Lighting and Power; Plumbing into Water-Supply and Drainage.
-type Sheet = "lighting" | "power" | "supply" | "drainage";
-const SHEETS: { id: Sheet; label: string; group: "electrical" | "plumbing" }[] = [
+type Sheet = "lighting" | "power" | "supply" | "drainage" | "fire";
+const SHEETS: { id: Sheet; label: string; group: "electrical" | "plumbing" | "fire" }[] = [
   { id: "lighting", label: "Lighting", group: "electrical" },
   { id: "power", label: "Power", group: "electrical" },
   { id: "supply", label: "Water Supply", group: "plumbing" },
   { id: "drainage", label: "Drainage", group: "plumbing" },
+  { id: "fire", label: "Fire Safety", group: "fire" },
 ];
 // Which pipe services / electrical points belong on each sheet.
 const SUPPLY_SERVICES = new Set(["cold", "hot"]);
@@ -102,7 +104,9 @@ export function MepPlan({ plan, floor }: { plan: Plan; floor?: number }) {
               ? `${model.elec.filter((p) => ["socket6a", "socket16a", "ac", "geyser"].includes(p.kind)).length} power pts · 1 DB`
               : sheet === "supply"
                 ? `${model.pipes.filter((p) => SUPPLY_SERVICES.has(p.service)).length} supply runs · ${model.fixtures.length} fixtures`
-                : `${model.pipes.filter((p) => DRAIN_SERVICES.has(p.service)).length} drain runs · ${model.wetRooms.length} wet rooms`}
+                : sheet === "drainage"
+                  ? `${model.pipes.filter((p) => DRAIN_SERVICES.has(p.service)).length} drain runs · ${model.wetRooms.length} wet rooms`
+                  : `${model.firePoints.filter((f) => f.kind === "smoke_detector").length} detectors · ${model.firePoints.filter((f) => f.kind === "extinguisher").length} extinguishers · escape route`}
         </span>
       </div>
 
@@ -135,6 +139,8 @@ export function MepPlan({ plan, floor }: { plan: Plan; floor?: number }) {
 
           {group === "plumbing" ? (
             <PlumbingLayer model={model} X={X} Y={Y} sheet={sheet as "supply" | "drainage"} />
+          ) : group === "fire" ? (
+            <FireLayer model={model} X={X} Y={Y} />
           ) : (
             <ElectricalLayer model={model} X={X} Y={Y} sheet={sheet as "lighting" | "power"} />
           )}
@@ -163,6 +169,8 @@ export function MepPlan({ plan, floor }: { plan: Plan; floor?: number }) {
         <div className="border-t bg-muted/30 px-3 py-2">
           {group === "plumbing" ? (
             <PlumbingLegend model={model} />
+          ) : group === "fire" ? (
+            <FireLegend />
           ) : (
             <>
               <ElectricalLegend />
@@ -767,6 +775,101 @@ function ElectricalLegend() {
 /* --------------------------------------------------------------------------- */
 /* CLASH PANEL                                                                  */
 /* --------------------------------------------------------------------------- */
+
+/* --------------------------------------------------------------------------- */
+/* FIRE SAFETY                                                                  */
+/* --------------------------------------------------------------------------- */
+
+function FireLayer({ model, X, Y }: { model: MepModel; X: Proj; Y: Proj }) {
+  const route = model.fireRoute.map((p) => `${X(p[0])},${Y(p[1])}`).join(" ");
+  return (
+    <g>
+      {/* escape route to the main exit */}
+      {model.fireRoute.length >= 2 && (
+        <polyline
+          points={route}
+          fill="none"
+          stroke="#16a34a"
+          strokeWidth={2}
+          strokeDasharray="7 4"
+          strokeLinejoin="round"
+          strokeLinecap="round"
+        />
+      )}
+      {model.firePoints.map((f) => (
+        <FireGlyph key={f.id} pt={f} X={X} Y={Y} />
+      ))}
+    </g>
+  );
+}
+
+function FireGlyph({ pt, X, Y }: { pt: FireElement; X: Proj; Y: Proj }) {
+  const cx = X(pt.x);
+  const cy = Y(pt.y);
+  if (pt.kind === "smoke_detector") {
+    return (
+      <g>
+        <circle cx={cx} cy={cy} r={5} fill="#ffffff" stroke="#dc2626" strokeWidth={1.1} />
+        <circle cx={cx} cy={cy} r={1.6} fill="#dc2626" />
+        <HaloText x={cx} y={cy + 11} textAnchor="middle" fontSize={7} fontWeight={700} fill="#b91c1c" halo={2.4}>
+          SD
+        </HaloText>
+      </g>
+    );
+  }
+  if (pt.kind === "extinguisher") {
+    return (
+      <g>
+        <rect x={cx - 3} y={cy - 4.5} width={6} height={9} rx={1.5} fill="#dc2626" stroke="#7f1d1d" strokeWidth={0.8} />
+        <HaloText x={cx} y={cy + 12} textAnchor="middle" fontSize={7} fontWeight={700} fill="#b91c1c" halo={2.4}>
+          FE
+        </HaloText>
+      </g>
+    );
+  }
+  // exit_sign
+  return (
+    <g>
+      <rect x={cx - 10} y={cy - 5.5} width={20} height={11} rx={1.5} fill="#16a34a" stroke="#14532d" strokeWidth={0.6} />
+      <text x={cx} y={cy + 2.8} textAnchor="middle" fontSize={7.5} fontWeight={800} fill="#ffffff">
+        EXIT
+      </text>
+    </g>
+  );
+}
+
+function FireLegend() {
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-muted-foreground">
+      <span className="inline-flex items-center gap-1.5">
+        <svg width="14" height="14">
+          <circle cx="7" cy="7" r="5" fill="none" stroke="#dc2626" strokeWidth="1.1" />
+          <circle cx="7" cy="7" r="1.6" fill="#dc2626" />
+        </svg>
+        Smoke detector (SD)
+      </span>
+      <span className="inline-flex items-center gap-1.5">
+        <svg width="12" height="14">
+          <rect x="3" y="2.5" width="6" height="9" rx="1.5" fill="#dc2626" />
+        </svg>
+        Extinguisher (FE)
+      </span>
+      <span className="inline-flex items-center gap-1.5">
+        <svg width="24" height="12">
+          <rect x="1" y="1" width="22" height="10" rx="1.5" fill="#16a34a" />
+        </svg>
+        Exit sign
+      </span>
+      <span className="inline-flex items-center gap-1.5">
+        <svg width="18" height="10">
+          <line x1="1" y1="5" x2="17" y2="5" stroke="#16a34a" strokeWidth="2" strokeDasharray="6 4" />
+        </svg>
+        Escape route
+      </span>
+      <span className="text-slate-400">Indicative NBC 2016 Part 4 layout — verify with a licensed consultant.</span>
+    </div>
+  );
+}
 
 function ClashPanel({ model }: { model: MepModel }) {
   const { clashes, summary } = model;

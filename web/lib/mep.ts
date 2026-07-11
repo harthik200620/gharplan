@@ -161,6 +161,15 @@ export type FireChecklistRow = {
   ref: string;
 };
 
+/** A placed fire-safety symbol: smoke detector, extinguisher or exit sign. */
+export type FireElement = {
+  id: string;
+  roomId: string;
+  kind: "smoke_detector" | "extinguisher" | "exit_sign";
+  x: number;
+  y: number;
+};
+
 /** One IS 2470-1 style septic tank size row. */
 export type SepticSize = {
   users: number;
@@ -191,6 +200,9 @@ export type MepModel = {
   hvac: HvacEstimate[];
   /** NBC 2016 Part 4 fire checklist rows (empty when height <= 15 m). */
   fire: FireChecklistRow[];
+  /** Placed fire-safety symbols + the escape route from the farthest habitable room. */
+  firePoints: FireElement[];
+  fireRoute: [number, number][];
 };
 
 // --------------------------------------------------------------------------- //
@@ -886,6 +898,54 @@ export function fireChecklist(buildingHeightM: number): FireChecklistRow[] {
   ];
 }
 
+const FIRE_HABITABLE = /living|bed|kitchen|dining|pooja|study/;
+
+function roomCtr(r: Room): [number, number] {
+  const b = bounds(r.polygon);
+  return [b.x + b.w / 2, b.y + b.h / 2];
+}
+
+/** An indicative residential fire-safety layout — a ceiling detector in every
+ *  habitable room + kitchen, extinguishers by the kitchen and the exit, an EXIT
+ *  sign at the exit. Mirrors engine/app/services/mep_model.py::build_fire. */
+export function buildFire(rooms: Room[], exitPt: [number, number] | null): FireElement[] {
+  const out: FireElement[] = [];
+  for (const r of rooms) {
+    if (FIRE_HABITABLE.test(r.type)) {
+      const c = roomCtr(r);
+      out.push({ id: `fd-${r.id}`, roomId: r.id, kind: "smoke_detector", x: c[0], y: c[1] });
+    }
+  }
+  const kitchen = rooms.find((r) => r.type === "kitchen");
+  if (kitchen) {
+    const kb = bounds(kitchen.polygon);
+    out.push({ id: "fe-kitchen", roomId: kitchen.id, kind: "extinguisher", x: kb.x + 0.45, y: kb.y + 0.45 });
+  }
+  if (exitPt) {
+    out.push({ id: "fe-exit", roomId: "exit", kind: "extinguisher", x: exitPt[0], y: exitPt[1] });
+    out.push({ id: "fx-exit", roomId: "exit", kind: "exit_sign", x: exitPt[0], y: exitPt[1] });
+  }
+  return out;
+}
+
+/** Escape route: an L-path from the farthest sleeping/living room to the exit. */
+export function buildFireRoute(rooms: Room[], exitPt: [number, number] | null): [number, number][] {
+  if (!exitPt) return [];
+  const hab = rooms.filter((r) => /living|bed/.test(r.type));
+  if (!hab.length) return [];
+  let far = hab[0];
+  let best = -1;
+  for (const r of hab) {
+    const c = roomCtr(r);
+    const dd = (c[0] - exitPt[0]) ** 2 + (c[1] - exitPt[1]) ** 2;
+    if (dd > best) {
+      best = dd;
+      far = r;
+    }
+  }
+  return manhattan(roomCtr(far), exitPt);
+}
+
 // --------------------------------------------------------------------------- //
 // Public entry point
 // --------------------------------------------------------------------------- //
@@ -951,6 +1011,14 @@ export function buildMepModel(plan: Plan, floor?: number): MepModel {
   }
   // NBC Part 4 trigger with indicative height = floors x 3.0 m + 1.0 m parapet.
   const fire = fireChecklist(plan.plot.floors * 3.0 + 1.0);
+  // Fire-safety layout around the main exit (entrance/sitout, else living, else DB).
+  const exitRoom =
+    rooms.find((r) => r.type === "entrance" || r.type === "sitout") ??
+    rooms.find((r) => r.type === "living") ??
+    null;
+  const exitPt: [number, number] | null = exitRoom ? roomCtr(exitRoom) : db ? [db.x, db.y] : null;
+  const firePoints = buildFire(rooms, exitPt);
+  const fireRoute = buildFireRoute(rooms, exitPt);
 
   return {
     floor,
@@ -969,6 +1037,8 @@ export function buildMepModel(plan: Plan, floor?: number): MepModel {
     legend,
     hvac,
     fire,
+    firePoints,
+    fireRoute,
   };
 }
 

@@ -8,6 +8,7 @@ MEP coordination summary — the same data the PDF and on-screen viewer show.
 from __future__ import annotations
 
 import io
+from collections import Counter
 from typing import Optional
 
 from openpyxl import Workbook
@@ -110,6 +111,33 @@ def _schedule_sheets(wb: Workbook, plan: Plan, code: Optional[CodeReport]) -> No
         row += 1
     if not m.clashes:
         ws.cell(row, 1, "No MEP coordination clashes detected.")
+        row += 1
+
+    # --- circuit / load schedule ---
+    row += 2
+    ws.cell(row, 1, "Circuit schedule").font = _BOLD
+    row = _header(ws, [("Circuit", 22), ("MCB", 8), ("Phase", 8), ("Wire mm2", 10), ("Points", 8)], row=row + 1)
+    for ck in m.circuits:
+        for col, v in enumerate([ck.name, f"{ck.mcb_a} A", ck.phase, f"{ck.wire_sqmm:g}", ck.points], start=1):
+            ws.cell(row, col, v).border = _BORDER
+        row += 1
+    s = m.summary
+    ws.cell(
+        row, 1,
+        f"Connected load: {s.get('connectedLoadKw', '?')} kW    "
+        f"Demand (x{s.get('diversityFactor', 0.6)}): {s.get('demandLoadKw', '?')} kW    "
+        f"Recommended service: {s.get('recommendedService', '?')}",
+    )
+
+    # --- fixture schedule ---
+    row += 3
+    ws.cell(row, 1, "Fixture schedule").font = _BOLD
+    row = _header(ws, [("Room", 22), ("Fixture", 20)], row=row + 1)
+    grouped = Counter((f.room_id, f.kind) for f in m.fixtures)
+    for (rid, kind), cnt in sorted(grouped.items()):
+        for col, v in enumerate([rid, f"{kind} x{cnt}" if cnt > 1 else kind], start=1):
+            ws.cell(row, col, v).border = _BORDER
+        row += 1
 
 
 def build_xlsx(

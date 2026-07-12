@@ -67,6 +67,20 @@ def test_xlsx_has_schedule_sheets(sample_plan):
         assert sheet in wb.sheetnames
 
 
+def test_xlsx_mep_sheet_carries_circuit_and_fixture_schedules(sample_plan):
+    """The MEP sheet is no longer counts-only: it tabulates the DB circuit schedule
+    (with connected/demand load) and a room-by-room fixture schedule."""
+    plan, _ = normalize(sample_plan)
+    code = check_code(plan, get_code_rules())
+    wb = load_workbook(io.BytesIO(build_xlsx(_boq(plan), Branding(), plan=plan, code=code)))
+    ws = wb["MEP & Clashes"]
+    vals = {c.value for row in ws.iter_rows() for c in row if isinstance(c.value, str)}
+    assert "Circuit schedule" in vals
+    assert "Fixture schedule" in vals
+    assert any(v and "Lighting" in v for v in vals)  # at least the lighting circuit row
+    assert any(v and "Connected load" in v for v in vals)  # the load summary line
+
+
 def test_area_statement_matches_code_metrics(sample_plan):
     plan, _ = normalize(sample_plan)
     code = check_code(plan, get_code_rules())

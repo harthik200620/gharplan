@@ -719,6 +719,18 @@ def _load_schedule(plan: Plan, floor: int | None, small):
     return t, line
 
 
+def _fixture_schedule(plan: Plan, floor: int | None):
+    """Room-by-room sanitary fixture schedule (WC / basin / sink / shower / FD …)."""
+    from collections import Counter as _Counter
+
+    m = build_mep_model(plan, floor)
+    grouped = _Counter((f.room_id, f.kind) for f in m.fixtures)
+    rows = [["Room", "Fixture", "Qty"]]
+    for (rid, kind), cnt in sorted(grouped.items()):
+        rows.append([rid, kind, str(cnt)])
+    return _table(rows, [7 * cm, 5 * cm, 2 * cm])
+
+
 # --------------------------------------------------------------------------- #
 # Document
 # --------------------------------------------------------------------------- #
@@ -966,6 +978,9 @@ def build_pdf(
     story.append(_sched_t)
     story.append(Spacer(1, 4))
     story.append(_load_line)
+    story.append(Spacer(1, 8))
+    story.append(Paragraph("Fixture schedule", h3))
+    story.append(_fixture_schedule(plan, _mep_floor))
     story.append(Spacer(1, 8))
     story.append(_mep_legend(plan, _mep_floor, small))
     story.append(PageBreak())

@@ -641,6 +641,84 @@ def _mep_legend(plan, floor, styles):
     return t
 
 
+class SldFlowable(Flowable):
+    """A compact distribution-board single-line diagram: incomer (meter) → main
+    isolator → busbar → one MCB branch per final sub-circuit (rating + wire + phase)."""
+
+    def __init__(self, plan: Plan, floor: int | None, width: float = 16.5 * cm):
+        super().__init__()
+        self.circuits = build_mep_model(plan, floor).circuits
+        self.avail_w = width
+        self.height = 5.4 * cm
+
+    def wrap(self, *_):
+        return (self.avail_w, self.height)
+
+    def draw(self):
+        c = self.canv
+        circs = self.circuits or []
+        W, H = self.avail_w, self.height
+        bus_y = H - 1.4 * cm
+        left = 0.3 * cm
+        c.setStrokeColor(INK)
+        c.setLineWidth(1.1)
+        # energy meter (incomer)
+        c.setFillColor(colors.HexColor("#1e293b"))
+        c.rect(left, bus_y - 0.35 * cm, 1.2 * cm, 0.7 * cm, fill=1, stroke=1)
+        c.setFillColor(colors.white)
+        c.setFont("Helvetica-Bold", 6.5)
+        c.drawCentredString(left + 0.6 * cm, bus_y - 0.05 * cm, "kWh")
+        # main isolator
+        mi = left + 1.7 * cm
+        c.setStrokeColor(INK)
+        c.line(left + 1.2 * cm, bus_y, mi, bus_y)
+        c.setFillColor(colors.white)
+        c.rect(mi, bus_y - 0.3 * cm, 1.5 * cm, 0.6 * cm, fill=1, stroke=1)
+        c.setFillColor(INK)
+        c.setFont("Helvetica-Bold", 6)
+        c.drawCentredString(mi + 0.75 * cm, bus_y - 0.08 * cm, "63A DP")
+        # busbar
+        bus_x0 = mi + 1.5 * cm
+        bus_x1 = W - 0.3 * cm
+        c.setLineWidth(1.8)
+        c.line(bus_x0, bus_y, bus_x1, bus_y)
+        c.setLineWidth(1.0)
+        # one MCB branch per circuit
+        n = max(1, len(circs))
+        span = bus_x1 - bus_x0 - 0.4 * cm
+        for i, ck in enumerate(circs):
+            bx = bus_x0 + 0.3 * cm + span * (i + 0.5) / n
+            by = bus_y - 1.6 * cm
+            c.setStrokeColor(INK)
+            c.line(bx, bus_y, bx, by + 0.3 * cm)
+            c.setFillColor(colors.HexColor("#fef3c7"))
+            c.rect(bx - 0.5 * cm, by - 0.3 * cm, 1.0 * cm, 0.6 * cm, fill=1, stroke=1)
+            c.setFillColor(INK)
+            c.setFont("Helvetica-Bold", 6)
+            c.drawCentredString(bx, by - 0.08 * cm, f"{ck.mcb_a}A")
+            c.setFont("Helvetica", 5)
+            c.drawCentredString(bx, by - 0.7 * cm, ck.name[:16])
+            c.drawCentredString(bx, by - 1.05 * cm, f"{ck.wire_sqmm:g}mm2 {ck.phase}")
+
+
+def _load_schedule(plan: Plan, floor: int | None, small):
+    """Circuit-by-circuit load schedule + the connected/demand load and the service
+    recommendation a DISCOM connection form asks for."""
+    m = build_mep_model(plan, floor)
+    rows = [["Circuit", "MCB", "Phase", "Wire (mm2)", "Points"]]
+    for ck in m.circuits:
+        rows.append([ck.name, f"{ck.mcb_a} A", ck.phase, f"{ck.wire_sqmm:g}", str(ck.points)])
+    t = _table(rows, [4.8 * cm, 2 * cm, 2 * cm, 2.6 * cm, 2 * cm])
+    s = m.summary
+    line = Paragraph(
+        f"<b>Connected load:</b> {s.get('connectedLoadKw', '?')} kW &nbsp;&nbsp; "
+        f"<b>Diversified demand (x{s.get('diversityFactor', 0.6)}):</b> {s.get('demandLoadKw', '?')} kW &nbsp;&nbsp; "
+        f"<b>Recommended service:</b> {s.get('recommendedService', '?')}",
+        small,
+    )
+    return t, line
+
+
 # --------------------------------------------------------------------------- #
 # Document
 # --------------------------------------------------------------------------- #
@@ -879,7 +957,17 @@ def build_pdf(
         story.append(Paragraph("Plumbing layout", h3))
         story.append(MepFlowable(plan, fl, "plumbing"))
         story.append(Spacer(1, 10))
-    story.append(_mep_legend(plan, floors[0] if len(floors) > 1 else None, small))
+    _mep_floor = floors[0] if len(floors) > 1 else None
+    story.append(Paragraph("Distribution board — single-line diagram", h3))
+    story.append(SldFlowable(plan, _mep_floor))
+    story.append(Spacer(1, 6))
+    story.append(Paragraph("Load schedule", h3))
+    _sched_t, _load_line = _load_schedule(plan, _mep_floor, small)
+    story.append(_sched_t)
+    story.append(Spacer(1, 4))
+    story.append(_load_line)
+    story.append(Spacer(1, 8))
+    story.append(_mep_legend(plan, _mep_floor, small))
     story.append(PageBreak())
 
     # 4. VASTU ANALYSIS

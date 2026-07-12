@@ -1,0 +1,9 @@
+# Runtime deps for the Vercel Python serverless engine (see api/index.py).
+# Vercel provides the ASGI server, so uvicorn/httpx/pytest are intentionally omitted.
+fastapi>=0.110,<1.0
+pydantic>=2.7,<3.0
+shapely>=2.0,<3.0
+ezdxf>=1.1,<2.0
+openpyxl>=3.1,<4.0
+reportlab>=4.0,<5.0
+python-dotenv>=1.0

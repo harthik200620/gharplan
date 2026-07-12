@@ -120,6 +120,7 @@ NODE_CODE = {
     "inspection": "IC",
     "septic": "ST",
     "rainpit": "RWH",
+    "earthpit": "EP",
 }
 NODE_COLOR = {
     "oht": colors.HexColor("#2563eb"),
@@ -129,6 +130,7 @@ NODE_COLOR = {
     "inspection": colors.HexColor("#7c4a1e"),
     "septic": colors.HexColor("#7c4a1e"),
     "rainpit": colors.HexColor("#7c3aed"),
+    "earthpit": colors.HexColor("#16a34a"),
 }
 
 

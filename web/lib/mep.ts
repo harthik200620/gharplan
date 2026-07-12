@@ -94,7 +94,8 @@ export type MepNodeKind =
   | "meter"      // energy meter at the compound entry
   | "inspection" // drainage inspection chamber
   | "septic"     // septic tank / sewer connection
-  | "rainpit";   // rainwater-harvesting recharge pit
+  | "rainpit"    // rainwater-harvesting recharge pit
+  | "earthpit";  // electrical earth pit (safety earth for the DB)
 
 export type MepNode = {
   id: string;
@@ -119,8 +120,9 @@ export type Conduit = {
   id: string;
   roomId: string;
   /** Wiring class: "home_run" (room board → DB sub-main), "switch_leg" (board →
-   *  a light/fan/exhaust/6A socket/bell) or "dedicated" (DB → AC/geyser/16A radial). */
-  kind: "home_run" | "switch_leg" | "dedicated";
+   *  a light/fan/exhaust/6A socket/bell), "dedicated" (DB → AC/geyser/16A radial)
+   *  or "earth" (DB → earth pit safety conductor). */
+  kind: "home_run" | "switch_leg" | "dedicated" | "earth";
   /** Manhattan polyline for this conductor run. */
   points: [number, number][];
 };
@@ -986,6 +988,10 @@ export function buildMepModel(plan: Plan, floor?: number): MepModel {
     const meter = clampPt([db.x, db.y - 0.9], W, D);
     nodes.push({ id: "meter", kind: "meter", x: meter[0], y: meter[1], label: "Meter" });
     conduits.push({ id: "cd-main", roomId: "service", kind: "home_run", points: [meter, [db.x, db.y]] });
+    // earthing: an earth pit at the front-left corner + the earth conductor from the DB.
+    const pit = clampPt([0.6, 0.6], W, D);
+    nodes.push({ id: "earthpit", kind: "earthpit", x: pit[0], y: pit[1], label: "Earth pit" });
+    conduits.push({ id: "cd-earth", roomId: "service", kind: "earth", points: manhattan([db.x, db.y], pit) });
   }
   const circuits = assignCircuits(elec);
 

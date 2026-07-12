@@ -184,3 +184,13 @@ def test_fire_safety_layout_is_placed_on_every_house(sample_plan):
     assert kinds.count("extinguisher") == 2  # kitchen + main exit
     assert kinds.count("exit_sign") == 1
     assert len(m.fire_route) >= 2  # a real escape polyline to the exit
+
+
+def test_earthing_layout_present(sample_plan):
+    """Every DB gets a safety earth: an earth pit node + an earth conductor from the
+    DB body to the pit (core to any Indian electrical layout)."""
+    plan, _ = normalize(sample_plan)
+    m = build_mep_model(plan)
+    assert any(n.kind == "earthpit" for n in m.nodes)
+    earth = [c for c in m.conduits if c.kind == "earth"]
+    assert len(earth) == 1 and len(earth[0].points) >= 2

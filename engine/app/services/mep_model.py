@@ -963,6 +963,12 @@ def build_mep_model(plan: Plan, floor: Optional[int] = None) -> MepModel:
         meter = clamp_pt((db.x, db.y - 0.9), w, d)
         nodes.append(MepNode(id="meter", kind="meter", x=meter[0], y=meter[1], label="Meter"))
         conduits.append(Conduit(id="cd-main", room_id="service", points=[meter, (db.x, db.y)]))
+        # earthing: an earth pit at the front-left corner + the earth conductor
+        # (GI strip / Cu) from the DB body to the pit — the safety earth every
+        # Indian electrical layout carries, previously absent.
+        pit = clamp_pt((0.6, 0.6), w, d)
+        nodes.append(MepNode(id="earthpit", kind="earthpit", x=pit[0], y=pit[1], label="Earth pit"))
+        conduits.append(Conduit(id="cd-earth", room_id="service", points=manhattan((db.x, db.y), pit), kind="earth"))
     circuits = assign_circuits(elec)
 
     clashes = compute_clashes(plan, floor, wet_rooms, fixtures, db, elec, floor_doors)

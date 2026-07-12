@@ -91,6 +91,7 @@ NODE_CODE = {
     "inspection": "IC",
     "septic": "ST",
     "rainpit": "RWH",
+    "earthpit": "EP",
 }
 
 
@@ -285,7 +286,7 @@ def _draw_mep(msp, doc, plan: Plan, floor: Optional[int], dx: float, dy: float):
         # conductor runs on separate layers by class, the way a real electrical DXF
         # keeps sub-mains, switch-legs and dedicated radials independently toggleable
         ("MEP_CONDUIT_SUBMAIN", 6), ("MEP_CONDUIT_SWITCHLEG", 8),
-        ("MEP_CONDUIT_DEDICATED", 4), ("MEP_NODE", 30), ("MEP_TEXT", 7),
+        ("MEP_CONDUIT_DEDICATED", 4), ("MEP_EARTH", 3), ("MEP_NODE", 30), ("MEP_TEXT", 7),
     ]:
         _ensure(doc, name, aci)
     for s, aci in SERVICE_ACI.items():
@@ -306,6 +307,7 @@ def _draw_mep(msp, doc, plan: Plan, floor: Optional[int], dx: float, dy: float):
         "home_run": "MEP_CONDUIT_SUBMAIN",
         "switch_leg": "MEP_CONDUIT_SWITCHLEG",
         "dedicated": "MEP_CONDUIT_DEDICATED",
+        "earth": "MEP_EARTH",
     }
     for cd in m.conduits:
         msp.add_lwpolyline(

@@ -220,12 +220,13 @@ const NODE_STYLE: Record<string, { color: string; sym: string }> = {
   inspection: { color: "#7c4a1e", sym: "IC" },
   septic: { color: "#6b4423", sym: "ST" },
   rainpit: { color: "#7c3aed", sym: "RWH" },
+  earthpit: { color: "#16a34a", sym: "EP" },
 };
 // Whole-house plant split across the two plumbing sheets: storage/boost on Supply,
 // disposal on Drainage. The energy meter is the only plant on the electrical sheets.
 const SUPPLY_NODES = new Set(["oht", "sump", "pump"]);
 const DRAIN_NODES = new Set(["inspection", "septic", "rainpit"]);
-const ELEC_NODES = new Set(["meter"]);
+const ELEC_NODES = new Set(["meter", "earthpit"]);
 
 function NodeGlyph({ node, X, Y }: { node: MepNode; X: Proj; Y: Proj }) {
   const st = NODE_STYLE[node.kind] ?? { color: "#475569", sym: "?" };
@@ -528,7 +529,9 @@ function ElectricalLayer({ model, X, Y, sheet }: { model: MepModel; X: Proj; Y: 
   // Lighting sheet shows the switched network (sub-mains + switch-legs); Power sheet
   // shows the sub-mains + the dedicated radials to heavy points.
   const conduitKinds =
-    sheet === "lighting" ? new Set(["home_run", "switch_leg"]) : new Set(["home_run", "dedicated"]);
+    sheet === "lighting"
+      ? new Set(["home_run", "switch_leg", "earth"])
+      : new Set(["home_run", "dedicated", "earth"]);
   return (
     <g>
       {/* conductor runs behind the symbols */}
@@ -589,6 +592,7 @@ const CONDUIT_STYLE: Record<string, { stroke: string; width: number; dash?: stri
   home_run: { stroke: "#b45309", width: 1.7 },
   switch_leg: { stroke: "#ca8a04", width: 1.0, dash: "4 4" },
   dedicated: { stroke: "#0891b2", width: 1.4, dash: "1 4" },
+  earth: { stroke: "#16a34a", width: 1.3, dash: "5 2 1 2" },
 };
 
 function ConduitLine({ cd, X, Y }: { cd: Conduit; X: Proj; Y: Proj }) {

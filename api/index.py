@@ -19,29 +19,31 @@ if _ENGINE_DIR not in sys.path:
 from app.main import app as _engine_app  # noqa: E402  — FastAPI ASGI instance
 
 
-class _StripApiPrefix:
-    """Tiny ASGI shim that removes the ``/engine`` mount prefix Vercel routes on, so
-    the engine's un-prefixed routes match. Everything else passes through untouched."""
+# The frontend calls the engine at /engine/*; Vercel rewrites that to this function.
+# Depending on how Vercel presents the rewritten request the ASGI ``path`` may arrive
+# as "/engine/plan/...", "/api/index/plan/..." or "/api/plan/..." — strip whichever
+# mount prefix is present (longest first) so the engine's own "/plan", "/export",
+# "/health" routes match. An already-unprefixed path passes through untouched.
+_MOUNT_PREFIXES = ("/engine", "/api/index", "/api")
 
-    def __init__(self, application, prefix: str = "/api"):
+
+class _StripMountPrefix:
+    def __init__(self, application):
         self._app = application
-        self._prefix = prefix
 
     async def __call__(self, scope, receive, send):
         if scope.get("type") in ("http", "websocket"):
             path = scope.get("path", "")
-            if path == self._prefix:
-                path = "/"
-            elif path.startswith(self._prefix + "/"):
-                path = path[len(self._prefix) :]
-            scope = {**scope, "path": path}
-            raw = scope.get("raw_path")
-            if raw:
-                pfx = self._prefix.encode()
-                if raw.startswith(pfx):
-                    scope["raw_path"] = raw[len(pfx) :] or b"/"
+            for pfx in _MOUNT_PREFIXES:
+                if path == pfx:
+                    path = "/"
+                    break
+                if path.startswith(pfx + "/"):
+                    path = path[len(pfx) :]
+                    break
+            scope = {**scope, "path": path, "raw_path": path.encode()}
         await self._app(scope, receive, send)
 
 
-# Vercel's @vercel/python runtime serves the ASGI app exported as ``app``.
-app = _StripApiPrefix(_engine_app, "/engine")
+# Vercel's Python runtime serves the ASGI app exported as ``app``.
+app = _StripMountPrefix(_engine_app)

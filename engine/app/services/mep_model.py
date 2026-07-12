@@ -405,6 +405,32 @@ def spread(r: Rect, n: int) -> list[tuple[float, float]]:
     return pts
 
 
+def ceiling_grid(r: Rect, n: int, inset: float = 0.6) -> list[tuple[float, float]]:
+    """Spread ``n`` ceiling fixtures on a grid across the room (inset from the walls),
+    the way luminaires are actually laid out — not clustered at the centroid. Kept in
+    lock-step with ``ceilingGrid`` in web/lib/mep.ts (Math.round parity via floor+0.5)."""
+    if n <= 0:
+        return []
+    if n == 1:
+        return [(r.x + r.w / 2, r.y + r.h / 2)]
+    m = min(inset, r.w * 0.3, r.h * 0.3)
+    aspect = r.w / max(0.1, r.h)
+    cols = max(1, int(math.floor(math.sqrt(n * aspect) + 0.5)))
+    rows = math.ceil(n / cols)
+    cols = math.ceil(n / rows)
+    uw = max(0.1, r.w - 2 * m)
+    uh = max(0.1, r.h - 2 * m)
+    pts: list[tuple[float, float]] = []
+    k = 0
+    for rr in range(rows):
+        for cc in range(cols):
+            if k >= n:
+                break
+            pts.append((r.x + m + uw * (cc + 0.5) / cols, r.y + m + uh * (rr + 0.5) / rows))
+            k += 1
+    return pts
+
+
 def elec_for(room: Room, door: Optional[PlacedOpening]) -> list[ElecPoint]:
     # the rear utility/wash balcony gets a light + a 16A point for the washing machine
     if re.search(r"utility|wash", room.id):
@@ -422,12 +448,10 @@ def elec_for(room: Room, door: Optional[PlacedOpening]) -> list[ElecPoint]:
             ElecPoint(id=f"e-{room.id}-{kind}-{len(out)}", room_id=room.id, kind=kind, x=x, y=y)
         )
 
-    n_light = spec.get("light", 0)
-    for i in range(n_light):
-        off = 0.0 if n_light == 1 else (i - (n_light - 1) / 2) * min(0.6, r.w / (n_light + 1))
-        push("light", c[0] + off, c[1] + (0.18 if i % 2 else -0.18))
-    for i in range(spec.get("fan", 0)):
-        push("fan", c[0], c[1])
+    for fx, fy in ceiling_grid(r, spec.get("light", 0)):
+        push("light", fx, fy)
+    for fx, fy in ceiling_grid(r, spec.get("fan", 0)):
+        push("fan", fx, fy)
     sockets = ["socket6a"] * spec.get("socket6a", 0) + ["socket16a"] * spec.get("socket16a", 0)
     sp = spread(r, len(sockets))
     for i, kind in enumerate(sockets):

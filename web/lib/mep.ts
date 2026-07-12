@@ -465,6 +465,31 @@ function spread(r: Rect, n: number): [number, number][] {
   return pts;
 }
 
+// Spread n ceiling fixtures on a grid across the room (inset from the walls), the
+// way luminaires are actually laid out — not clustered at the centroid. Lock-step
+// with ceiling_grid in engine/app/services/mep_model.py.
+function ceilingGrid(r: Rect, n: number, inset = 0.6): [number, number][] {
+  if (n <= 0) return [];
+  if (n === 1) return [[r.x + r.w / 2, r.y + r.h / 2]];
+  const m = Math.min(inset, r.w * 0.3, r.h * 0.3);
+  const aspect = r.w / Math.max(0.1, r.h);
+  let cols = Math.max(1, Math.round(Math.sqrt(n * aspect)));
+  const rows = Math.ceil(n / cols);
+  cols = Math.ceil(n / rows);
+  const uw = Math.max(0.1, r.w - 2 * m);
+  const uh = Math.max(0.1, r.h - 2 * m);
+  const pts: [number, number][] = [];
+  let k = 0;
+  for (let rr = 0; rr < rows; rr++) {
+    for (let cc = 0; cc < cols; cc++) {
+      if (k >= n) break;
+      pts.push([r.x + m + (uw * (cc + 0.5)) / cols, r.y + m + (uh * (rr + 0.5)) / rows]);
+      k++;
+    }
+  }
+  return pts;
+}
+
 function elecFor(room: Room, door: PlacedOpening | undefined): ElecPoint[] {
   // the rear utility/wash balcony gets a light + a 16A point for the washing machine
   const spec = /utility|wash/.test(room.id) ? { light: 1, socket16a: 1 } : ELEC_SCHEDULE[room.type];
@@ -475,13 +500,9 @@ function elecFor(room: Room, door: PlacedOpening | undefined): ElecPoint[] {
   const push = (kind: ElectricalKind, x: number, y: number) =>
     out.push({ id: `e-${room.id}-${kind}-${out.length}`, roomId: room.id, kind, x, y });
 
-  // ceiling fixtures cluster at the centroid (fan slightly offset from lights)
-  const nLight = spec.light ?? 0;
-  for (let i = 0; i < nLight; i++) {
-    const off = nLight === 1 ? 0 : (i - (nLight - 1) / 2) * Math.min(0.6, r.w / (nLight + 1));
-    push("light", c[0] + off, c[1] + (i % 2 ? 0.18 : -0.18));
-  }
-  for (let i = 0; i < (spec.fan ?? 0); i++) push("fan", c[0], c[1]);
+  // ceiling fixtures on a grid across the room (not clustered at the centroid)
+  for (const [fx, fy] of ceilingGrid(r, spec.light ?? 0)) push("light", fx, fy);
+  for (const [fx, fy] of ceilingGrid(r, spec.fan ?? 0)) push("fan", fx, fy);
 
   // wall sockets spread along an interior wall
   const sockets: ElectricalKind[] = [

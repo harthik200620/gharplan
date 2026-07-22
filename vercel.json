@@ -1,0 +1,16 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "installCommand": "npm install",
+  "buildCommand": "npm run build --workspace web",
+  "outputDirectory": "web/.next",
+  "framework": "nextjs",
+  "functions": {
+    "api/index.py": {
+      "includeFiles": "{engine,fixtures}/**",
+      "maxDuration": 60
+    }
+  },
+  "rewrites": [
+    { "source": "/engine/:path*", "destination": "/api/index" }
+  ]
+}

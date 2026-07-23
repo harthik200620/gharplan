@@ -13,7 +13,7 @@ export const SAMPLE_PLAN = {
     { id: "kitchen", type: "kitchen", polygon: [[5.2, 0.6], [7.644, 0.6], [7.644, 3.3], [5.2, 3.3], [5.2, 0.6]], areaSqm: 0, perimeterM: 0, centroid: null, zone: null, ceilingHeightM: 3.0 },
     { id: "toilet1", type: "toilet", polygon: [[1.0, 4.4], [3.0, 4.4], [3.0, 5.9], [1.0, 5.9], [1.0, 4.4]], areaSqm: 0, perimeterM: 0, centroid: null, zone: null, ceilingHeightM: 3.0 },
     { id: "dining", type: "dining", polygon: [[1.0, 5.9], [3.6, 5.9], [3.6, 8.0], [1.0, 8.0], [1.0, 5.9]], areaSqm: 0, perimeterM: 0, centroid: null, zone: null, ceilingHeightM: 3.0 },
-    { id: "living", type: "living", polygon: [[5.2, 3.3], [7.644, 3.3], [7.644, 7.5], [5.2, 7.5], [5.2, 3.3]], areaSqm: 0, perimeterM: 0, centroid: null, zone: null, ceilingHeightM: 3.0 },
+    { id: "living", type: "living", polygon: [[5.2, 3.3], [7.644, 3.3], [7.644, 7.5], [5.2, 7.5], [5.2, 3.3]], areaSqm: 0, perimeterM: 0, centroid: null, zone: null, ceilingHeightM: 4.2 },
     { id: "entrance", type: "entrance", polygon: [[5.2, 7.5], [7.644, 7.5], [7.644, 8.9], [5.2, 8.9], [5.2, 7.5]], areaSqm: 0, perimeterM: 0, centroid: null, zone: null, ceilingHeightM: 3.0 },
     { id: "kids", type: "childrens_bedroom", polygon: [[1.0, 8.2], [3.85, 8.2], [3.85, 11.592], [1.0, 11.592], [1.0, 8.2]], areaSqm: 0, perimeterM: 0, centroid: null, zone: null, ceilingHeightM: 3.0 },
     { id: "utility", type: "utility", polygon: [[3.85, 8.2], [5.2, 8.2], [5.2, 10.0], [3.85, 10.0], [3.85, 8.2]], areaSqm: 0, perimeterM: 0, centroid: null, zone: null, ceilingHeightM: 3.0 },

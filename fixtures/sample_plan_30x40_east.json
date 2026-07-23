@@ -50,7 +50,7 @@
       "id": "living",
       "type": "living",
       "polygon": [[5.2, 3.3], [7.644, 3.3], [7.644, 7.5], [5.2, 7.5], [5.2, 3.3]],
-      "ceilingHeightM": 3.0
+      "ceilingHeightM": 4.2
     },
     {
       "id": "entrance",

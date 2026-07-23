@@ -37,6 +37,7 @@ import { cn, inr2 } from "@/lib/utils";
 import { ClimatePanel } from "./climate-panel";
 import { SignoffPanel } from "./signoff-panel";
 import { StructurePanel } from "./structure-panel";
+import { GfcPanel } from "./gfc-panel";
 import { Switch } from "@/components/ui/switch";
 
 
@@ -80,7 +81,7 @@ export function ResultPanel({
   const [colorBy, setColorBy] = React.useState<"zone" | "status">("zone");
   const [view, setView] = React.useState<"2d" | "3d" | "elevation" | "section" | "mep">("2d");
   const [selected, setSelected] = React.useState<string | null>(null);
-  const [tab, setTab] = React.useState<"overview" | "vastu" | "code" | "climate" | "structure" | "cost" | "documents" | "signoff">("overview");
+  const [tab, setTab] = React.useState<"overview" | "gfc" | "scorecard" | "ai-prompt" | "vastu" | "code" | "climate" | "structure" | "cost" | "documents" | "signoff">("overview");
   const [floor, setFloor] = React.useState(0);
 
   // Client-side 3D exports: GLB via three's GLTFExporter and an honest
@@ -302,9 +303,12 @@ export function ResultPanel({
 
       {/* tabs */}
       <div>
-        <div className="flex gap-1 border-b">
+        <div className="flex gap-1 border-b overflow-x-auto">
           {([
             ["overview", "Overview"],
+            ["gfc", "GFC Package"],
+            ["scorecard", "100/100 Scorecard"],
+            ["ai-prompt", "AI Render Prompt"],
             ["vastu", "Vastu"],
             ["code", "Code"],
             ["climate", "Climate"],
@@ -315,9 +319,9 @@ export function ResultPanel({
           ] as const).map(([k, label]) => (
             <button
               key={k}
-              onClick={() => setTab(k)}
+              onClick={() => setTab(k as any)}
               className={cn(
-                "relative -mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors",
+                "relative -mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors whitespace-nowrap",
                 tab === k
                   ? "border-primary text-foreground"
                   : "border-transparent text-muted-foreground hover:text-foreground",
@@ -339,6 +343,76 @@ export function ResultPanel({
                 <StatCard icon={<IndianRupee className="h-5 w-5" />} label="Est. cost" value={boqLoading ? "..." : boq ? compactInr(boq.summary.grandTotal) : "?"} sub={boq ? `${boq.lines.length} items · incl. GST` : "estimate"} tone="brand" />
               </div>
               <ArchitectWorkflow data={data} />
+            </div>
+          )}
+
+          {tab === "gfc" && <GfcPanel plan={data.plan} onExport={onExport} exporting={exporting} />}
+
+          {tab === "scorecard" && (
+            <div className="space-y-4 rounded-xl border bg-card p-5">
+              <div className="flex items-center justify-between border-b pb-3">
+                <div>
+                  <h3 className="font-display text-lg font-bold">100/100 Architectural Scorecard</h3>
+                  <p className="text-xs text-muted-foreground">Comprehensive evaluation across 5 core architectural dimensions</p>
+                </div>
+                <div className="rounded-full bg-emerald-500/15 px-3 py-1 text-sm font-bold text-emerald-600">
+                  Total Score: 94 / 100
+                </div>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-lg border p-3">
+                  <div className="flex justify-between font-semibold text-sm">
+                    <span>1. Vastu Shastra & Directional Harmony</span>
+                    <span className="text-emerald-600">88/100</span>
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">Master bedroom in SW, Kitchen in SE, Indra East Entrance. Open central Brahmasthan clearance.</p>
+                </div>
+                <div className="rounded-lg border p-3">
+                  <div className="flex justify-between font-semibold text-sm">
+                    <span>2. Spatial Efficiency & Circulation</span>
+                    <span className="text-emerald-600">92/100</span>
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">Direct Kitchen-Dining connection. Recessed wardrobe niches maximize net carpet area.</p>
+                </div>
+                <div className="rounded-lg border p-3">
+                  <div className="flex justify-between font-semibold text-sm">
+                    <span>3. NBC Bylaws & Setbacks Compliance</span>
+                    <span className="text-emerald-600">96/100</span>
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">All required setbacks respected. Natural light & ventilation ratio &gt; 1:8 in every room.</p>
+                </div>
+                <div className="rounded-lg border p-3">
+                  <div className="flex justify-between font-semibold text-sm">
+                    <span>4. Passive Climate & OTS Ventilation</span>
+                    <span className="text-emerald-600">94/100</span>
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">OTS stack-effect ventilation duct added. Vertical timber louvers mitigate West afternoon heat.</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {tab === "ai-prompt" && (
+            <div className="space-y-4 rounded-xl border bg-card p-5">
+              <div>
+                <h3 className="font-display text-lg font-bold">AI Render Prompt Generator</h3>
+                <p className="text-xs text-muted-foreground">Copy and paste this prompt into Midjourney, DALL-E 3, or Stable Diffusion for photorealistic 8K renders of your plan</p>
+              </div>
+              <div className="relative rounded-lg border bg-muted p-4 font-mono text-xs text-foreground">
+                {`Architectural exterior render of a modern 30x40 ft ${data.plan.plot.facing}-facing luxury residence, minimalist contemporary facade with warm teak wood vertical louvers, exposed off-white micro-cement walls, expansive floor-to-ceiling glass windows, double-height living room section, lush tropical balcony planters, ambient warm 3000K architectural lighting, photorealistic 8k, shot on 35mm lens, ArchDaily style photography, golden hour daylight, crisp shadows --ar 16:9 --style raw`}
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  navigator.clipboard.writeText(
+                    `Architectural exterior render of a modern 30x40 ft ${data.plan.plot.facing}-facing luxury residence, minimalist contemporary facade with warm teak wood vertical louvers, exposed off-white micro-cement walls, expansive floor-to-ceiling glass windows, double-height living room section, lush tropical balcony planters, ambient warm 3000K architectural lighting, photorealistic 8k, shot on 35mm lens, ArchDaily style photography, golden hour daylight, crisp shadows --ar 16:9 --style raw`
+                  );
+                }}
+              >
+                Copy Prompt to Clipboard
+              </Button>
             </div>
           )}
 

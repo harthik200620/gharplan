@@ -6,13 +6,17 @@ import type { Plan, Room } from "@gharplan/shared";
 import { ROOM_LABELS } from "@gharplan/shared";
 import {
   bounds,
+  deriveWalls,
   fmtDim,
   placeOpenings,
   STATUS_CAD,
+  wallSegmentRect,
+  wallThicknessAt,
   ZONE_CAD,
   type Edge,
   type PlacedOpening,
   type Rect,
+  type WallSegment,
 } from "@/lib/cad";
 import { cn } from "@/lib/utils";
 
@@ -38,7 +42,6 @@ type Props = {
 
 // non-scaling stroke weights (viewport px)
 const W_EXT = 2.6;
-const W_INT = 1.4;
 const W_OPEN = 1.5;
 const W_DIM = 1;
 const W_FURN = 1.1;
@@ -154,6 +157,7 @@ export function FloorPlanCad({
     () => (showOpenings ? placeOpenings(plan).filter((o) => shownIds.has(o.roomId)) : []),
     [plan, showOpenings, shownIds],
   );
+  const walls = React.useMemo(() => deriveWalls(plan, floor), [plan, floor]);
 
   return (
     <div className={cn("relative overflow-hidden rounded-xl border bg-white", className)}>
@@ -168,9 +172,6 @@ export function FloorPlanCad({
         onPointerUp={onPointerUp}
       >
         <defs>
-          <pattern id="cad-wall-hatch" width="0.12" height="0.12" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-            <line x1="0" y1="0" x2="0" y2="0.12" stroke="#94a3b8" strokeWidth="0.03" />
-          </pattern>
           <pattern id="cad-grid" width="1" height="1" patternUnits="userSpaceOnUse">
             <path d="M 1 0 L 0 0 0 1" fill="none" stroke="#e8edf5" strokeWidth={0.6} vectorEffect="non-scaling-stroke" />
           </pattern>
@@ -208,8 +209,8 @@ export function FloorPlanCad({
                 width={r.w}
                 height={r.h}
                 fill={fill}
-                stroke={selected ? "#4f46e5" : "#1f2a44"}
-                strokeWidth={selected ? W_EXT : isSite ? 1.2 : W_INT}
+                stroke={selected ? "#4f46e5" : isSite ? "#1f2a44" : "none"}
+                strokeWidth={selected ? W_EXT : isSite ? 1.2 : 0}
                 strokeDasharray={isSite ? "4 3" : undefined}
                 vectorEffect="non-scaling-stroke"
                 onClick={(e) => {
@@ -218,19 +219,6 @@ export function FloorPlanCad({
                 }}
                 style={{ cursor: onSelect ? "pointer" : "default" }}
               />
-              {!isSite && !selected && (
-                <rect
-                  x={r.x}
-                  y={sy(r.y + r.h)}
-                  width={r.w}
-                  height={r.h}
-                  fill="none"
-                  stroke="url(#cad-wall-hatch)"
-                  strokeWidth={W_INT - 0.5}
-                  pointerEvents="none"
-                  vectorEffect="non-scaling-stroke"
-                />
-              )}
               {selected && (
                 <rect
                   x={r.x}
@@ -246,6 +234,25 @@ export function FloorPlanCad({
           );
         })}
 
+        {/* WALLS — true double-line masonry (230mm exterior / 115mm interior),
+            derived from the room layout. Replaces the room-fill's own boundary,
+            which used to be a fixed-pixel cosmetic stroke, not a real wall. */}
+        <g pointerEvents="none">
+          {walls.map((seg, i) => {
+            const wr = wallSegmentRect(seg);
+            return (
+              <rect
+                key={`w-${i}`}
+                x={wr.x}
+                y={sy(wr.y + wr.h)}
+                width={wr.w}
+                height={wr.h}
+                fill={seg.kind === "ext" ? "#1f2a44" : "#3f4a63"}
+              />
+            );
+          })}
+        </g>
+
         {/* FURNITURE */}
         {showFurniture &&
           shownRooms.map((room) => {
@@ -256,30 +263,23 @@ export function FloorPlanCad({
 
         {/* OPENINGS (doors + windows) */}
         {openings.map((o, i) => (
-          <Opening key={`o-${i}`} o={o} sy={sy} />
+          <Opening key={`o-${i}`} o={o} sy={sy} walls={walls} />
         ))}
 
-        {/* exterior plot wall (drawn last so it reads as the boundary) */}
+        {/* site / property boundary — the plot line, NOT a wall: with setbacks
+            the building's real exterior walls (the WALLS layer above) sit
+            inset from this, which this thin line makes honest at a glance. */}
         <rect
           x={0}
           y={0}
           width={W}
           height={D}
           fill="none"
-          stroke="#0f172a"
-          strokeWidth={W_EXT}
+          stroke="#94a3b8"
+          strokeWidth={1}
+          strokeDasharray="3 2"
           vectorEffect="non-scaling-stroke"
-        />
-        <rect
-          x={0}
-          y={0}
-          width={W}
-          height={D}
-          fill="none"
-          stroke="url(#cad-wall-hatch)"
-          strokeWidth={W_EXT - 0.5}
           pointerEvents="none"
-          vectorEffect="non-scaling-stroke"
         />
 
         {/* LABELS */}
@@ -436,7 +436,7 @@ export function FloorPlanCad({
 
 /* --------------------------------- pieces --------------------------------- */
 
-function DimLine({
+export function DimLine({
   x1,
   y1,
   x2,
@@ -490,22 +490,32 @@ function DimLine({
   );
 }
 
-function Opening({ o, sy }: { o: PlacedOpening; sy: (y: number) => number }) {
+function Opening({ o, sy, walls }: { o: PlacedOpening; sy: (y: number) => number; walls: WallSegment[] }) {
   const half = o.len / 2;
-  const along: [number, number] = o.edge === "N" || o.edge === "S" ? [1, 0] : [0, 1];
+  const horiz = o.edge === "N" || o.edge === "S";
+  const along: [number, number] = horiz ? [1, 0] : [0, 1];
   const inward: [number, number] =
     o.edge === "N" ? [0, -1] : o.edge === "S" ? [0, 1] : o.edge === "E" ? [-1, 0] : [1, 0];
 
   const j1: [number, number] = [o.cx - along[0] * half, o.cy - along[1] * half];
   const j2: [number, number] = [o.cx + along[0] * half, o.cy + along[1] * half];
 
+  // The gap cut through the wall poché — real wall thickness, not a fixed pixel
+  // width, so it always exactly matches the wall segment it's erasing.
+  const wt = wallThicknessAt(walls, o.edge, o.cx, o.cy);
+  const erase: Rect = horiz
+    ? { x: o.cx - half, y: o.cy - wt / 2, w: o.len, h: wt }
+    : { x: o.cx - wt / 2, y: o.cy - half, w: wt, h: o.len };
+  const eraseRect = (
+    <rect x={erase.x} y={sy(erase.y + erase.h)} width={erase.w} height={erase.h} fill="#ffffff" stroke="none" />
+  );
+
   if (o.kind === "window") {
     const t = 0.07;
     const n: [number, number] = [inward[0] * t, inward[1] * t];
     return (
       <g stroke="#1d4ed8" strokeWidth={W_OPEN} fill="none">
-        {/* break the wall white */}
-        <line x1={j1[0]} y1={sy(j1[1])} x2={j2[0]} y2={sy(j2[1])} stroke="#ffffff" strokeWidth={W_EXT + 1.5} vectorEffect="non-scaling-stroke" />
+        {eraseRect}
         <line x1={j1[0] - n[0]} y1={sy(j1[1] - n[1])} x2={j2[0] - n[0]} y2={sy(j2[1] - n[1])} vectorEffect="non-scaling-stroke" />
         <line x1={j1[0] + n[0]} y1={sy(j1[1] + n[1])} x2={j2[0] + n[0]} y2={sy(j2[1] + n[1])} vectorEffect="non-scaling-stroke" />
       </g>
@@ -530,7 +540,7 @@ function Opening({ o, sy }: { o: PlacedOpening; sy: (y: number) => number }) {
   const main = o.main;
   return (
     <g>
-      <line x1={j1[0]} y1={sy(j1[1])} x2={j2[0]} y2={sy(j2[1])} stroke="#ffffff" strokeWidth={main ? W_EXT + 3 : W_EXT + 1.5} vectorEffect="non-scaling-stroke" />
+      {eraseRect}
       <polyline points={pts.join(" ")} fill="none" stroke={main ? "#fb923c" : "#94a3b8"} strokeWidth={main ? W_OPEN : W_DIM} vectorEffect="non-scaling-stroke" />
       <line
         x1={hingePt[0]}

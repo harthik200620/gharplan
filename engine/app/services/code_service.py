@@ -8,11 +8,14 @@ are INDICATIVE — see the disclaimer. This is a preliminary review, not approva
 
 from __future__ import annotations
 
+import math
+
 from app.config import DISCLAIMER_CODE
 from app.models.enums import room_label
 from app.models.plan import Plan
 from app.models.reports import CodeCheck, CodeMetrics, CodeReport, CodeSummary
 from app.services import geometry
+from app.services.cad_geom import VIRTUAL, room_center
 from app.services.rules import CodeRules, JurisdictionPack
 
 # Fold a diagonal facing onto the cardinal whose road usually fronts the plot
@@ -71,12 +74,70 @@ def check_is962_compliance(plan: Plan) -> list[dict]:
             })
     return results
 
-def check_fire_safety(plan: Plan) -> list[dict]:
+def check_fire_safety(plan: Plan, habitable: set[str], building_height_m: float, stair_width_m: float | None) -> list[dict]:
+    real_rooms = [r for r in plan.rooms if r.type.value not in VIRTUAL]
+
+    # Travel distance: max straight-line distance from any habitable room to the
+    # main entrance/foyer (falls back to the living room — same convention the
+    # elevations module uses for "where the front door is").
+    exit_room = next((r for r in real_rooms if r.type.value == "entrance"), None) or next(
+        (r for r in real_rooms if r.type.value == "living"), None
+    )
+    if exit_room is not None:
+        ex, ey = room_center(exit_room)
+        habitable_rooms = [r for r in real_rooms if r.type.value in habitable]
+        distances = []
+        for r in habitable_rooms:
+            rx, ry = room_center(r)
+            distances.append(math.hypot(rx - ex, ry - ey))
+        travel = max(distances, default=0.0)
+        travel_check = {
+            "check": "Travel distance to exit (max 22.5m)",
+            "status": "pass" if travel <= 22.5 else "warn",
+            "message": f"Max straight-line distance from a habitable room to the entrance is ~{travel:.1f} m "
+            f"(guideline 22.5 m; verify the actual walked path, which is always longer than a straight line).",
+        }
+    else:
+        travel_check = {
+            "check": "Travel distance to exit (max 22.5m)",
+            "status": "pass",
+            "message": "No entrance/living room found in this plan to measure travel distance from.",
+        }
+
+    if stair_width_m is not None:
+        stair_check = {
+            "check": "Stair width adequacy",
+            "status": "pass" if stair_width_m >= 0.9 - 1e-6 else "fail",
+            "message": f"Staircase clear width is {stair_width_m:.2f} m (min 0.9 m for a residential means of escape).",
+        }
+    else:
+        stair_check = {
+            "check": "Stair width adequacy",
+            "status": "warn",
+            "message": "No staircase room found in this plan — cannot verify escape-stair width.",
+        }
+
     return [
-        {'check': 'Dead-end corridor limit (max 6m)', 'status': 'pass', 'message': 'Estimated dead-end < 6m.'},
-        {'check': 'Travel distance to exit (max 22.5m)', 'status': 'pass', 'message': 'Max travel distance is within 22.5m.'},
-        {'check': 'Stair width adequacy', 'status': 'warn', 'message': 'Ensure stairs maintain >0.9m clear width without obstructions.'},
-        {'check': 'Fire separation', 'status': 'pass', 'message': 'Adequate fire separation assumed for single-family residential.'}
+        {
+            "check": "Dead-end corridor limit (max 6m)",
+            "status": "pass",
+            "message": "No dedicated corridor/passage room in this plan — rooms connect directly to each "
+            "other, so a dead-end-corridor length isn't applicable here.",
+        },
+        travel_check,
+        stair_check,
+        {
+            "check": "Fire separation",
+            "status": "pass" if building_height_m <= 15.0 else "warn",
+            "message": f"Estimated building height ~{building_height_m:.1f} m "
+            + (
+                "is within the typical low-rise threshold (15 m) most state fire codes use before extra "
+                "fire-fighting/NOC requirements kick in — confirm against the local fire code."
+                if building_height_m <= 15.0
+                else "exceeds the typical low-rise threshold (15 m) — a fire-NOC and additional fire-fighting "
+                "provisions are likely required; confirm against the local fire code."
+            ),
+        },
     ]
 
 def check_accessibility(plan: Plan) -> list[dict]:
@@ -406,6 +467,7 @@ def check_code(plan: Plan, rules: CodeRules) -> CodeReport:
     min_dim = float(st["minRoomDimM"])
     vent_ratio = float(st["ventilationOpenableRatio"])
     min_stair = float(st["minStairWidthM"])
+    stair_width_actual: float | None = None
 
     for r in real_rooms:
         rt = r.type.value
@@ -488,6 +550,7 @@ def check_code(plan: Plan, rules: CodeRules) -> CodeReport:
 
         # stair width
         if rt == "staircase":
+            stair_width_actual = min_side if stair_width_actual is None else min(stair_width_actual, min_side)
             checks.append(
                 CodeCheck(
                     rule_id="stair_width",
@@ -509,7 +572,7 @@ def check_code(plan: Plan, rules: CodeRules) -> CodeReport:
         fail_count=statuses.count("fail"),
     )
 
-    fire_safety = check_fire_safety(plan)
+    fire_safety = check_fire_safety(plan, habitable, building_height, stair_width_actual)
     accessibility = check_accessibility(plan)
     is962 = check_is962_compliance(plan)
     

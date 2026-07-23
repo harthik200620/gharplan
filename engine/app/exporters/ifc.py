@@ -40,6 +40,7 @@ from app.services.cad_geom import (
     LEVELS,
     SITE_OPENINGS,
     VIRTUAL,
+    WALL_T,
     bounds,
     building_footprint,
     floors_of,
@@ -52,8 +53,8 @@ if TYPE_CHECKING:  # no runtime dependency — build_ifc duck-types the argument
 # Room types that never become an IfcSpace (site zones + point markers).
 SKIP_TYPES = VIRTUAL | SITE_OPENINGS
 
-WALL_EXT_T = 0.23  # m — walls on the building outline
-WALL_INT_T = 0.115  # m — internal partitions
+WALL_EXT_T = WALL_T.EXT  # m — walls on the building outline
+WALL_INT_T = WALL_T.INT  # m — internal partitions
 WALL_H = LEVELS.CEIL  # m — clear wall height (slab-to-soffit, v1)
 _EDGE_TOL = 0.06  # m — segment-on-footprint tolerance (matches cad_geom)
 _MIN_SEG = 0.08  # m — ignore degenerate room edges

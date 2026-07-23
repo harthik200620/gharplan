@@ -88,6 +88,125 @@ export function exteriorEdges(r: Rect, fp: Rect): Record<Edge, boolean> {
   };
 }
 
+// Real masonry wall thickness, metres — reused everywhere a wall gets drawn
+// (2D plan, section, DXF, IFC). Named WALL_T (not WALL — that name is already
+// the ink-color hex constant above).
+export const WALL_T = { EXT: 0.23, INT: 0.115 } as const;
+
+export type WallSegment = {
+  /** H = a horizontal run (constant y, spans x); V = a vertical run (constant x, spans y). */
+  axis: "H" | "V";
+  /** the constant coordinate: y for H, x for V. */
+  at: number;
+  /** span of the run along its own axis: x-range for H, y-range for V. */
+  from: number;
+  to: number;
+  kind: "ext" | "int";
+  thickness: number;
+};
+
+/** A wall segment's centerline + thickness, as a drawable Rect. */
+export function wallSegmentRect(seg: WallSegment): Rect {
+  const half = seg.thickness / 2;
+  return seg.axis === "H"
+    ? { x: seg.from, y: seg.at - half, w: seg.to - seg.from, h: seg.thickness }
+    : { x: seg.at - half, y: seg.from, w: seg.thickness, h: seg.to - seg.from };
+}
+
+type Interval = { from: number; to: number };
+
+function roundToTol(v: number): number {
+  return Math.round(v / TOL) * TOL;
+}
+
+/** One coordinate line (all rooms sharing an edge at this position): sweep the
+ *  union of interval breakpoints from both sides, classify each atomic run by
+ *  which side(s) reach it (both = a shared/interior wall; one = an exterior
+ *  wall, whether facing the site or an internal void like a courtyard), then
+ *  re-merge adjacent same-classification atoms into full wall runs. */
+function sweepLine(at: number, axis: "H" | "V", sideA: Interval[], sideB: Interval[]): WallSegment[] {
+  const breakpoints = new Set<number>();
+  for (const iv of sideA) {
+    breakpoints.add(iv.from);
+    breakpoints.add(iv.to);
+  }
+  for (const iv of sideB) {
+    breakpoints.add(iv.from);
+    breakpoints.add(iv.to);
+  }
+  const pts = Array.from(breakpoints).sort((a, b) => a - b);
+
+  const segs: WallSegment[] = [];
+  let curFrom: number | null = null;
+  let curKind: "ext" | "int" | null = null;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const from = pts[i];
+    const to = pts[i + 1];
+    if (to - from < 1e-6) continue;
+    const mid = (from + to) / 2;
+    const a = sideA.some((iv) => mid > iv.from && mid < iv.to);
+    const b = sideB.some((iv) => mid > iv.from && mid < iv.to);
+    const kind: "ext" | "int" | null = a && b ? "int" : a || b ? "ext" : null;
+    if (kind === curKind && curFrom !== null) continue; // extend the current run
+    if (curKind !== null && curFrom !== null) {
+      segs.push({ axis, at, from: curFrom, to: from, kind: curKind, thickness: curKind === "int" ? WALL_T.INT : WALL_T.EXT });
+    }
+    curFrom = kind === null ? null : from;
+    curKind = kind;
+  }
+  if (curKind !== null && curFrom !== null) {
+    segs.push({ axis, at, from: curFrom, to: pts[pts.length - 1], kind: curKind, thickness: curKind === "int" ? WALL_T.INT : WALL_T.EXT });
+  }
+  return segs;
+}
+
+/** Derive double-line wall centerlines + thickness from the room layout — every
+ *  room is always an axis-aligned rect, so this is a cheap rectilinear interval
+ *  sweep rather than general polygon adjacency. Computed fresh at render/export
+ *  time (never persisted), the same way placeOpenings infers door/window spots:
+ *  a shared room-to-room edge is a 115mm interior partition; an edge no other
+ *  room reaches (site perimeter OR an internal void like a courtyard) is a
+ *  230mm exterior wall. */
+export function deriveWalls(plan: Plan, floor?: number): WallSegment[] {
+  const rooms = structuralRooms(plan, floor).map((r) => bounds(r.polygon));
+  if (!rooms.length) return [];
+
+  const yLines = new Map<number, { below: Interval[]; above: Interval[] }>();
+  const xLines = new Map<number, { left: Interval[]; right: Interval[] }>();
+  for (const r of rooms) {
+    const yTop = roundToTol(r.y + r.h);
+    const yBot = roundToTol(r.y);
+    if (!yLines.has(yTop)) yLines.set(yTop, { below: [], above: [] });
+    yLines.get(yTop)!.below.push({ from: r.x, to: r.x + r.w });
+    if (!yLines.has(yBot)) yLines.set(yBot, { below: [], above: [] });
+    yLines.get(yBot)!.above.push({ from: r.x, to: r.x + r.w });
+
+    const xRight = roundToTol(r.x + r.w);
+    const xLeft = roundToTol(r.x);
+    if (!xLines.has(xRight)) xLines.set(xRight, { left: [], right: [] });
+    xLines.get(xRight)!.left.push({ from: r.y, to: r.y + r.h });
+    if (!xLines.has(xLeft)) xLines.set(xLeft, { left: [], right: [] });
+    xLines.get(xLeft)!.right.push({ from: r.y, to: r.y + r.h });
+  }
+
+  const out: WallSegment[] = [];
+  for (const [y, { below, above }] of yLines) out.push(...sweepLine(y, "H", below, above));
+  for (const [x, { left, right }] of xLines) out.push(...sweepLine(x, "V", left, right));
+  return out;
+}
+
+/** The real wall thickness at an opening's position, looked up from derived
+ *  wall segments — so an opening's erase-gap always matches the wall it's
+ *  actually cutting through (230mm exterior vs 115mm interior). */
+export function wallThicknessAt(walls: WallSegment[], edge: Edge, cx: number, cy: number): number {
+  const horiz = edge === "N" || edge === "S";
+  const axis: "H" | "V" = horiz ? "H" : "V";
+  const at = horiz ? cy : cx;
+  const pos = horiz ? cx : cy;
+  const hit = walls.find((w) => w.axis === axis && Math.abs(w.at - at) < 0.1 && pos >= w.from - 0.05 && pos <= w.to + 0.05);
+  return hit?.thickness ?? WALL_T.EXT;
+}
+
 function dist(a: [number, number], b: [number, number]) {
   return Math.hypot(a[0] - b[0], a[1] - b[1]);
 }

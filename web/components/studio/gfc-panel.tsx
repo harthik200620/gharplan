@@ -16,11 +16,14 @@ import {
   Maximize,
   Compass,
 } from "lucide-react";
-import type { Plan } from "@gharplan/shared";
+import type { FinishTier, Plan } from "@gharplan/shared";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { StructurePanel } from "@/components/studio/structure-panel";
 import { MepPlan } from "@/components/cad/mep-plan";
+import { MasonrySettingOutPlan } from "@/components/cad/masonry-setting-out-plan";
+import { ReflectedCeilingPlan } from "@/components/cad/reflected-ceiling-plan";
+import { buildOpeningSchedule, toMm, typeLabel } from "@/lib/schedules";
 
 // Sheets marked "structure" / "mep" are backed by a real per-plan computation
 // (the structural design service, the MEP model) and render an actual on-screen
@@ -53,7 +56,7 @@ const GFC_PACKAGES = [
     category: "Architectural",
     icon: <Ruler className="h-5 w-5 text-emerald-500" />,
     description: "Outer and inner wall dimensions, door/window openings, and lintel beam heights.",
-    view: null,
+    view: "masonry" as const,
   },
   {
     id: "gfc-arch-slab",
@@ -89,7 +92,7 @@ const GFC_PACKAGES = [
     category: "Specifications",
     icon: <Maximize className="h-5 w-5 text-purple-500" />,
     description: "Frame profiles, glass thickness, hardware accessories & sill heights.",
-    view: null,
+    view: "joinery" as const,
   },
   {
     id: "gfc-rcp",
@@ -98,7 +101,7 @@ const GFC_PACKAGES = [
     category: "Interiors",
     icon: <Compass className="h-5 w-5 text-rose-500" />,
     description: "False ceiling drop levels, spotlight layout, and cove lighting.",
-    view: null,
+    view: "rcp" as const,
   },
 ];
 
@@ -106,10 +109,12 @@ export function GfcPanel({
   plan,
   onExport,
   exporting,
+  finishTier = "standard",
 }: {
   plan: Plan;
   onExport: (type: "pdf" | "dxf" | "xlsx" | "ifc") => void;
   exporting: string | null;
+  finishTier?: FinishTier;
 }) {
   const gfcPackages = GFC_PACKAGES;
   const [expanded, setExpanded] = React.useState<string | null>(null);
@@ -197,15 +202,83 @@ export function GfcPanel({
                   <StructurePanel plan={plan} />
                 </div>
               )}
+              {isOpen && pkg.view === "masonry" && (
+                <div className="mt-3 border-t pt-3">
+                  <MasonrySettingOutPlan plan={plan} />
+                </div>
+              )}
               {isOpen && pkg.view === "mep" && (
                 <div className="mt-3 border-t pt-3">
                   <MepPlan plan={plan} />
+                </div>
+              )}
+              {isOpen && pkg.view === "joinery" && (
+                <div className="mt-3 border-t pt-3">
+                  <JoinerySchedule plan={plan} finishTier={finishTier} />
+                </div>
+              )}
+              {isOpen && pkg.view === "rcp" && (
+                <div className="mt-3 border-t pt-3">
+                  <ReflectedCeilingPlan plan={plan} finishTier={finishTier} />
                 </div>
               )}
             </div>
           );
         })}
       </div>
+    </div>
+  );
+}
+
+const JTH = "px-2.5 py-1.5 text-left text-[10px] font-medium uppercase tracking-wide text-muted-foreground";
+const JTD = "px-2.5 py-1.5 align-top text-xs text-foreground";
+
+function JoinerySchedule({ plan, finishTier }: { plan: Plan; finishTier: FinishTier }) {
+  const groups = React.useMemo(() => buildOpeningSchedule(plan, finishTier), [plan, finishTier]);
+  if (!groups.length) {
+    return <p className="text-xs text-muted-foreground">No openings defined for this plan yet.</p>;
+  }
+  return (
+    <div className="space-y-2">
+      <div className="overflow-x-auto rounded-lg border">
+        <table className="w-full border-collapse">
+          <thead className="bg-muted/40">
+            <tr>
+              <th className={JTH}>Mark</th>
+              <th className={JTH}>Size (mm)</th>
+              <th className={JTH}>Type</th>
+              <th className={JTH}>Frame material</th>
+              <th className={JTH}>Glazing / panel</th>
+              <th className={JTH}>Hardware</th>
+              <th className={JTH}>U-value / SHGC</th>
+              <th className={`${JTH} text-right`}>Qty</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y">
+            {groups.map((g) => (
+              <tr key={g.mark} className="odd:bg-background even:bg-muted/20">
+                <td className={`${JTD} font-mono font-medium`}>{g.mark}</td>
+                <td className={`${JTD} font-mono`}>
+                  {toMm(g.widthM)} × {toMm(g.heightM)}
+                </td>
+                <td className={JTD}>
+                  <span className="font-medium">{typeLabel(g)}</span>
+                  {g.typeDetail && <span className="text-muted-foreground"> · {g.typeDetail}</span>}
+                </td>
+                <td className={JTD}>{g.frameMaterial || "—"}</td>
+                <td className={JTD}>{g.glazing || "—"}</td>
+                <td className={JTD}>{g.hardware || "—"}</td>
+                <td className={`${JTD} font-mono`}>{[g.uValue, g.shgc].filter(Boolean).join(" · ") || "—"}</td>
+                <td className={`${JTD} text-right font-mono`}>{g.qty}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="text-[11px] text-muted-foreground">
+        {finishTier.charAt(0).toUpperCase() + finishTier.slice(1)} finish spec · sizes are masonry openings (mm) · verify on
+        site before fabrication.
+      </p>
     </div>
   );
 }

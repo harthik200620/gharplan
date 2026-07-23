@@ -96,6 +96,132 @@ def exterior_edges(r: Rect, fp: Rect) -> dict[str, bool]:
     }
 
 
+class WALL_T:
+    """Real masonry wall thickness, metres - reused everywhere a wall gets
+    drawn (2D plan, section, DXF, IFC)."""
+
+    EXT = 0.23
+    INT = 0.115
+
+
+@dataclass
+class WallSegment:
+    axis: Literal["H", "V"]  # H = horizontal run (constant y, spans x); V = vertical run (constant x, spans y)
+    at: float  # the constant coordinate: y for H, x for V
+    from_: float  # span of the run along its own axis (x-range for H, y-range for V)
+    to_: float
+    kind: Literal["ext", "int"]
+    thickness: float
+
+
+def wall_segment_rect(seg: WallSegment) -> Rect:
+    """A wall segment's centerline + thickness, as a drawable Rect."""
+    half = seg.thickness / 2
+    if seg.axis == "H":
+        return Rect(x=seg.from_, y=seg.at - half, w=seg.to_ - seg.from_, h=seg.thickness)
+    return Rect(x=seg.at - half, y=seg.from_, w=seg.thickness, h=seg.to_ - seg.from_)
+
+
+def _round_to_tol(v: float) -> float:
+    return round(v / _TOL) * _TOL
+
+
+def _sweep_line(
+    at: float, axis: str, side_a: list[tuple[float, float]], side_b: list[tuple[float, float]]
+) -> list[WallSegment]:
+    """One coordinate line (all rooms sharing an edge at this position): sweep
+    the union of interval breakpoints from both sides, classify each atomic run
+    by which side(s) reach it (both = a shared/interior wall; one = an exterior
+    wall, whether facing the site or an internal void like a courtyard), then
+    re-merge adjacent same-classification atoms into full wall runs."""
+    breakpoints: set[float] = set()
+    for f, t in side_a:
+        breakpoints.add(f)
+        breakpoints.add(t)
+    for f, t in side_b:
+        breakpoints.add(f)
+        breakpoints.add(t)
+    pts = sorted(breakpoints)
+
+    segs: list[WallSegment] = []
+    cur_from: Optional[float] = None
+    cur_kind: Optional[str] = None
+    for i in range(len(pts) - 1):
+        seg_from, seg_to = pts[i], pts[i + 1]
+        if seg_to - seg_from < 1e-6:
+            continue
+        mid = (seg_from + seg_to) / 2
+        a = any(f < mid < t for f, t in side_a)
+        b = any(f < mid < t for f, t in side_b)
+        kind = "int" if (a and b) else ("ext" if (a or b) else None)
+        if kind == cur_kind and cur_from is not None:
+            continue  # extend the current run
+        if cur_kind is not None and cur_from is not None:
+            segs.append(
+                WallSegment(
+                    axis=axis, at=at, from_=cur_from, to_=seg_from, kind=cur_kind,
+                    thickness=WALL_T.INT if cur_kind == "int" else WALL_T.EXT,
+                )
+            )
+        cur_from = seg_from if kind is not None else None
+        cur_kind = kind
+    if cur_kind is not None and cur_from is not None:
+        segs.append(
+            WallSegment(
+                axis=axis, at=at, from_=cur_from, to_=pts[-1], kind=cur_kind,
+                thickness=WALL_T.INT if cur_kind == "int" else WALL_T.EXT,
+            )
+        )
+    return segs
+
+
+def derive_walls(plan: Plan, floor: Optional[int] = None) -> list[WallSegment]:
+    """Derive double-line wall centerlines + thickness from the room layout -
+    every room is always an axis-aligned rect, so this is a cheap rectilinear
+    interval sweep rather than general polygon adjacency. Computed fresh at
+    render/export time (never persisted), the same way place_openings infers
+    door/window spots: a shared room-to-room edge is a 115mm interior
+    partition; an edge no other room reaches (site perimeter OR an internal
+    void like a courtyard) is a 230mm exterior wall."""
+    rooms = [bounds(r.polygon) for r in structural_rooms(plan, floor)]
+    if not rooms:
+        return []
+
+    y_lines: dict[float, tuple[list, list]] = {}
+    x_lines: dict[float, tuple[list, list]] = {}
+    for r in rooms:
+        y_top = _round_to_tol(r.y + r.h)
+        y_bot = _round_to_tol(r.y)
+        y_lines.setdefault(y_top, ([], []))[0].append((r.x, r.x + r.w))
+        y_lines.setdefault(y_bot, ([], []))[1].append((r.x, r.x + r.w))
+
+        x_right = _round_to_tol(r.x + r.w)
+        x_left = _round_to_tol(r.x)
+        x_lines.setdefault(x_right, ([], []))[0].append((r.y, r.y + r.h))
+        x_lines.setdefault(x_left, ([], []))[1].append((r.y, r.y + r.h))
+
+    out: list[WallSegment] = []
+    for y, (below, above) in y_lines.items():
+        out.extend(_sweep_line(y, "H", below, above))
+    for x, (left, right) in x_lines.items():
+        out.extend(_sweep_line(x, "V", left, right))
+    return out
+
+
+def wall_thickness_at(walls: list[WallSegment], edge: str, cx: float, cy: float) -> float:
+    """The real wall thickness at an opening's position, looked up from derived
+    wall segments - so an opening's erase-gap always matches the wall it's
+    actually cutting through (230mm exterior vs 115mm interior)."""
+    horiz = edge in ("N", "S")
+    axis = "H" if horiz else "V"
+    at = cy if horiz else cx
+    pos = cx if horiz else cy
+    for w in walls:
+        if w.axis == axis and abs(w.at - at) < 0.1 and w.from_ - 0.05 <= pos <= w.to_ + 0.05:
+            return w.thickness
+    return WALL_T.EXT
+
+
 def _dist(a: tuple[float, float], b: tuple[float, float]) -> float:
     return math.hypot(a[0] - b[0], a[1] - b[1])
 

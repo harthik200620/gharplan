@@ -42,14 +42,19 @@ from app.models.plan import Plan
 from app.models.reports import CodeReport, VastuReport
 from app.services import schedules as sched
 from app.services.cad_geom import (
+    FACE_LABEL,
     LEVELS,
+    WALL_T,
     bounds,
     building_footprint,
+    derive_walls,
     floors_of,
     front_face,
     place_openings,
     room_center,
     structural_rooms,
+    wall_segment_rect,
+    wall_thickness_at,
 )
 from app.services.elevations import elevation_openings, roof_level, section_model
 from app.services.mep_model import SERVICE_STYLE, build_mep_model
@@ -76,6 +81,7 @@ BRAND = colors.HexColor("#1F3A5F")
 # Drawing palette (paper stock — reads well in print regardless of app theme).
 INK = colors.HexColor("#1f2937")
 WALL_POCHE = colors.HexColor("#334155")
+WALL_POCHE_INT = colors.HexColor("#64748b")  # lighter — interior 115mm partitions vs 230mm exterior
 PLASTER = colors.HexColor("#EFEAE2")
 GROUND_INK = colors.HexColor("#6b7280")
 SLAB_INK = colors.HexColor("#475569")
@@ -174,6 +180,16 @@ def _fit(avail_w, avail_h, xmin, ymin, xmax, ymax, frac=0.9):
     return s, ox, oy
 
 
+def _fmt_dim(m: float) -> str:
+    """metres -> a tidy '3.66 m / 12'0"' dual label."""
+    total_in = m * 39.3701
+    ft = int(total_in // 12)
+    inch = round(total_in - ft * 12)
+    if inch == 12:
+        ft, inch = ft + 1, 0
+    return f"{m:.2f} m / {ft}'{inch}\""
+
+
 def _poly(c, pts, fill=0, stroke=1):
     path = c.beginPath()
     path.moveTo(*pts[0])
@@ -226,35 +242,184 @@ class PlanFlowable(Flowable):
             c.setLineWidth(0.6)
             _poly(c, pts, fill=1, stroke=1)
 
+        # WALLS — true double-line masonry (230mm exterior / 115mm interior),
+        # derived from the room layout, drawn over the fills before labels.
+        walls = derive_walls(plan, self.floor)
+        for seg in walls:
+            wr = wall_segment_rect(seg)
+            c.setFillColor(WALL_POCHE if seg.kind == "ext" else WALL_POCHE_INT)
+            c.rect(ox + wr.x * s, oy + wr.y * s, wr.w * s, wr.h * s, fill=1, stroke=0)
+
+        for room in rooms:
             cx, cy = room.centroid or (room.area_sqm, 0)
             tx, ty = ox + cx * s, oy + cy * s
             c.setFillColor(colors.HexColor("#212121"))
             c.setFont("Helvetica-Bold", 6.5)
             c.drawCentredString(tx, ty + 1, room_label(room.type.value))
             c.setFont("Helvetica", 5.5)
+            zone = room.zone.value if room.zone else "CENTER"
             c.drawCentredString(tx, ty - 7, f"{round(room.area_sqm, 1)} m2 / {zone}")
 
-        # openings — erase the wall and mark the jambs
+        # openings — cut a real wall-thickness gap and mark the jambs
         ids = {r.id for r in rooms}
         for op in place_openings(plan):
             if op.room_id not in ids:
                 continue
             horiz = op.edge in ("N", "S")
             half = op.length / 2
+            wt = wall_thickness_at(walls, op.edge, op.cx, op.cy)
             if horiz:
+                erase = (op.cx - half, op.cy - wt / 2, op.length, wt)
                 a, b = (op.cx - half, op.cy), (op.cx + half, op.cy)
             else:
+                erase = (op.cx - wt / 2, op.cy - half, wt, op.length)
                 a, b = (op.cx, op.cy - half), (op.cx, op.cy + half)
+            c.setFillColor(colors.white)
+            c.rect(ox + erase[0] * s, oy + erase[1] * s, erase[2] * s, erase[3] * s, fill=1, stroke=0)
             pa = (ox + a[0] * s, oy + a[1] * s)
             pb = (ox + b[0] * s, oy + b[1] * s)
-            c.setStrokeColor(colors.white)
-            c.setLineWidth(2.4)
-            c.line(*pa, *pb)
             c.setStrokeColor(colors.HexColor("#90A4AE") if op.kind == "window" else INK)
             c.setLineWidth(0.5 if op.kind == "window" else 0.7)
             c.line(*pa, *pb)
 
         _north_arrow(c, ox + w_m * s + 6, oy + d_m * s - 18)
+
+
+def _dim_chain(c, x1, y1, x2, y2, label, vertical=False):
+    """A dimensioned line with end-ticks and a centred label — same visual
+    language as the on-screen CAD viewer's DimLine."""
+    tick = 3
+    c.setStrokeColor(colors.HexColor("#475569"))
+    c.setLineWidth(0.6)
+    c.line(x1, y1, x2, y2)
+    if vertical:
+        c.line(x1 - tick, y1, x1 + tick, y1)
+        c.line(x2 - tick, y2, x2 + tick, y2)
+    else:
+        c.line(x1, y1 - tick, x1, y1 + tick)
+        c.line(x2, y2 - tick, x2, y2 + tick)
+    c.setFillColor(colors.HexColor("#334155"))
+    c.setFont("Helvetica-Bold", 6)
+    mx, my = (x1 + x2) / 2, (y1 + y2) / 2
+    if vertical:
+        c.saveState()
+        c.translate(mx, my)
+        c.rotate(90)
+        c.drawCentredString(0, 2, label)
+        c.restoreState()
+    else:
+        c.drawCentredString(mx, my + 3, label)
+
+
+class MasonryPlanFlowable(Flowable):
+    """Brickwork & lintel setting-out plan (GFC-03) — derived double-line walls,
+    dimensioned, with masonry opening sizes/marks and the lintel level."""
+
+    def __init__(
+        self,
+        plan: Plan,
+        floor: int | None,
+        structural: "StructuralDesign | None",
+        tier: str = "standard",
+        width: float = 16.5 * cm,
+    ):
+        super().__init__()
+        self.plan = plan
+        self.floor = floor
+        self.structural = structural
+        self.tier = tier
+        self.avail_w = width
+        fp = building_footprint(plan, floor)
+        margin = 1.0
+        ar = (fp.h + margin * 2) / max(fp.w + margin * 2, 1e-6)
+        self.height = min(width * ar, 13 * cm)
+
+    def wrap(self, *_):
+        return (self.avail_w, self.height)
+
+    def draw(self):
+        c = self.canv
+        plan = self.plan
+        floor = self.floor
+        fp = building_footprint(plan, floor)
+        margin = 1.0
+        s, ox, oy = _fit(
+            self.avail_w - 24, self.height - 24, fp.x - margin, fp.y - margin,
+            fp.x + fp.w + margin, fp.y + fp.h + margin, frac=0.94,
+        )
+
+        def PX(x, y):
+            return (ox + x * s, oy + y * s)
+
+        # optional structural grid overlay
+        if self.structural is not None:
+            c.setStrokeColor(colors.HexColor("#94a3b8"))
+            c.setLineWidth(0.3)
+            c.setDash(2, 1.5)
+            for gl in self.structural.grid:
+                if gl.axis == "x" and fp.x - 0.2 <= gl.offset_m <= fp.x + fp.w + 0.2:
+                    c.line(*PX(gl.offset_m, fp.y - 0.6), *PX(gl.offset_m, fp.y + fp.h + 0.6))
+                elif gl.axis == "y" and fp.y - 0.2 <= gl.offset_m <= fp.y + fp.h + 0.2:
+                    c.line(*PX(fp.x - 0.6, gl.offset_m), *PX(fp.x + fp.w + 0.6, gl.offset_m))
+            c.setDash()
+
+        # wall poché — true double-line masonry
+        for seg in derive_walls(plan, floor):
+            wr = wall_segment_rect(seg)
+            c.setFillColor(WALL_POCHE if seg.kind == "ext" else WALL_POCHE_INT)
+            c.rect(*PX(wr.x, wr.y), wr.w * s, wr.h * s, fill=1, stroke=0)
+
+        # openings — real gap + masonry size + mark (best-effort lookup)
+        walls = derive_walls(plan, floor)
+        ids = {r.id for r in plan.rooms if floor is None or (r.floor or 0) == floor}
+        mark_by_width: dict[str, str] = {}
+        for g in sched.opening_schedule(plan, self.tier):
+            key = f"{g.kind}|{sched.to_mm(g.width_m)}"
+            mark_by_width.setdefault(key, g.mark)
+
+        c.setFont("Helvetica", 5)
+        for op in place_openings(plan):
+            if op.room_id not in ids:
+                continue
+            horiz = op.edge in ("N", "S")
+            half = op.length / 2
+            wt = wall_thickness_at(walls, op.edge, op.cx, op.cy)
+            if horiz:
+                erase = (op.cx - half, op.cy - wt / 2, op.length, wt)
+                a, b = (op.cx - half, op.cy), (op.cx + half, op.cy)
+                out_dx, out_dy = 0, 1 if op.edge == "N" else -1
+            else:
+                erase = (op.cx - wt / 2, op.cy - half, wt, op.length)
+                a, b = (op.cx, op.cy - half), (op.cx, op.cy + half)
+                out_dx, out_dy = (1 if op.edge == "E" else -1), 0
+            c.setFillColor(colors.white)
+            c.rect(*PX(erase[0], erase[1]), erase[2] * s, erase[3] * s, fill=1, stroke=0)
+            c.setStrokeColor(colors.HexColor("#1d4ed8") if op.kind == "window" else INK)
+            c.setLineWidth(0.5)
+            c.line(*PX(*a), *PX(*b))
+            width_mm = sched.to_mm(op.length)
+            mark = mark_by_width.get(f"{op.kind}|{width_mm}")
+            label = f"{mark} · {width_mm}" if mark else str(width_mm)
+            lx = op.cx + out_dx * (wt / 2 + 0.3)
+            ly = op.cy + out_dy * (wt / 2 + 0.3)
+            c.setFillColor(colors.HexColor("#334155"))
+            c.drawCentredString(*PX(lx, ly), label)
+
+        # dimension chains — exterior perimeter + overall footprint
+        _dim_chain(c, *PX(fp.x, fp.y), *PX(fp.x + fp.w, fp.y), _fmt_dim(fp.w))
+        _dim_chain(c, *PX(fp.x - 0.7, fp.y), *PX(fp.x - 0.7, fp.y + fp.h), _fmt_dim(fp.h), vertical=True)
+
+        # legend
+        legend_y = oy - 16
+        c.setFillColor(WALL_POCHE)
+        c.rect(ox, legend_y, 10, 6, fill=1, stroke=0)
+        c.setFillColor(colors.HexColor("#334155"))
+        c.setFont("Helvetica", 6)
+        c.drawString(ox + 14, legend_y + 1, "Exterior 230mm")
+        c.setFillColor(WALL_POCHE_INT)
+        c.rect(ox + 90, legend_y, 10, 6, fill=1, stroke=0)
+        c.setFillColor(colors.HexColor("#334155"))
+        c.drawString(ox + 104, legend_y + 1, "Interior 115mm")
 
 
 def _north_arrow(c, ax, ay):
@@ -412,7 +577,6 @@ class SectionFlowable(Flowable):
         def PX(x, y):
             return (ox + x * s, oy + y * s)
 
-        WALL_T = 0.23
         # ground
         c.setStrokeColor(GROUND_INK)
         c.setLineWidth(1.0)
@@ -422,9 +586,9 @@ class SectionFlowable(Flowable):
         c.setFillColor(colors.HexColor("#9aa0a6"))
         c.setStrokeColor(INK)
         c.setLineWidth(0.5)
-        for ex in (0.0, span - WALL_T):
+        for ex in (0.0, span - WALL_T.EXT):
             # footing pad
-            c.rect(*PX(ex - 0.25, -LEVELS.FOOTING), (WALL_T + 0.5) * s, (LEVELS.FOOTING + LEVELS.GROUND) * s, fill=1, stroke=1)
+            c.rect(*PX(ex - 0.25, -LEVELS.FOOTING), (WALL_T.EXT + 0.5) * s, (LEVELS.FOOTING + LEVELS.GROUND) * s, fill=1, stroke=1)
 
         # plinth fill
         c.setFillColor(colors.HexColor("#E2DED7"))
@@ -437,18 +601,18 @@ class SectionFlowable(Flowable):
         for f in floors:
             base = f * LEVELS.FLOOR_TO_FLOOR
             ceil = base + LEVELS.CEIL
-            # perimeter walls (poché)
+            # perimeter walls (poché) — 230mm exterior
             c.setFillColor(WALL_POCHE)
             c.setStrokeColor(INK)
             c.setLineWidth(0.4)
-            c.rect(*PX(0, base), WALL_T * s, LEVELS.CEIL * s, fill=1, stroke=1)
-            c.rect(*PX(span - WALL_T, base), WALL_T * s, LEVELS.CEIL * s, fill=1, stroke=1)
-            # partitions between adjacent cut cells on this floor
+            c.rect(*PX(0, base), WALL_T.EXT * s, LEVELS.CEIL * s, fill=1, stroke=1)
+            c.rect(*PX(span - WALL_T.EXT, base), WALL_T.EXT * s, LEVELS.CEIL * s, fill=1, stroke=1)
+            # partitions between adjacent cut cells on this floor — 115mm interior
             cells = [cc for cc in sm.cells if cc.floor == f]
             for cc in cells:
                 for ux in (cc.u0, cc.u1):
                     if 0.2 < ux < span - 0.2:
-                        c.rect(*PX(ux - WALL_T / 2, base), WALL_T * s, LEVELS.CEIL * s, fill=1, stroke=0)
+                        c.rect(*PX(ux - WALL_T.INT / 2, base), WALL_T.INT * s, LEVELS.CEIL * s, fill=1, stroke=0)
             # floor slab
             c.setFillColor(SLAB_INK)
             c.rect(*PX(0, base - LEVELS.SLAB_STRUCT), span * s, LEVELS.SLAB_STRUCT * s, fill=1, stroke=0)
@@ -464,8 +628,8 @@ class SectionFlowable(Flowable):
         c.setFillColor(colors.HexColor("#E7E2D9"))
         c.setStrokeColor(INK)
         c.setLineWidth(0.5)
-        c.rect(*PX(0, roof), WALL_T * s, LEVELS.PARAPET * s, fill=1, stroke=1)
-        c.rect(*PX(span - WALL_T, roof), WALL_T * s, LEVELS.PARAPET * s, fill=1, stroke=1)
+        c.rect(*PX(0, roof), WALL_T.EXT * s, LEVELS.PARAPET * s, fill=1, stroke=1)
+        c.rect(*PX(span - WALL_T.EXT, roof), WALL_T.EXT * s, LEVELS.PARAPET * s, fill=1, stroke=1)
 
         # level dimension chain on the left
         c.setFont("Helvetica", 4.8)
@@ -641,6 +805,89 @@ def _mep_legend(plan, floor, styles):
     return t
 
 
+_RCP_FILL = {
+    "gypsum": colors.HexColor("#FEF3C7"),
+    "grid": colors.HexColor("#DBEAFE"),
+    "none": colors.HexColor("#F1F5F9"),
+}
+_RCP_INK = {
+    "gypsum": colors.HexColor("#92400E"),
+    "grid": colors.HexColor("#1E3A8A"),
+    "none": colors.HexColor("#64748B"),
+}
+_RCP_COVE_SQM = 12.0
+
+
+class RcpFlowable(Flowable):
+    """Reflected Ceiling & Lighting Plan (GFC-08) — mirrored left-right per the
+    standard RCP convention, room-by-room ceiling treatment + light/fan points
+    from the real MEP model. Indicative coordination drawing, not engineered."""
+
+    def __init__(self, plan: Plan, floor: int | None, tier: str = "standard", width: float = 16.5 * cm):
+        super().__init__()
+        self.plan = plan
+        self.floor = floor
+        self.tier = tier
+        self.avail_w = width
+        ar = plan.plot.depth_m / plan.plot.width_m
+        self.height = min(width * ar, 11 * cm)
+
+    def wrap(self, *_):
+        return (self.avail_w, self.height)
+
+    def draw(self):
+        c = self.canv
+        plan = self.plan
+        floor = self.floor
+        w_m, d_m = plan.plot.width_m, plan.plot.depth_m
+        s, ox, oy = _fit(self.avail_w, self.height, 0, 0, w_m, d_m, frac=0.92)
+
+        def mx(x):  # mirror left-right — the reflected-ceiling convention
+            return w_m - x
+
+        rooms = [r for r in structural_rooms(plan, floor) if bounds(r.polygon).w >= 0.6 and bounds(r.polygon).h >= 0.6]
+        for room in rooms:
+            r = bounds(room.polygon)
+            t = sched.ceiling_treatment_for(room.type.value, self.tier)
+            rx = mx(r.x + r.w)
+            fill = _RCP_FILL.get(t.kind, _RCP_FILL["none"])
+            ink = _RCP_INK.get(t.kind, _RCP_INK["none"])
+            c.setFillColor(fill)
+            c.setStrokeColor(colors.HexColor("#94a3b8"))
+            c.setLineWidth(0.4)
+            c.rect(ox + rx * s, oy + r.y * s, r.w * s, r.h * s, fill=1, stroke=1)
+            if t.kind == "gypsum" and r.w * r.h >= _RCP_COVE_SQM:
+                inset = 0.3
+                c.setStrokeColor(ink)
+                c.setLineWidth(0.4)
+                c.setDash(2, 1.5)
+                c.rect(ox + (rx + inset) * s, oy + (r.y + inset) * s, max(r.w - inset * 2, 0.1) * s, max(r.h - inset * 2, 0.1) * s, fill=0, stroke=1)
+                c.setDash()
+            # skip the label entirely (rather than let it overflow into the next
+            # room) when the room is too narrow to hold it — the fill colour +
+            # legend still convey the treatment.
+            if c.stringWidth(t.label, "Helvetica-Bold", 5.5) <= r.w * s - 4:
+                c.setFillColor(ink)
+                c.setFont("Helvetica-Bold", 5.5)
+                c.drawCentredString(ox + (rx + r.w / 2) * s, oy + (r.y + r.h / 2) * s + 2, t.label)
+                c.setFont("Helvetica", 5)
+                detail = f"Drop {t.drop_mm}mm" if t.kind != "none" else "Exposed slab"
+                c.drawCentredString(ox + (rx + r.w / 2) * s, oy + (r.y + r.h / 2) * s - 6, detail)
+
+        m = build_mep_model(plan, floor)
+        for p in m.elec:
+            if p.kind not in ("light", "fan"):
+                continue
+            px, py = ox + mx(p.x) * s, oy + p.y * s
+            c.setFillColor(colors.HexColor("#fbbf24") if p.kind == "light" else colors.HexColor("#38bdf8"))
+            c.setStrokeColor(INK)
+            c.setLineWidth(0.4)
+            c.circle(px, py, 3.2, fill=1, stroke=1)
+            c.setFillColor(INK)
+            c.setFont("Helvetica-Bold", 4.5)
+            c.drawCentredString(px, py - 1.6, "L" if p.kind == "light" else "F")
+
+
 class SldFlowable(Flowable):
     """A compact distribution-board single-line diagram: incomer (meter) → main
     isolator → busbar → one MCB branch per final sub-circuit (rating + wire + phase)."""
@@ -772,6 +1019,14 @@ def _table(rows, col_widths, header=True, header_bg=BRAND, font=7.5):
     return t
 
 
+def _opposite(face: str) -> str:
+    return {"N": "S", "S": "N", "E": "W", "W": "E"}[face]
+
+
+def _others(front: str) -> list[str]:
+    return [f for f in ("N", "E", "S", "W") if f not in (front, _opposite(front))]
+
+
 def build_pdf(
     plan: Plan,
     vastu: VastuReport,
@@ -826,7 +1081,7 @@ def build_pdf(
     story.append(Paragraph("Preliminary Concept", h2))
     story.append(Spacer(1, 0.9 * cm))
 
-    drawing_set = "Floor plans · Elevations · Section · MEP services · Schedules · Vastu · Code review · BOQ"
+    drawing_set = "Floor plans · Elevations · Section · Masonry setting-out · MEP services · Reflected ceiling plan · Schedules · Vastu · Code review · BOQ"
     if structural is not None:
         drawing_set += " · Structural design basis (preliminary)"
     title_rows = [
@@ -944,6 +1199,45 @@ def build_pdf(
         story.append(Spacer(1, 6))
     story.append(PageBreak())
 
+    # 3a. ELEVATIONS & SECTION — the cover page's "Drawing set" line has always
+    # claimed these; ElevationFlowable/SectionFlowable were fully built but never
+    # appended here, so the PDF silently shipped without them. Wire them in: all
+    # four cardinal faces (front first, matching the DXF export's convention),
+    # then one section through the staircase.
+    story.append(_Bookmark("Elevations", "elevations"))
+    story.append(Paragraph("Elevations", h1))
+    story.append(Paragraph(f"{FACE_LABEL[front]}-facing front", h2))
+    story.append(Spacer(1, 8))
+    for face in (front, _opposite(front), *_others(front)):
+        story.append(Paragraph(f"{FACE_LABEL[face]} Elevation", h3))
+        story.append(ElevationFlowable(plan, face, front))
+        story.append(Spacer(1, 8))
+    story.append(PageBreak())
+
+    story.append(_Bookmark("Section", "section"))
+    story.append(Paragraph("Section", h1))
+    story.append(Paragraph("Through the staircase — foundations to parapet", h2))
+    story.append(Spacer(1, 8))
+    story.append(SectionFlowable(plan))
+    story.append(PageBreak())
+
+    # 3a2. BRICKWORK & LINTEL SETTING-OUT PLAN (GFC-03) — derived double-line
+    # walls, dimensioned, with masonry opening sizes/marks and lintel level.
+    story.append(_Bookmark("Brickwork & Lintel Setting-Out Plan", "masonry"))
+    story.append(Paragraph("Brickwork & Lintel Setting-Out Plan", h1))
+    story.append(Paragraph("230mm exterior / 115mm interior half-brick, derived from the room layout", h2))
+    story.append(Spacer(1, 8))
+    for f in floors:
+        if len(floors) > 1:
+            story.append(Paragraph(f"Floor {f}" if f else "Ground floor", h3))
+        story.append(MasonryPlanFlowable(plan, f if len(floors) > 1 else None, structural, boq.finish_tier.value))
+        story.append(Spacer(1, 6))
+    story.append(Paragraph(
+        "Wall centerlines and thicknesses are derived from the room layout for masonry setting-out guidance — "
+        "verify against the structural drawing and site conditions before marking the plinth.", small,
+    ))
+    story.append(PageBreak())
+
     # 3b. MEP SERVICES — electrical + plumbing coordination sheets. The MepFlowable
     # render code existed but was never appended to the story, so the client PDF
     # shipped no services drawing at all despite advertising "MEP services". Wire it
@@ -983,6 +1277,24 @@ def build_pdf(
     story.append(_fixture_schedule(plan, _mep_floor))
     story.append(Spacer(1, 8))
     story.append(_mep_legend(plan, _mep_floor, small))
+    story.append(PageBreak())
+
+    # 3c. REFLECTED CEILING & LIGHTING PLAN (GFC-08) — indicative coordination
+    # drawing from the real MEP light/fan points; mirrored per RCP convention.
+    story.append(_Bookmark("Reflected Ceiling & Lighting Plan", "rcp"))
+    story.append(Paragraph("Reflected Ceiling & Lighting Plan", h1))
+    story.append(Paragraph("Mirrored left-right per RCP convention — compare against the floor plan for orientation", h2))
+    story.append(Spacer(1, 8))
+    for f in floors:
+        if len(floors) > 1:
+            story.append(Paragraph(f"Floor {f}" if f else "Ground floor", h3))
+        story.append(RcpFlowable(plan, f if len(floors) > 1 else None, boq.finish_tier.value))
+        story.append(Spacer(1, 6))
+    story.append(Paragraph(
+        "Indicative ceiling design for coordination only — false-ceiling drops, cove-lighting extents and fixture "
+        "layout are typical assumptions, NOT an engineered interior design. Confirm drop heights against actual "
+        "beam depths, duct/AC routing and site services before execution.", small,
+    ))
     story.append(PageBreak())
 
     # 4. VASTU ANALYSIS
@@ -1079,6 +1391,34 @@ def build_pdf(
         story.append(Paragraph(_esc(structural.disclaimer), small))
         story.append(PageBreak())
 
+    # 5b2. DOOR & WINDOW / JOINERY SCHEDULE (GFC-07) — real per-plan opening data,
+    # grouped into marks; enrichment (frame material/hardware/glazing) by finish tier.
+    joinery = sched.opening_schedule(plan, boq.finish_tier.value)
+    if joinery:
+        story.append(_Bookmark("Door & Window Joinery Schedule", "joinery"))
+        story.append(Paragraph("Door & Window Joinery Schedule", h1))
+        story.append(Paragraph(f"{boq.finish_tier.value.title()} finish specification", h2))
+        story.append(Spacer(1, 8))
+        jrows = [["Mark", "Size (mm)", "Type", "Frame material", "Glazing / panel", "Hardware", "Qty"]]
+        for g in joinery:
+            glazing = g.glazing
+            spec = " · ".join(x for x in (g.u_value, g.shgc and f"SHGC {g.shgc}") if x)
+            if spec:
+                glazing = f"{glazing}, {spec}" if glazing else spec
+            jrows.append([
+                g.mark,
+                f"{sched.to_mm(g.width_m)}×{sched.to_mm(g.height_m)}",
+                Paragraph(_esc(f"{sched.type_label(g)} · {g.description}"), small),
+                Paragraph(_esc(g.frame_material), small),
+                Paragraph(_esc(glazing), small),
+                Paragraph(_esc(g.hardware), small),
+                str(g.qty),
+            ])
+        story.append(_table(jrows, [1.4 * cm, 2.2 * cm, 3.4 * cm, 3.0 * cm, 3.4 * cm, 3.4 * cm, 1.0 * cm]))
+        story.append(Spacer(1, 6))
+        story.append(Paragraph("Sizes are masonry openings (mm). Verify on site before fabrication.", small))
+        story.append(PageBreak())
+
     # 5c. SUBMISSION DOCUMENT CHECKLIST (jurisdiction packs only — KA legacy has none)
     if checklist:
         story.append(_Bookmark("Submission Document Checklist", "checklist"))
@@ -1165,9 +1505,14 @@ def build_pdf(
     story.append(Paragraph("Terms &amp; Conditions", h3))
     story.append(Paragraph(branding.terms, small))
 
-    keywords = ["Vastukala AI", "Municipal Title Block", "Licensed Professional Sign-off"]
+    keywords = [
+        "Vastukala AI", "Municipal Title Block", "Licensed Professional Sign-off",
+        "Elevations", "Section", "Brickwork & Lintel Setting-Out Plan", "Reflected Ceiling & Lighting Plan",
+    ]
     if structural is not None:
         keywords.append("Structural Design Basis")
+    if joinery:
+        keywords.append("Door & Window Joinery Schedule")
     if checklist:
         keywords.append("Submission Document Checklist")
     doc = SimpleDocTemplate(

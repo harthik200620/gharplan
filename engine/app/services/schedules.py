@@ -30,6 +30,8 @@ __all__ = [
     "FINISH_DEFAULT",
     "FINISHES",
     "finish_for",
+    "CeilingTreatment",
+    "ceiling_treatment_for",
     "present_types",
     "floor_name",
     "per_floor_built_up",
@@ -100,6 +102,61 @@ def _window_description(width_m: float, is_vent: bool) -> str:
     return "Small window"
 
 
+# Frame material / hardware / glazing by finish tier — standard Indian residential
+# convention. "standard" strings are byte-identical to the pre-tier defaults, so
+# opening_schedule(plan) with no tier argument is unchanged.
+def _door_fields(width_m: float, tier: str) -> dict[str, str]:
+    if tier == "economy":
+        return {
+            "type_detail": "Flush (factory laminate)",
+            "frame_material": "Country wood / flush shutter",
+            "hardware": "Standard mortise lock, 2 hinges",
+            "remarks": "Ensure 5mm bottom clearance.",
+        }
+    if tier == "premium":
+        return {
+            "type_detail": "Panel/Teak veneer",
+            "frame_material": "Teak wood frame + veneered/panel shutter",
+            "hardware": "Premium mortise lock (brass), 4 hinges, concealed door closer",
+            "remarks": "Ensure 5mm bottom clearance.",
+        }
+    return {
+        "type_detail": "Panel/Teak" if width_m >= 1.0 else "Flush",
+        "frame_material": "Sal wood / WPC",
+        "hardware": "SS Mortise lock, 3 hinges, door stopper",
+        "remarks": "Ensure 5mm bottom clearance.",
+    }
+
+
+def _window_fields(tier: str) -> dict[str, str]:
+    if tier == "economy":
+        return {
+            "type_detail": "Sliding (2-track)",
+            "frame_material": "Powder-coated aluminum (sliding)",
+            "glazing": "4mm plain glass",
+            "u_value": "~5.0 W/m²K",
+            "shgc": "",
+            "remarks": "Include mosquito mesh.",
+        }
+    if tier == "premium":
+        return {
+            "type_detail": "Casement, thermal break",
+            "frame_material": "UPVC/aluminum thermal-break (casement)",
+            "glazing": "6mm toughened DGU (double-glazed)",
+            "u_value": "< 2.0 W/m²K",
+            "shgc": "< 0.3",
+            "remarks": "Include mosquito mesh; concealed hinges.",
+        }
+    return {
+        "type_detail": "Sliding (2.5 track)",
+        "frame_material": "UPVC / Aluminum",
+        "glazing": "6mm toughened clear",
+        "u_value": "< 3.0 W/m²K",
+        "shgc": "< 0.4",
+        "remarks": "Include mosquito mesh.",
+    }
+
+
 @dataclass
 class _Acc:
     kind: str
@@ -109,8 +166,12 @@ class _Acc:
     qty: int
 
 
-def opening_schedule(plan: Plan) -> list[OpeningGroup]:
-    """Group raw openings by (kind, width, height) and assign D#/W#/V# marks."""
+def opening_schedule(plan: Plan, tier: str = "standard") -> list[OpeningGroup]:
+    """Group raw openings by (kind, width, height) and assign D#/W#/V# marks.
+
+    ``tier`` ("economy" | "standard" | "premium") selects the frame material /
+    hardware / glazing spec shown per mark; "standard" is byte-identical to the
+    pre-tier defaults, so existing callers that omit it are unaffected."""
     groups: dict[str, _Acc] = {}
 
     def collect(items: list[Opening]) -> None:
@@ -150,10 +211,7 @@ def opening_schedule(plan: Plan) -> list[OpeningGroup]:
                 height_m=g.height_m,
                 qty=g.qty,
                 description=_door_description(g.width_m),
-                type_detail="Panel/Teak" if g.width_m >= 1.0 else "Flush",
-                frame_material="Sal wood / WPC",
-                hardware="SS Mortise lock, 3 hinges, door stopper",
-                remarks="Ensure 5mm bottom clearance."
+                **_door_fields(g.width_m, tier),
             )
         )
     for i, g in enumerate(windows):
@@ -166,12 +224,7 @@ def opening_schedule(plan: Plan) -> list[OpeningGroup]:
                 height_m=g.height_m,
                 qty=g.qty,
                 description=_window_description(g.width_m, False),
-                type_detail="Sliding (2.5 track)",
-                frame_material="UPVC / Aluminum",
-                glazing="6mm toughened clear",
-                u_value="< 3.0 W/m²K",
-                shgc="< 0.4",
-                remarks="Include mosquito mesh."
+                **_window_fields(tier),
             )
         )
     for i, g in enumerate(vents):
@@ -238,6 +291,34 @@ def finish_for(type: str) -> Finish:
     return FINISHES.get(type, FINISH_DEFAULT)
 
 
+# ---------------------------------------------------------------------------
+# Ceiling treatment (RCP — GFC-08)
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class CeilingTreatment:
+    kind: str  # "gypsum" | "grid" | "none"
+    drop_mm: int
+    label: str
+
+
+def ceiling_treatment_for(room_type: str, tier: str) -> CeilingTreatment:
+    """False-ceiling category + typical drop height for a room, from the SAME
+    per-room-type ceiling text finish_for() already carries (no new material
+    system) - "Grid ceiling" (wet rooms) -> grid/PVC; "POP..." -> gypsum;
+    else ("Paint"/"Exterior paint"/"-") -> no false ceiling. Drop height is a
+    tier-aware standard Indian residential assumption, not a per-project
+    computed value."""
+    ceiling = finish_for(room_type).ceiling.lower()
+    if "grid" in ceiling:
+        return CeilingTreatment(kind="grid", drop_mm=200, label="Grid / PVC ceiling")
+    if "pop" in ceiling:
+        drop_mm = 225 if tier == "economy" else 450 if tier == "premium" else 300
+        return CeilingTreatment(kind="gypsum", drop_mm=drop_mm, label="Gypsum false ceiling")
+    return CeilingTreatment(kind="none", drop_mm=0, label="Exposed painted slab")
+
+
 def present_types(plan: Plan) -> list[str]:
     """Distinct room types present, in first-seen order."""
     seen: set[str] = set()
@@ -276,27 +357,6 @@ def tiered_finish_schedule(plan: Plan, tier: str) -> list[dict]:
             "ceiling": ceiling
         })
     return out
-
-def column_schedule(plan: Plan) -> list[dict]:
-    """Provides a structural column schedule."""
-    return [
-        {
-            "mark": "C1",
-            "position": "Corners / High load",
-            "size": "230x450mm (9x18\")",
-            "reinforcement": "6-16mm dia TMT, 8mm links @ 150c/c",
-            "concrete_grade": "M25"
-        },
-        {
-            "mark": "C2",
-            "position": "Intermediate",
-            "size": "230x230mm (9x9\")",
-            "reinforcement": "4-16mm dia TMT, 8mm links @ 150c/c",
-            "concrete_grade": "M25"
-        }
-    ]
-
-
 
 # ---------------------------------------------------------------------------
 # Area statement

@@ -90,7 +90,7 @@ def _boq_from(req: ExportRequest):
 def export_xlsx(req: ExportRequest) -> Response:
     norm, boq = _boq_from(req)
     code = check_code(norm, _rules_for(norm))
-    data = build_xlsx(boq, req.branding, plan=norm, code=code)
+    data = build_xlsx(boq, req.branding, plan=norm, code=code, structural=_structural_or_none(norm))
     return Response(
         content=data,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

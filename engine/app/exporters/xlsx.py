@@ -9,7 +9,10 @@ from __future__ import annotations
 
 import io
 from collections import Counter
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:  # optional structural annexe — no hard runtime dependency
+    from app.structural.models import StructuralDesign
 
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
@@ -59,13 +62,25 @@ def _header(ws: Worksheet, columns: list[tuple[str, int]], row: int = 1) -> int:
     return row + 1
 
 
-def _schedule_sheets(wb: Workbook, plan: Plan, code: Optional[CodeReport]) -> None:
-    # --- Door & Window ---
+def _schedule_sheets(wb: Workbook, plan: Plan, code: Optional[CodeReport], tier: str = "standard") -> None:
+    # --- Door & Window (joinery schedule — GFC-07) ---
     ws = wb.create_sheet("Door & Window")
-    row = _header(ws, [("Mark", 8), ("Type", 12), ("Description", 24), ("Width (mm)", 12), ("Height (mm)", 12), ("Qty", 8)])
-    for g in sched.opening_schedule(plan):
+    row = _header(
+        ws,
+        [
+            ("Mark", 8), ("Type", 10), ("Type detail", 20), ("Description", 20),
+            ("Width (mm)", 11), ("Height (mm)", 11), ("Qty", 6),
+            ("Frame material", 24), ("Glazing / panel", 20), ("Hardware", 32),
+            ("U-value", 12), ("SHGC", 8),
+        ],
+    )
+    for g in sched.opening_schedule(plan, tier):
         for col, v in enumerate(
-            [g.mark, sched.type_label(g), g.description, sched.to_mm(g.width_m), sched.to_mm(g.height_m), g.qty],
+            [
+                g.mark, sched.type_label(g), g.type_detail, g.description,
+                sched.to_mm(g.width_m), sched.to_mm(g.height_m), g.qty,
+                g.frame_material, g.glazing, g.hardware, g.u_value, g.shgc,
+            ],
             start=1,
         ):
             ws.cell(row, col, v).border = _BORDER
@@ -77,6 +92,16 @@ def _schedule_sheets(wb: Workbook, plan: Plan, code: Optional[CodeReport]) -> No
     for tp in sched.present_types(plan):
         fin = sched.finish_for(tp)
         for col, v in enumerate([room_label(tp), fin.floor, fin.dado, fin.walls, fin.ceiling], start=1):
+            ws.cell(row, col, v).border = _BORDER
+        row += 1
+
+    # --- RCP ceiling treatment (GFC-08 reference) ---
+    row += 2
+    ws.cell(row, 1, "Reflected ceiling plan — treatment & drop").font = _BOLD
+    row = _header(ws, [("Space", 22), ("Treatment", 20), ("Drop (mm)", 12)], row=row + 1)
+    for tp in sched.present_types(plan):
+        ct = sched.ceiling_treatment_for(tp, tier)
+        for col, v in enumerate([room_label(tp), ct.label, ct.drop_mm or "—"], start=1):
             ws.cell(row, col, v).border = _BORDER
         row += 1
 
@@ -140,12 +165,85 @@ def _schedule_sheets(wb: Workbook, plan: Plan, code: Optional[CodeReport]) -> No
         row += 1
 
 
+def _structural_sheet(wb: Workbook, structural: "StructuralDesign") -> None:
+    """Preliminary RCC design annexe — the same data the PDF's structural section and
+    the on-screen Structure tab show, but untruncated (no page-length limit here)."""
+    ws = wb.create_sheet("Structural")
+    seismic_zone = (structural.seismic or {}).get("zone", "—")
+    ws.cell(1, 1, "Structural design basis (preliminary)").font = Font(bold=True, size=14)
+    ws.cell(
+        2, 1,
+        f"{structural.concrete_grade} concrete · {structural.steel_grade} steel · "
+        f"SBC {structural.sbc_kpa:g} kPa ({structural.soil_type}) · Seismic zone {seismic_zone}",
+    )
+    row = 4
+
+    ws.cell(row, 1, "Grid lines").font = _BOLD
+    row = _header(ws, [("Axis", 8), ("Label", 10), ("Offset (m)", 12)], row=row + 1)
+    for g in sorted(structural.grid, key=lambda gl: (gl.axis, gl.offset_m)):
+        for col, v in enumerate([g.axis.upper(), g.label, round(g.offset_m, 2)], start=1):
+            ws.cell(row, col, v).border = _BORDER
+        row += 1
+
+    row += 2
+    ws.cell(row, 1, f"Member schedule ({len(structural.members)} members)").font = _BOLD
+    row = _header(
+        ws,
+        [("Member", 10), ("Kind", 12), ("Floor", 7), ("Size (mm)", 14), ("Rebar", 42), ("Utilization", 11), ("Clause refs", 30)],
+        row=row + 1,
+    )
+    kind_order = {"column": 0, "footing": 1, "plinth_beam": 2, "beam": 3, "slab": 4, "lintel": 5}
+    for mem in sorted(structural.members, key=lambda mm: (kind_order.get(mm.kind, 9), mm.id)):
+        size = f"{mem.size_mm[0]}×{mem.size_mm[1]}" + (f" / {mem.thickness_mm} thk" if mem.thickness_mm else "")
+        for col, v in enumerate(
+            [mem.id, mem.kind.replace("_", " "), mem.floor, size, mem.rebar, mem.utilization, ", ".join(mem.clause_refs)],
+            start=1,
+        ):
+            c = ws.cell(row, col, v)
+            c.border = _BORDER
+            if col == 6:
+                c.number_format = "0%"
+        row += 1
+
+    row += 2
+    ws.cell(row, 1, f"Bar-bending schedule ({len(structural.bbs)} rows)").font = _BOLD
+    row = _header(
+        ws,
+        [("Mark", 10), ("Member", 10), ("Dia (mm)", 9), ("Shape", 10), ("Count", 8), ("Cut length (m)", 14), ("Weight (kg)", 12)],
+        row=row + 1,
+    )
+    for b in structural.bbs:
+        for col, v in enumerate(
+            [b.mark, b.member_id, b.bar_dia_mm, b.shape, b.count, round(b.cut_length_m, 2), round(b.total_kg, 2)], start=1
+        ):
+            ws.cell(row, col, v).border = _BORDER
+        row += 1
+    row += 1
+    ws.cell(row, 1, f"Total steel: {sum(b.total_kg for b in structural.bbs):.0f} kg").font = _BOLD
+
+    row += 3
+    ws.cell(row, 1, "Design basis").font = _BOLD
+    row += 1
+    for sec in structural.design_basis:
+        ws.cell(row, 1, sec.title).font = Font(bold=True, italic=True)
+        row += 1
+        ws.cell(row, 1, sec.body)
+        row += 1
+        if sec.clause_refs:
+            ws.cell(row, 1, "Refs: " + ", ".join(sec.clause_refs)).font = Font(size=8, color="888888")
+            row += 1
+        row += 1
+
+    ws.cell(row + 1, 1, structural.disclaimer).font = Font(italic=True, size=8, color="888888")
+
+
 def build_xlsx(
     report: BoqReport,
     branding: Branding | None = None,
     *,
     plan: Optional[Plan] = None,
     code: Optional[CodeReport] = None,
+    structural: "StructuralDesign | None" = None,
 ) -> bytes:
     wb = Workbook()
     ws = wb.active
@@ -203,7 +301,9 @@ def build_xlsx(
     ws.cell(row + 1, 1, report.disclaimer).font = Font(italic=True, size=8, color="888888")
 
     if plan is not None:
-        _schedule_sheets(wb, plan, code)
+        _schedule_sheets(wb, plan, code, report.finish_tier.value)
+    if structural is not None:
+        _structural_sheet(wb, structural)
 
     bio = io.BytesIO()
     wb.save(bio)

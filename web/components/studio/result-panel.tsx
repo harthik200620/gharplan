@@ -346,7 +346,7 @@ export function ResultPanel({
             </div>
           )}
 
-          {tab === "gfc" && <GfcPanel plan={data.plan} onExport={onExport} exporting={exporting} />}
+          {tab === "gfc" && <GfcPanel plan={data.plan} onExport={onExport} exporting={exporting} finishTier={finishTier} />}
 
           {tab === "scorecard" && (
             <div className="space-y-4 rounded-xl border bg-card p-5">

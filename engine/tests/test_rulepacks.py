@@ -19,7 +19,6 @@ from app.models.plan import Plot
 from app.services.code_service import check_code
 from app.services.plan_service import normalize
 from app.services.rules import (
-    CodeRules,
     JurisdictionPack,
     get_code_rules,
     get_rulepack,
@@ -102,10 +101,10 @@ def test_resolver_routing():
     assert resolve_jurisdiction("TG", "Hyderabad", ulb_hint="no-such-pack").pack_id == "tg-ghmc"
 
 
-def test_ka_resolves_to_legacy_code_rules_object():
+def test_ka_resolves_to_its_real_jurisdiction_pack():
     ka = resolve_jurisdiction("KA", "Bengaluru")
-    assert isinstance(ka, CodeRules) and not isinstance(ka, JurisdictionPack)
-    assert ka is get_code_rules()  # the exact cached legacy instance — bit-identical path
+    assert isinstance(ka, JurisdictionPack)
+    assert ka.pack_id == "ka-legacy"
 
 
 def test_tg_vs_ap_regimes_differ():

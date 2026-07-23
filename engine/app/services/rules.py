@@ -301,6 +301,7 @@ _PACK_BY_STATE_CITY: dict[tuple[str, str], str] = {
 _PACK_BY_STATE: dict[str, str] = {
     "TG": "tg-ulb-common",
     "AP": "ap-dpms-common",
+    "KA": "ka-legacy",
 }
 
 
@@ -309,9 +310,9 @@ def resolve_jurisdiction(
 ) -> CodeRules | JurisdictionPack:
     """Resolve the governing rules for (state, city).
 
-    TG/AP resolve to a jurisdiction pack; KA (and anything unknown) keeps the
-    legacy state-level CodeRules loader so that path stays bit-identical.
-    ``ulb_hint`` (a packId) overrides when it names an existing pack.
+    TG/AP/KA resolve to a named jurisdiction pack; any other/unknown state
+    keeps the legacy state-level CodeRules loader. ``ulb_hint`` (a packId)
+    overrides when it names an existing pack.
     """
     if ulb_hint:
         try:

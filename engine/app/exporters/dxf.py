@@ -25,12 +25,16 @@ from app.models.reports import CodeReport
 from app.services import schedules as sched
 from app.services.cad_geom import (
     LEVELS,
+    WALL_T,
     bounds,
     building_footprint,
+    derive_walls,
     floors_of,
     front_face,
     place_openings,
     room_center,
+    structural_rooms,
+    wall_segment_rect,
 )
 from app.services.design_narrative_service import get_design_narrative
 from app.services.vastu_service import check_vastu
@@ -162,6 +166,16 @@ def _draw_plan(msp, doc, plan: Plan, floor: Optional[int], dx: float, dy: float,
             mt = msp.add_mtext(label, dxfattribs={"layer": layer, "char_height": 0.18})
             mt.set_location((float(cx) + dx, float(cy) + dy), attachment_point=5)
 
+    # walls — true double-line masonry (230mm exterior / 115mm interior),
+    # derived from the room layout, on their own toggleable layers.
+    if not mep_base:
+        _ensure(doc, "WALL_EXT", 8)
+        _ensure(doc, "WALL_INT", 9)
+        for seg in derive_walls(plan, floor):
+            wr = wall_segment_rect(seg)
+            layer = "WALL_EXT" if seg.kind == "ext" else "WALL_INT"
+            _rect(msp, dx + wr.x, dy + wr.y, wr.w, wr.h, layer)
+
     # openings as wall breaks on a dedicated layer
     if not mep_base:
         _ensure(doc, "OPENINGS", 8)
@@ -236,7 +250,6 @@ def _draw_section(msp, doc, plan: Plan, dx: float, dy: float):
     sm = section_model(plan)
     span = sm.span
     roof = roof_level(plan)
-    wall_t = 0.23
 
     # ground line
     msp.add_lwpolyline(
@@ -244,22 +257,22 @@ def _draw_section(msp, doc, plan: Plan, dx: float, dy: float):
         dxfattribs={"layer": "SECTION"},
     )
     # footing pads + plinth
-    for ex in (0.0, span - wall_t):
-        _rect(msp, dx + ex - 0.25, dy - LEVELS.FOOTING, wall_t + 0.5, LEVELS.FOOTING + LEVELS.GROUND, "SECTION_POCHE")
+    for ex in (0.0, span - WALL_T.EXT):
+        _rect(msp, dx + ex - 0.25, dy - LEVELS.FOOTING, WALL_T.EXT + 0.5, LEVELS.FOOTING + LEVELS.GROUND, "SECTION_POCHE")
     _rect(msp, dx, dy + LEVELS.GROUND, span, -LEVELS.GROUND, "SECTION")
 
     floors = sm.floors or [0]
     for f in floors:
         base = f * LEVELS.FLOOR_TO_FLOOR
-        # perimeter walls
-        _rect(msp, dx, dy + base, wall_t, LEVELS.CEIL, "SECTION_POCHE")
-        _rect(msp, dx + span - wall_t, dy + base, wall_t, LEVELS.CEIL, "SECTION_POCHE")
-        # partitions + labels
+        # perimeter walls — 230mm exterior
+        _rect(msp, dx, dy + base, WALL_T.EXT, LEVELS.CEIL, "SECTION_POCHE")
+        _rect(msp, dx + span - WALL_T.EXT, dy + base, WALL_T.EXT, LEVELS.CEIL, "SECTION_POCHE")
+        # partitions + labels — 115mm interior
         cells = [cc for cc in sm.cells if cc.floor == f]
         for cc in cells:
             for ux in (cc.u0, cc.u1):
                 if 0.2 < ux < span - 0.2:
-                    _rect(msp, dx + ux - wall_t / 2, dy + base, wall_t, LEVELS.CEIL, "SECTION_POCHE")
+                    _rect(msp, dx + ux - WALL_T.INT / 2, dy + base, WALL_T.INT, LEVELS.CEIL, "SECTION_POCHE")
             _text(
                 msp, cc.label, dx + (cc.u0 + cc.u1) / 2, dy + base + LEVELS.CEIL / 2, 0.2,
                 "SECTION_TEXT", TextEntityAlignment.MIDDLE_CENTER,
@@ -268,8 +281,8 @@ def _draw_section(msp, doc, plan: Plan, dx: float, dy: float):
         _rect(msp, dx, dy + base - LEVELS.SLAB_STRUCT, span, LEVELS.SLAB_STRUCT, "SECTION")
     # roof slab + parapet
     _rect(msp, dx, dy + roof - LEVELS.SLAB_STRUCT, span, LEVELS.SLAB_STRUCT, "SECTION")
-    _rect(msp, dx, dy + roof, wall_t, LEVELS.PARAPET, "SECTION_POCHE")
-    _rect(msp, dx + span - wall_t, dy + roof, wall_t, LEVELS.PARAPET, "SECTION_POCHE")
+    _rect(msp, dx, dy + roof, WALL_T.EXT, LEVELS.PARAPET, "SECTION_POCHE")
+    _rect(msp, dx + span - WALL_T.EXT, dy + roof, WALL_T.EXT, LEVELS.PARAPET, "SECTION_POCHE")
     _text(msp, "SECTION A-A (through staircase)", dx, dy - LEVELS.FOOTING - 0.6, 0.3, "SECTION_TEXT")
 
 
@@ -341,6 +354,54 @@ def _draw_mep(msp, doc, plan: Plan, floor: Optional[int], dx: float, dy: float):
 
 
 # --------------------------------------------------------------------------- #
+# Reflected Ceiling & Lighting Plan (GFC-08)
+# --------------------------------------------------------------------------- #
+
+_RCP_LABEL = {"gypsum": "GYPSUM FALSE CEILING", "grid": "GRID / PVC CEILING", "none": "EXPOSED SLAB"}
+_RCP_COVE_SQM = 12.0
+
+
+def _draw_rcp(msp, doc, plan: Plan, floor: Optional[int], dx: float, dy: float, tier: str = "standard"):
+    """Reflected Ceiling & Lighting Plan (GFC-08): mirrored left-right per the
+    standard RCP convention, room ceiling treatment + real light/fan points.
+    Indicative coordination drawing, not engineered."""
+    for name, aci in [("RCP_CEILING", 44), ("RCP_COVE", 45), ("RCP_FIXTURE", 41), ("RCP_TEXT", 7)]:
+        _ensure(doc, name, aci)
+    w_m = plan.plot.width_m
+
+    def mx(x):  # mirror left-right — the reflected-ceiling convention
+        return w_m - x
+
+    rooms = [r for r in structural_rooms(plan, floor) if bounds(r.polygon).w >= 0.6 and bounds(r.polygon).h >= 0.6]
+    for room in rooms:
+        r = bounds(room.polygon)
+        t = sched.ceiling_treatment_for(room.type.value, tier)
+        rx = mx(r.x + r.w)
+        _rect(msp, dx + rx, dy + r.y, r.w, r.h, "RCP_CEILING")
+        # DXF has no coloured-fill legend fallback (unlike the PDF/on-screen views),
+        # so always keep a label — fall back to the short category name (no drop
+        # suffix) rather than let the full text overflow into the next room.
+        full_label = _ascii(f"{_RCP_LABEL.get(t.kind, t.kind)} - {t.drop_mm}mm" if t.kind != "none" else _RCP_LABEL["none"])
+        short_label = _ascii(_RCP_LABEL.get(t.kind, t.kind))
+        label = full_label if len(full_label) * 0.085 <= r.w - 0.1 else short_label
+        _text(
+            msp, label, dx + rx + r.w / 2, dy + r.y + r.h / 2, 0.13, "RCP_TEXT", TextEntityAlignment.MIDDLE_CENTER,
+        )
+        if t.kind == "gypsum" and r.w * r.h >= _RCP_COVE_SQM:
+            inset = 0.3
+            _rect(msp, dx + rx + inset, dy + r.y + inset, max(r.w - inset * 2, 0.1), max(r.h - inset * 2, 0.1), "RCP_COVE")
+
+    m = build_mep_model(plan, floor)
+    for p in m.elec:
+        if p.kind not in ("light", "fan"):
+            continue
+        msp.add_circle((dx + mx(p.x), dy + p.y), 0.09, dxfattribs={"layer": "RCP_FIXTURE"})
+        _text(msp, "L" if p.kind == "light" else "F", dx + mx(p.x), dy + p.y, 0.09, "RCP_FIXTURE", TextEntityAlignment.MIDDLE_CENTER)
+
+    _text(msp, "REFLECTED CEILING & LIGHTING PLAN (GFC-08) - mirrored per RCP convention", dx, dy + plan.plot.depth_m + 0.5, 0.3, "RCP_TEXT")
+
+
+# --------------------------------------------------------------------------- #
 # Schedules (text blocks)
 # --------------------------------------------------------------------------- #
 
@@ -391,10 +452,11 @@ def _draw_general_notes(msp, doc, plan: Plan, dx: float, dy: float):
 
 def _draw_schedules(msp, doc, plan: Plan, code: Optional[CodeReport], dx: float, dy: float):
     _ensure(doc, "SCHEDULE", 7)
-    lines = ["DOOR & WINDOW SCHEDULE", "Mark  Type     Size WxH mm    Qty"]
+    lines = ["DOOR & WINDOW SCHEDULE", "Mark  Type     Size WxH mm    Qty  Frame material"]
     for g in sched.opening_schedule(plan):
         lines.append(
-            f"{g.mark:<5} {sched.type_label(g):<8} {sched.to_mm(g.width_m)}x{sched.to_mm(g.height_m):<7} {g.qty}"
+            f"{g.mark:<5} {sched.type_label(g):<8} {sched.to_mm(g.width_m)}x{sched.to_mm(g.height_m):<7} "
+            f"{g.qty:<4} {g.frame_material}"
         )
     lines.append("")
     lines.append("AREA STATEMENT")
@@ -475,6 +537,80 @@ def _draw_structural(msp, doc, plan: Plan, structural: "StructuralDesign", dx: f
 
 
 # --------------------------------------------------------------------------- #
+# Masonry & lintel setting-out (GFC-03)
+# --------------------------------------------------------------------------- #
+
+
+def _draw_masonry(
+    msp, doc, plan: Plan, floor: Optional[int], dx: float, dy: float,
+    structural: "StructuralDesign | None", tier: str = "standard",
+):
+    """Brickwork & lintel setting-out sheet (GFC-03): derived double-line walls,
+    dimensioned, with masonry opening sizes/marks and the lintel level."""
+    _ensure(doc, "WALL_EXT", 8)
+    _ensure(doc, "WALL_INT", 9)
+    _ensure(doc, "WALL_DIM", 5)
+    _ensure(doc, "LINTEL_TEXT", 7)
+    fp = building_footprint(plan, floor)
+
+    for seg in derive_walls(plan, floor):
+        wr = wall_segment_rect(seg)
+        layer = "WALL_EXT" if seg.kind == "ext" else "WALL_INT"
+        _rect(msp, dx + wr.x, dy + wr.y, wr.w, wr.h, layer)
+
+    ids = {r.id for r in plan.rooms if floor is None or (r.floor or 0) == floor}
+    mark_by_width: dict[str, str] = {}
+    for g in sched.opening_schedule(plan, tier):
+        key = f"{g.kind}|{sched.to_mm(g.width_m)}"
+        mark_by_width.setdefault(key, g.mark)
+
+    for op in place_openings(plan):
+        if op.room_id not in ids:
+            continue
+        half = op.length / 2
+        if op.edge in ("N", "S"):
+            a, b = (op.cx - half, op.cy), (op.cx + half, op.cy)
+        else:
+            a, b = (op.cx, op.cy - half), (op.cx, op.cy + half)
+        msp.add_lwpolyline(_off([a, b], dx, dy), dxfattribs={"layer": "WALL_DIM"})
+        width_mm = sched.to_mm(op.length)
+        mark = mark_by_width.get(f"{op.kind}|{width_mm}")
+        label = f"{mark} {width_mm}" if mark else str(width_mm)
+        _text(msp, _ascii(label), dx + op.cx, dy + op.cy + 0.15, 0.12, "WALL_DIM", TextEntityAlignment.MIDDLE_CENTER)
+
+    # dimension chains — exterior perimeter + overall footprint
+    msp.add_linear_dim(
+        base=(dx + fp.x, dy + fp.y - 0.9), p1=(dx + fp.x, dy + fp.y), p2=(dx + fp.x + fp.w, dy + fp.y),
+        dimstyle="EZDXF", override={"dimtxt": 0.22},
+    ).render()
+    msp.add_linear_dim(
+        base=(dx + fp.x - 0.9, dy + fp.y), p1=(dx + fp.x, dy + fp.y), p2=(dx + fp.x, dy + fp.y + fp.h), angle=90,
+        dimstyle="EZDXF", override={"dimtxt": 0.22},
+    ).render()
+
+    lintel_level = (floor or 0) * LEVELS.FLOOR_TO_FLOOR + LEVELS.LINTEL
+    lintel_member = None
+    if structural is not None:
+        lintel_member = next(
+            (m for m in structural.members if m.kind == "lintel" and m.floor == (floor or 0)), None
+        ) or next((m for m in structural.members if m.kind == "lintel"), None)
+    note = (
+        lintel_member.rebar if lintel_member else
+        "RCC lintel over every opening, min. 150mm bearing each side, min. 2-10mm dia bottom + 2-8mm dia top bars "
+        "(IS 456:2000 Cl.26.5.1) - final sizing per structural design."
+    )
+    import textwrap
+
+    lines = [
+        f"BRICKWORK & LINTEL SETTING-OUT PLAN (GFC-03) - lintel level +{lintel_level:.2f}",
+        "Exterior 230mm / Interior 115mm half-brick, derived from the room layout.",
+        *textwrap.wrap(note, width=90),
+    ]
+    mt = msp.add_mtext(_ascii("\\P".join(lines)), dxfattribs={"layer": "LINTEL_TEXT", "char_height": 0.2})
+    mt.set_location((dx + fp.x, dy + fp.y - 1.6), attachment_point=7)
+
+
+# --------------------------------------------------------------------------- #
 # Document
 # --------------------------------------------------------------------------- #
 
@@ -529,6 +665,17 @@ def build_dxf(
     if structural is not None:
         _draw_structural(msp, doc, plan, structural, 0.0, sec_ffl - (LEVELS.FOOTING + gap + 4.0) - d)
 
+    # --- brickwork & lintel setting-out (GFC-03), below the structural block
+    #     (or directly below the section when no structural design ran) ---
+    masonry_ffl = sec_ffl - (LEVELS.FOOTING + gap + 4.0) - d
+    if structural is not None:
+        masonry_ffl -= d + 6.0
+    for i, f in enumerate(floors):
+        mx = i * (w + gap)
+        _draw_masonry(msp, doc, plan, f if multi else None, mx, masonry_ffl, structural)
+        if multi:
+            _text(msp, sched.floor_name(f).upper() + " - SETTING-OUT", mx, masonry_ffl + d + 1.0, 0.3, "LINTEL_TEXT")
+
     # --- MEP overlay, one block per floor to the right of the plan (previously only
     #     the ground floor's services were exported for a multi-storey house) ---
     mep_x = plan_span_x + 4.0
@@ -538,6 +685,14 @@ def build_dxf(
         if multi:
             _text(msp, f"{sched.floor_name(f).upper()} - MEP", fx, d + 0.6, 0.3, "MEP_TEXT")
     mep_span_x = max(1, len(floors)) * (w + gap)
+
+    # --- reflected ceiling & lighting plan (GFC-08), below the MEP overlay ---
+    rcp_ffl = -(d + gap + 3.0)
+    for i, f in enumerate(floors):
+        fx = mep_x + i * (w + gap)
+        _draw_rcp(msp, doc, plan, f if multi else None, fx, rcp_ffl)
+        if multi:
+            _text(msp, f"{sched.floor_name(f).upper()} - RCP", fx, rcp_ffl + d + 0.6, 0.3, "RCP_TEXT")
 
     # --- schedules, to the right of the MEP overlay ---
     sched_x = mep_x + mep_span_x + 4.0

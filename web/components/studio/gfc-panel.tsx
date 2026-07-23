@@ -3,6 +3,8 @@
 import * as React from "react";
 import {
   CheckCircle2,
+  ChevronDown,
+  Clock,
   Download,
   FileCheck,
   Grid,
@@ -17,6 +19,88 @@ import {
 import type { Plan } from "@gharplan/shared";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { StructurePanel } from "@/components/studio/structure-panel";
+import { MepPlan } from "@/components/cad/mep-plan";
+
+// Sheets marked "structure" / "mep" are backed by a real per-plan computation
+// (the structural design service, the MEP model) and render an actual on-screen
+// drawing below the card. Sheets with no `view` have no generator behind them yet
+// -- they describe planned content, not something this plan has actually produced,
+// so they're labelled accordingly rather than claimed as "Ready".
+const GFC_PACKAGES = [
+  {
+    id: "gfc-arch-grid",
+    code: "GFC-01",
+    name: "Setting-Out & Column Grid Plan",
+    category: "Structural",
+    icon: <Grid className="h-5 w-5 text-indigo-500" />,
+    description: "Centerline grid axes with exact column center-to-center distances for site excavation.",
+    view: "structure" as const,
+  },
+  {
+    id: "gfc-arch-foundation",
+    code: "GFC-02",
+    name: "Footing & Excavation Layout",
+    category: "Structural",
+    icon: <Box className="h-5 w-5 text-amber-500" />,
+    description: "Isolated footing sizes and design forces from the structural design service.",
+    view: "structure" as const,
+  },
+  {
+    id: "gfc-arch-masonry",
+    code: "GFC-03",
+    name: "Brickwork & Lintel Setting-Out Plan",
+    category: "Architectural",
+    icon: <Ruler className="h-5 w-5 text-emerald-500" />,
+    description: "Outer and inner wall dimensions, door/window openings, and lintel beam heights.",
+    view: null,
+  },
+  {
+    id: "gfc-arch-slab",
+    code: "GFC-04",
+    name: "Roof Slab & Beam Framing Layout",
+    category: "Structural",
+    icon: <Layers className="h-5 w-5 text-blue-500" />,
+    description: "Slab thickness, beam sizes, and member design forces from the structural design service.",
+    view: "structure" as const,
+  },
+  {
+    id: "gfc-elec-conduit",
+    code: "GFC-05",
+    name: "Electrical Slab Conduiting & DB Schematic",
+    category: "MEP Services",
+    icon: <Zap className="h-5 w-5 text-yellow-500" />,
+    description: "Conduit routing, light/fan/socket points, and DB board detail from the MEP model.",
+    view: "mep" as const,
+  },
+  {
+    id: "gfc-mep-plumbing",
+    code: "GFC-06",
+    name: "Plumbing Supply & Sanitary Drainage Plan",
+    category: "MEP Services",
+    icon: <Droplets className="h-5 w-5 text-cyan-500" />,
+    description: "Drainage and supply routing, fixtures, and inspection points from the MEP model.",
+    view: "mep" as const,
+  },
+  {
+    id: "gfc-joinery",
+    code: "GFC-07",
+    name: "Door & Window Joinery Schedule",
+    category: "Specifications",
+    icon: <Maximize className="h-5 w-5 text-purple-500" />,
+    description: "Frame profiles, glass thickness, hardware accessories & sill heights.",
+    view: null,
+  },
+  {
+    id: "gfc-rcp",
+    code: "GFC-08",
+    name: "Reflected Ceiling & Lighting Plan (RCP)",
+    category: "Interiors",
+    icon: <Compass className="h-5 w-5 text-rose-500" />,
+    description: "False ceiling drop levels, spotlight layout, and cove lighting.",
+    view: null,
+  },
+];
 
 export function GfcPanel({
   plan,
@@ -27,88 +111,9 @@ export function GfcPanel({
   onExport: (type: "pdf" | "dxf" | "xlsx" | "ifc") => void;
   exporting: string | null;
 }) {
-  const gfcPackages = [
-    {
-      id: "gfc-arch-grid",
-      code: "GFC-01",
-      name: "Setting-Out & Column Grid Plan",
-      category: "Structural",
-      icon: <Grid className="h-5 w-5 text-indigo-500" />,
-      description: "Centerline grid axes (A-F, 1-8) with exact column center-to-center distances for site excavation.",
-      layers: ["GRID_AXES", "COLUMNS", "EXCAVATION_BOUNDS"],
-      status: "Ready",
-    },
-    {
-      id: "gfc-arch-foundation",
-      code: "GFC-02",
-      name: "Footing & Excavation Layout",
-      category: "Structural",
-      icon: <Box className="h-5 w-5 text-amber-500" />,
-      description: "Isolated footing sizes, 100mm PCC bed specifications, and bottom rebar mat details.",
-      layers: ["FOOTINGS", "PCC_BED", "REBAR_MAT"],
-      status: "Ready",
-    },
-    {
-      id: "gfc-arch-masonry",
-      code: "GFC-03",
-      name: "Brickwork & Lintel Setting-Out Plan",
-      category: "Architectural",
-      icon: <Ruler className="h-5 w-5 text-emerald-500" />,
-      description: "Outer 230mm wall and 115mm inner partition wall dimensions, door/window openings, and lintel beam heights.",
-      layers: ["WALL_OUTER", "WALL_INNER", "OPENINGS", "LINTELS"],
-      status: "Ready",
-    },
-    {
-      id: "gfc-arch-slab",
-      code: "GFC-04",
-      name: "Roof Slab & Beam Framing Layout",
-      category: "Structural",
-      icon: <Layers className="h-5 w-5 text-blue-500" />,
-      description: "125mm two-way slab thickness, beam sizes, top/bottom main bar details, and stair landings.",
-      layers: ["SLAB_OUTLINE", "BEAMS", "CRANK_BARS"],
-      status: "Ready",
-    },
-    {
-      id: "gfc-elec-conduit",
-      code: "GFC-05",
-      name: "Electrical Slab Conduiting & DB Schematic",
-      category: "MEP Services",
-      icon: <Zap className="h-5 w-5 text-yellow-500" />,
-      description: "PVC conduit pipe routing, 6A light/fan points, 16A power sockets, DB board & earthing pit detail.",
-      layers: ["ELEC_CONDUIT", "SWITCHBOARDS", "DB_ROUTING"],
-      status: "Ready",
-    },
-    {
-      id: "gfc-mep-plumbing",
-      code: "GFC-06",
-      name: "Plumbing Supply & Sanitary Drainage Plan",
-      category: "MEP Services",
-      icon: <Droplets className="h-5 w-5 text-cyan-500" />,
-      description: "110mm SWR 1:40 slope drainage lines, CPVC hot/cold water riser lines, inspection chambers, and RWH pit.",
-      layers: ["DRAINAGE_SWR", "WATER_CPVC", "INSPECTION_PITS"],
-      status: "Ready",
-    },
-    {
-      id: "gfc-joinery",
-      code: "GFC-07",
-      name: "Door & Window Joinery Schedule",
-      category: "Specifications",
-      icon: <Maximize className="h-5 w-5 text-purple-500" />,
-      description: "Frame profiles (UPVC/Teak), glass thickness (6mm toughened), hardware accessories & sill heights.",
-      layers: ["JOINERY_SCHEDULE", "HARDWARE_SPECS"],
-      status: "Ready",
-    },
-    {
-      id: "gfc-rcp",
-      code: "GFC-08",
-      name: "Reflected Ceiling & Lighting Plan (RCP)",
-      category: "Interiors",
-      icon: <Compass className="h-5 w-5 text-rose-500" />,
-      description: "Gypsum false ceiling drop levels, COB spotlight layouts, ambient LED cove lighting, and AC copper ducts.",
-      layers: ["FALSE_CEILING", "LIGHT_COVES", "AC_DUCTING"],
-      status: "Ready",
-    },
-  ];
+  const gfcPackages = GFC_PACKAGES;
+  const [expanded, setExpanded] = React.useState<string | null>(null);
+  const generatedCount = gfcPackages.filter((p) => p.view).length;
 
   return (
     <div className="space-y-4 rounded-xl border bg-card p-5">
@@ -116,12 +121,14 @@ export function GfcPanel({
         <div>
           <div className="flex items-center gap-2">
             <h3 className="font-display text-lg font-bold">Good-For-Construction (GFC) Drawing Suite</h3>
-            <Badge variant="outline" className="bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
-              100/100 Execution Ready
+            <Badge variant="outline" className="bg-indigo-50 text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-300">
+              {generatedCount}/{gfcPackages.length} sheets generated for this plan
             </Badge>
           </div>
           <p className="text-xs text-muted-foreground">
-            Complete set of 8 site-ready architectural, structural, and MEP working drawings formatted for contractor execution
+            Architectural, structural, and MEP working references for contractor execution. Sheets marked{" "}
+            <span className="font-semibold text-foreground">Generated</span> below are computed live from this plan and viewable
+            on screen; the rest describe planned content not yet produced.
           </p>
         </div>
 
@@ -136,37 +143,68 @@ export function GfcPanel({
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2">
-        {gfcPackages.map((pkg) => (
-          <div key={pkg.id} className="flex flex-col justify-between rounded-xl border bg-muted/20 p-4 transition-all hover:bg-muted/40">
-            <div>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div className="grid h-8 w-8 place-items-center rounded-lg border bg-background shadow-xs">
-                    {pkg.icon}
+        {gfcPackages.map((pkg) => {
+          const isOpen = expanded === pkg.id;
+          return (
+            <div
+              key={pkg.id}
+              className={`flex flex-col justify-between rounded-xl border bg-muted/20 p-4 transition-all hover:bg-muted/40 ${pkg.view ? "sm:col-span-2" : ""}`}
+            >
+              <div>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="grid h-8 w-8 place-items-center rounded-lg border bg-background shadow-xs">
+                      {pkg.icon}
+                    </div>
+                    <div>
+                      <span className="font-mono text-[10px] font-bold text-muted-foreground">{pkg.code}</span>
+                      <h4 className="font-semibold text-sm leading-tight">{pkg.name}</h4>
+                    </div>
                   </div>
-                  <div>
-                    <span className="font-mono text-[10px] font-bold text-muted-foreground">{pkg.code}</span>
-                    <h4 className="font-semibold text-sm leading-tight">{pkg.name}</h4>
-                  </div>
+                  <Badge variant="secondary" className="text-[10px]">
+                    {pkg.category}
+                  </Badge>
                 </div>
-                <Badge variant="secondary" className="text-[10px]">
-                  {pkg.category}
-                </Badge>
+
+                <p className="mt-2.5 text-xs text-muted-foreground leading-relaxed">{pkg.description}</p>
               </div>
 
-              <p className="mt-2.5 text-xs text-muted-foreground leading-relaxed">{pkg.description}</p>
-            </div>
-
-            <div className="mt-4 flex items-center justify-between border-t pt-3 text-xs">
-              <div className="flex items-center gap-1 font-mono text-[10px] text-muted-foreground">
-                <Layers className="h-3 w-3" /> {pkg.layers.join(" · ")}
+              <div className="mt-4 flex items-center justify-between border-t pt-3 text-xs">
+                {pkg.view ? (
+                  <span className="inline-flex items-center gap-1 font-semibold text-emerald-600 dark:text-emerald-400">
+                    <CheckCircle2 className="h-3.5 w-3.5" /> Generated
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 font-medium text-muted-foreground">
+                    <Clock className="h-3.5 w-3.5" /> Not yet generated
+                  </span>
+                )}
+                {pkg.view && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 gap-1 text-xs"
+                    onClick={() => setExpanded(isOpen ? null : pkg.id)}
+                  >
+                    {isOpen ? "Hide drawing" : "View on screen"}
+                    <ChevronDown className={`h-3.5 w-3.5 transition-transform ${isOpen ? "rotate-180" : ""}`} />
+                  </Button>
+                )}
               </div>
-              <span className="inline-flex items-center gap-1 font-semibold text-emerald-600 dark:text-emerald-400">
-                <CheckCircle2 className="h-3.5 w-3.5" /> {pkg.status}
-              </span>
+
+              {isOpen && pkg.view === "structure" && (
+                <div className="mt-3 border-t pt-3">
+                  <StructurePanel plan={plan} />
+                </div>
+              )}
+              {isOpen && pkg.view === "mep" && (
+                <div className="mt-3 border-t pt-3">
+                  <MepPlan plan={plan} />
+                </div>
+              )}
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

@@ -12,12 +12,20 @@ const MIME: Record<string, string> = {
 // Endpoints that take the bare Plan (not the ExportRequest wrapper).
 const PLAN_ONLY = new Set(["dxf", "ifc"]);
 // Server-side: prefer an internal ENGINE_URL (e.g. http://engine:8000 in Docker),
-// falling back to the public URL used by the browser.
-const ENGINE_URL =
-  process.env.ENGINE_URL || process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8000";
+// falling back to the public URL used by the browser. That public URL is often
+// relative (e.g. "/engine" for the combined single-Vercel-project deploy) — a bare
+// path has no meaning to a server-side fetch(), so resolve it against the incoming
+// request's own origin. An already-absolute URL (localhost, Docker, a separate host)
+// passes straight through untouched.
+function engineExportUrl(req: Request, type: string): string {
+  const raw = process.env.ENGINE_URL || process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8000";
+  const base = new URL(raw, req.url);
+  base.pathname = `${base.pathname.replace(/\/+$/, "")}/export/${type}`;
+  return base.toString();
+}
 
-async function proxyToEngine(type: string, engineBody: unknown, name: string) {
-  const res = await fetch(`${ENGINE_URL}/export/${type}`, {
+async function proxyToEngine(req: Request, type: string, engineBody: unknown, name: string) {
+  const res = await fetch(engineExportUrl(req, type), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(engineBody),
@@ -46,7 +54,7 @@ export async function POST(req: Request, { params }: { params: { type: string } 
 
   // ---- demo mode: no auth, engine uses its default branding ----
   if (!hasSupabaseEnv()) {
-    return proxyToEngine(type, PLAN_ONLY.has(type) ? body.plan : body, name);
+    return proxyToEngine(req, type, PLAN_ONLY.has(type) ? body.plan : body, name);
   }
 
   const supabase = createClient();
@@ -77,5 +85,5 @@ export async function POST(req: Request, { params }: { params: { type: string } 
   const engineBody = PLAN_ONLY.has(type)
     ? body.plan
     : { ...body, branding: brandingFromProfile(profile) };
-  return proxyToEngine(type, engineBody, name);
+  return proxyToEngine(req, type, engineBody, name);
 }
